@@ -58,6 +58,11 @@ export function PresaleDialogProvider({ children }) {
       await axios.post(`${API}/presale/signup`, form);
       setSuccess(true);
       toast.success("You are on the founding member list.");
+      try {
+        window.dispatchEvent(new CustomEvent("zy:presale-signup"));
+      } catch (_) {
+        /* noop */
+      }
     } catch (err) {
       const msg =
         err?.response?.data?.detail ||

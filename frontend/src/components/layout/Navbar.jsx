@@ -65,7 +65,7 @@ export default function Navbar() {
             onClick={openDialog}
             className="zy-btn-nav"
           >
-            Start Free Trial
+            Claim Presale Spot
           </button>
         </div>
 
@@ -99,7 +99,7 @@ export default function Navbar() {
               }}
               className="zy-btn-nav self-start"
             >
-              Start Free Trial
+              Claim Presale Spot
             </button>
           </div>
         </div>

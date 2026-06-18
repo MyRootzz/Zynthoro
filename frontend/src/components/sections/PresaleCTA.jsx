@@ -1,9 +1,36 @@
-import { ArrowRight, Clock } from "lucide-react";
+import { useEffect, useState } from "react";
+import axios from "axios";
+import { ArrowRight, Clock, Users } from "lucide-react";
 import { HOME } from "@/constants/testIds";
 import { usePresaleDialog } from "@/components/sections/PresaleDialog";
 
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
+
 export default function PresaleCTA() {
   const { openDialog } = usePresaleDialog();
+  const [count, setCount] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchCount = () => {
+      axios
+        .get(`${API}/presale/count`)
+        .then((r) => {
+          if (!cancelled) setCount(r.data?.count ?? 0);
+        })
+        .catch(() => {
+          if (!cancelled) setCount(null);
+        });
+    };
+    fetchCount();
+    const onSignup = () => fetchCount();
+    window.addEventListener("zy:presale-signup", onSignup);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("zy:presale-signup", onSignup);
+    };
+  }, []);
 
   return (
     <section
@@ -53,6 +80,40 @@ export default function PresaleCTA() {
           >
             Presale closes at launch
           </p>
+
+          <div
+            data-testid="presale-counter"
+            className="mt-7 inline-flex items-center gap-3 px-5 py-3 rounded-full zy-reveal"
+            style={{
+              background: "rgba(255,255,255,0.12)",
+              border: "1px solid rgba(255,255,255,0.22)",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <span
+              className="inline-flex items-center justify-center rounded-full"
+              style={{ width: 28, height: 28, background: "rgba(212,175,55,0.22)", color: "var(--zy-gold)" }}
+            >
+              <Users size={15} />
+            </span>
+            <span className="text-[14px] font-medium" style={{ color: "rgba(255,255,255,0.92)" }}>
+              <span
+                className="text-[18px] font-bold mr-1.5"
+                style={{ color: "var(--zy-gold)" }}
+                data-testid="presale-counter-value"
+              >
+                {count === null ? "—" : count.toLocaleString("en-US")}
+              </span>
+              founding members reserved
+              <span className="ml-2 inline-flex items-center gap-1.5 text-[12px]" style={{ color: "rgba(255,255,255,0.7)" }}>
+                <span
+                  className="w-1.5 h-1.5 rounded-full inline-block"
+                  style={{ background: "#4ade80", boxShadow: "0 0 0 4px rgba(74,222,128,0.18)" }}
+                />
+                live
+              </span>
+            </span>
+          </div>
 
           <div className="mt-9 zy-reveal">
             <button

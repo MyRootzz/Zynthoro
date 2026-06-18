@@ -4,7 +4,7 @@ We expose four assistants:
   - zynthoro_assist : in-platform guide (claude-sonnet-4-5-20250929)
   - zyntha          : content & SEO specialist
   - thoro           : builder & workflow specialist
-  - zion            : business & growth specialist
+  - zyon            : business & growth specialist
 
 Chat history is stored in MongoDB collection `ai_messages` per session.
 """
@@ -52,12 +52,12 @@ ASSISTANTS: Dict[str, Dict[str, str]] = {
             "Always provide clear, step-by-step instructions and focus on practical implementation."
         ),
     },
-    "zion": {
-        "name": "Zion",
+    "zyon": {
+        "name": "Zyon",
         "specialty": "Business & Growth Specialist",
         "avatar_color": "#D4AF37",
         "system": (
-            "You are Zion, Zynthoro's Business & Growth specialist. You are strategic, business-focused and decisive. "
+            "You are Zyon, Zynthoro's Business & Growth specialist. You are strategic, business-focused and decisive. "
             "You help users grow their business, improve sales and make smart financial decisions. "
             "Always provide data-driven insights and actionable growth strategies."
         ),

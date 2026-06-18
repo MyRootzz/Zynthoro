@@ -31,10 +31,10 @@ const CONFIGS = {
       "Plan a 3-step product funnel",
     ],
   },
-  zion: {
-    name: "Zion",
+  zyon: {
+    name: "Zyon",
     specialty: "Business & Growth Specialist",
-    description: "Strategic, business-focused, decisive. Talk to Zion about growth, pricing and KPIs.",
+    description: "Strategic, business-focused, decisive. Talk to Zyon about growth, pricing and KPIs.",
     color: "#D4AF37",
     bg: "linear-gradient(135deg,#D4AF37 0%,#8a6e1d 100%)",
     icon: TrendingUp,

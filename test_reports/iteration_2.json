@@ -1,0 +1,52 @@
+{
+  "summary": "Phase 2 backend (24/25) + frontend smoke tested. Identified 2 backend bugs: (a) brute-force lockout broken due to client.host varying across k8s pods, (b) verify-email not idempotent — fixed idempotency. All 4 AI assistants (Claude Sonnet 4.5) reply successfully. Founder flow, 2FA TOTP+email, onboarding, dashboard, team invite, AI history all pass. Frontend signup/verify/login/2FA/dashboard rendered correctly with all 17 sidebar links, KPIs, quick actions, assist bubble/panel, founder switch-mode.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/auth/login (brute-force lockout)",
+        "issue": "Lockout never triggers in production. `record_failed_login` keys identifier by `request.client.host:email`, but Kubernetes ingress routes requests through multiple upstream pod IPs (e.g. 10.79.128.145, 10.79.128.146). Each attempt splits across different identifiers so count never reaches 5. Verified via DB inspection — after 7 wrong attempts, login_attempts had two rows with count=3 and count=4. Fix: derive identifier from email alone (e.g. `email`), or use `X-Forwarded-For` first hop. Security-critical.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "GET /api/auth/verify-email",
+        "issue": "FIXED by testing agent. Was non-idempotent ($unset of verification_token on first call caused React StrictMode double-invoke to show 'Invalid or expired verification token.' error to users despite successful verification). Changed to keep the token and just set email_verified=true."
+      },
+      {
+        "endpoint": "GET /api/founder/feature-flags",
+        "issue": "FIXED by testing agent. `insert_one(row)` mutated the dict by adding `_id` ObjectId, then return crashed with TypeError 'ObjectId is not iterable'. Changed to `insert_one(dict(row))` so the response dict stays clean."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_phase2_auth_dashboard_ai.py",
+    "/app/test_reports/pytest/phase2_results.xml"
+  ],
+  "action_items": [
+    "Fix brute-force lockout identifier: replace `request.client.host:email` with `email` (or `X-Forwarded-For first hop : email`) in /app/backend/server.py auth_login. Without this, the 5-attempts-in-15-minutes protection is effectively disabled behind the k8s ingress.",
+    "Confirm the two backend fixes I applied (`founder/feature-flags` _id exclusion, `auth/verify-email` idempotency) match desired behaviour — both are minimal and safe."
+  ],
+  "critical_code_review_comments": [
+    "auth.py LOCKOUT identifier uses `request.client.host` which is unreliable behind load balancers; should use trusted X-Forwarded-For or email-only to be effective.",
+    "server.py /onboarding/complete does not validate that the user actually owns the company string or normalize null fields — acceptable for MVP.",
+    "ai_assistants.py builds the history into the system prompt rather than as messages, which may exceed token limits for long sessions; consider trimming or using proper turn-based messages.",
+    "server.py _set_auth_cookies uses secure=False which is acceptable in this preview env but should be conditional on production for HTTPS-only cookies."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (idempotent verify-email + founder feature-flags _id fix)",
+    "/app/backend/tests/test_phase2_auth_dashboard_ai.py (new comprehensive Phase 2 test suite)"
+  ],
+  "success_rate": {"backend": "96% (24/25 — brute force test fails due to real lockout bug)", "frontend": "100% (smoke)"},
+  "test_credentials": "Founder regie@myrootzz.com / Zynthoro2026! (works). Test signup uses @example.com — note pydantic EmailStr rejects @*.test reserved TLD.",
+  "seed_data_creation": "Several test users created with @example.com prefix `signup_e2e_*`, `bf_*`, `uitest*`, `uiok_*`. Team invitee emails `invitee_*@example.com`. Safe to leave in DB.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run `python -m pytest /app/backend/tests/test_phase2_auth_dashboard_ai.py` with REACT_APP_BACKEND_URL+MONGO_URL+DB_NAME env vars. The single failing test (TestBruteForce.test_brute_force_lockout) is testing a real bug in auth_login identifier construction; will only pass once main agent fixes the lockout identifier. Frontend tests not exhaustive — onboarding 6-step wizard, assistant pages (/dashboard/zyntha etc), team invite dialog, builder mode panel were not interactively driven end-to-end but data-testids and routes load correctly.",
+  "rca of the issue": "Brute-force bypass: FastAPI's `request.client.host` reports the immediate TCP peer (a Kubernetes pod IP from the ingress controller). In a multi-replica ingress deployment, consecutive requests arrive from different ingress pods (observed 10.79.128.145 and 10.79.128.146). The identifier `f'{ip}:{email}'` therefore differs between attempts, splitting the failure counter across rows and never crossing the 5-attempt threshold. Reproduction: signup user X, send 7 wrong-password POSTs to /api/auth/login, observe all return 401 (none 429), then `db.login_attempts.find()` shows multiple rows for the same email each with count<5. Mitigation: identifier should be email-only (or sha256 of X-Forwarded-For first hop + email after the app is configured behind a trusted proxy). Verify-email idempotency: react-strict mode double-mounts useEffect, calling GET /auth/verify-email twice; the first call $unset the verification_token, the second 404'd. Fix kept the token and only set email_verified=true."
+}

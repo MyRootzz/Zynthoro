@@ -41,9 +41,8 @@ export default function Navbar() {
             style={{ color: "var(--zy-gold)", fontWeight: 800, letterSpacing: "0.02em" }}
             className="text-[22px]"
           >
-            ZYN
+            ZYNTHORO
           </span>
-          <span className="text-[22px] font-extrabold tracking-wide text-white">THORO</span>
         </a>
 
         <nav className="hidden md:flex items-center gap-9">

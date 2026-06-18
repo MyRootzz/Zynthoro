@@ -39,9 +39,8 @@ export default function Footer() {
           <div>
             <div className="flex items-center gap-1 mb-4">
               <span style={{ color: "var(--zy-gold)", fontWeight: 800 }} className="text-[22px]">
-                ZYN
+                ZYNTHORO
               </span>
-              <span className="text-[22px] font-extrabold text-white tracking-wide">THORO</span>
             </div>
             <p className="text-white/70 text-[15px] leading-relaxed max-w-xs">
               The Next-Gen AI ERP Ecosystem. One platform. One AI. One truth. Replace 15+ tools with Zynthoro.

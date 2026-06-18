@@ -243,7 +243,8 @@ async def auth_verify_email(token: str):
 @api_router.post("/auth/login")
 async def auth_login(payload: LoginIn, request: Request, response: Response):
     email = payload.email.lower().strip()
-    ident = f"{request.client.host if request.client else 'unknown'}:{email}"
+    # Key brute-force lockout by email only (client IP varies across k8s ingress pods).
+    ident = f"email:{email}"
     await check_lockout(db, ident)
 
     user = await db.users.find_one({"email": email})

@@ -29,6 +29,28 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **Backend**: FastAPI + Motor (MongoDB) at `/app/backend/server.py`. Routes prefixed `/api`.
 - **DB collections**: `presale_signups` (id, name, email, company, plan_interest, created_at), `status_checks`.
 
+## What's Implemented (Phase 2 — done 2026-06-18)
+- **Auth**: JWT (bcrypt), signup, email verification (idempotent, dev token returned + logged), login, brute-force lockout keyed by email, password reset (dev token), logout.
+- **2FA**: TOTP (pyotp + QR base64) primary, email-code fallback (dev_code returned + logged). SMS marked "Coming soon".
+- **Founder owner unlimited** auto-seeded on startup (regie@myrootzz.com / Zynthoro2026!), is_founder, is_unlimited, billing_exempt, Enterprise Unlimited plan, email_verified.
+- **Onboarding**: 6-step wizard (welcome, company, first action, meet Assist, ready, redirect).
+- **Dashboard**: blue sidebar (12 modules + Team + Settings + 3 AI assistants), top bar with greeting & plan badge, 4 KPI cards, 4 quick actions, AI Suggestions, empty-state activity feed.
+- **Zynthoro Assist** floating bubble — always visible in /dashboard/*, Claude Sonnet 4.5 via Emergent universal key, history persisted in `ai_messages`.
+- **Three specialised AI assistants** (`/dashboard/zyntha`, `/dashboard/thoro`, `/dashboard/zion`) — each with own system prompt, gradient avatar, starter chips, chat persistence.
+- **Teams**: list + invite (role select per plan) + buy-seats placeholder modal.
+- **Builder Mode** (founder only): stats, feature flags (4 toggles), presale signups table.
+- **Stripe**: completely deferred — `/api/checkout/status` returns `{enabled:false, message:"…June 22, 2026."}` per user choice.
+- **Logo**: full gold `ZYNTHORO` everywhere (homepage navbar/footer, auth pages on dark chip, dashboard sidebar).
+- **Tests**: 25/25 backend tests passing (`/app/backend/tests/test_phase2_auth_dashboard_ai.py`).
+
+## Phase 3 (queued — pasted by user during Phase 2)
+- Full Pricing page (9 plans + comparison table + FAQ)
+- 12 domain detail pages + /domains overview
+- /enterprise page (14 modules + comparison + demo form)
+- /about page (Casa Haya International BV, KvK, VAT)
+- /legal/{privacy,terms,cookies,dpa,sla} pages
+- Navbar "About" link + footer legal links
+
 ## What's Implemented (Phase 1 — done 2026-06-18)
 - Homepage with 9 sections in order: Navbar, Hero, Social Proof, Why Zynthoro, 12 Domains grid, Pricing (4 plans), Zynthoro Assist (blue), Comparison table, Presale CTA, Footer.
 - Sticky blue navbar with mobile hamburger; gold+white ZYNTHORO logo; "Start Free Trial" CTA.

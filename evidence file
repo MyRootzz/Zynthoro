@@ -1,9 +1,8 @@
 Zynthoro - Evidence File
-
-Zynthoro is currently in the concept and planning phase.
-There is no running product or active development yet at this moment.
-
-This repository and this file exist to meet the Build With Gemini XPRIZE submission requirements.
-Actual implementation and development of Zynthoro will begin after the registration and selection phase.
-
+Zynthoro began as a concept and planning-stage project at the start of the Build With Gemini XPRIZE hackathon period.
+Since then, active development has progressed: a functional prototype website has been built using the Emergent platform, including a homepage, core navigation, authentication, dashboard, and AI assistant integration powered by the Claude API.
+Zynthoro has also been selected for Anthropic's Claude for Startups program, providing additional API credits and support to accelerate development.
+This repository documents that progression — from initial concept to a working prototype — as part of the Build With Gemini XPRIZE submission.
+Public-facing prototype: zynthoro.ai (presale opens June 22, 2026; public launch June 30, 2026)
+Further development, including full ERP module rollout, will continue throughout the remainder of the hackathon period.
 – MyRootzz (Zynthoro project owner)

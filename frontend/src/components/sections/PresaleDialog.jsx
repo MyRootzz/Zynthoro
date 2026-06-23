@@ -109,7 +109,7 @@ export function PresaleDialogProvider({ children }) {
                   <Input
                     id="ps-name"
                     data-testid={HOME.presaleNameInput}
-                    placeholder="Ramona Vijfvinkel"
+                    placeholder="Your full name"
                     value={form.name}
                     onChange={(e) => update("name", e.target.value)}
                     required

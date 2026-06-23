@@ -632,8 +632,8 @@ async def seed_founder():
         await db.users.insert_one({
             "id": str(uuid.uuid4()),
             "email": email,
-            "first_name": "Ramona",
-            "last_name": "Vijfvinkel",
+            "first_name": "Founder",
+            "last_name": "",
             "company": "Casa Haya International BV",
             "password_hash": hash_password(password),
             "role": "Founder Owner Unlimited",

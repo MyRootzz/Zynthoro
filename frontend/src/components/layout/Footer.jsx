@@ -7,7 +7,7 @@ const cols = [
     links: [
       { label: "Features", href: "#domains" },
       { label: "Pricing", href: "#pricing" },
-      { label: "Enterprise", href: "#pricing" },
+      { label: "Enterprise", href: "#enterprise" },
       { label: "Integrations", href: "#domains" },
     ],
   },
@@ -18,6 +18,15 @@ const cols = [
       { label: "Blog", href: "#" },
       { label: "Careers", href: "#" },
       { label: "Press", href: "#" },
+    ],
+  },
+  {
+    title: "Contact",
+    links: [
+      { label: "info@zynthoro.ai", href: "mailto:info@zynthoro.ai" },
+      { label: "hello@zynthoro.ai", href: "mailto:hello@zynthoro.ai" },
+      { label: "support@zynthoro.ai", href: "mailto:support@zynthoro.ai" },
+      { label: "enterprise@zynthoro.ai", href: "mailto:enterprise@zynthoro.ai" },
     ],
   },
   {
@@ -35,8 +44,8 @@ export default function Footer() {
   return (
     <footer data-testid={HOME.footer} className="zy-footer">
       <div className="zy-container py-20">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
-          <div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-10">
+          <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-1 mb-4">
               <span style={{ color: "var(--zy-gold)", fontWeight: 800 }} className="text-[22px]">
                 ZYNTHORO

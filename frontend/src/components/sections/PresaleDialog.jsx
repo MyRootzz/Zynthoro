@@ -196,7 +196,10 @@ export function PresaleDialogProvider({ children }) {
                 You&apos;re on the founding list
               </h3>
               <p className="mt-3 text-[14px] text-[#555] max-w-sm mx-auto">
-                We&apos;ll email you {form.email} before launch on <b>30 June 2026</b> with your founding-member pricing locked in for life.
+                We&apos;ll email you {form.email} from <a href="mailto:hello@zynthoro.ai" className="text-[#1A4FFF] font-medium">hello@zynthoro.ai</a> before launch on <b>30 June 2026</b> with your founding-member pricing locked in for life.
+              </p>
+              <p className="mt-3 text-[12px] text-[#888]">
+                Questions? <a href="mailto:hello@zynthoro.ai" className="text-[#1A4FFF] font-medium">hello@zynthoro.ai</a>
               </p>
               <button
                 onClick={() => setOpen(false)}

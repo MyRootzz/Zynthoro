@@ -64,6 +64,9 @@ export default function Login() {
           Don&apos;t have an account?{" "}
           <Link to="/signup" className="text-[#1A4FFF] font-semibold">Sign up</Link>
         </p>
+        <p className="text-[12px] text-center text-[#888] mt-1">
+          Need help? <a href="mailto:support@zynthoro.ai" className="text-[#1A4FFF] font-medium">support@zynthoro.ai</a>
+        </p>
       </form>
     </AuthLayout>
   );

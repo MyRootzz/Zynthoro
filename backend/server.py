@@ -217,7 +217,7 @@ async def auth_signup(payload: SignupIn, response: Response):
     await db.users.insert_one(doc)
 
     # No email service — log the verification link (Phase 2 user choice)
-    logger.info("[email-mock] Verification link for %s: /verify-email?token=%s", email, verification_token)
+    logger.info("[email-mock from=hello@zynthoro.ai to=%s] Verification link: /verify-email?token=%s", email, verification_token)
 
     return {
         "message": "We've sent you a verification link. Please check your inbox.",
@@ -361,7 +361,7 @@ async def twofa_email_request(payload: EmailCodeRequestIn):
         {"$set": {"email_2fa_code_hash": code_hash, "email_2fa_expires_at": expires}},
     )
     # No email service: log to console + return dev_code for the UI.
-    logger.info("[email-mock] 2FA email code for %s: %s", user["email"], code)
+    logger.info("[email-mock from=support@zynthoro.ai to=%s] 2FA email code: %s", user["email"], code)
     return {"message": "Code sent. Check your inbox.", "dev_code": code}
 
 
@@ -423,7 +423,7 @@ async def auth_forgot(payload: ForgotPasswordIn):
         await db.password_reset_tokens.insert_one({
             "token": token, "user_id": user["id"], "expires_at": expires, "used": False,
         })
-        logger.info("[email-mock] Password reset link for %s: /reset-password?token=%s", email, token)
+        logger.info("[email-mock from=support@zynthoro.ai to=%s] Password reset link: /reset-password?token=%s", email, token)
         return {"message": "If the email exists, a reset link has been sent.", "dev_reset_token": token}
     return {"message": "If the email exists, a reset link has been sent."}
 
@@ -530,7 +530,7 @@ async def team_invite(payload: TeamInviteIn, user=Depends(get_current_user_full)
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.team_members.insert_one(doc)
-    logger.info("[email-mock] Team invite for %s by %s token=%s", email, user["email"], invite_token)
+    logger.info("[email-mock from=hello@zynthoro.ai to=%s by=%s] Team invite token=%s", email, user["email"], invite_token)
     return {"id": doc["id"], "email": email, "role": payload.role, "dev_invite_token": invite_token}
 
 

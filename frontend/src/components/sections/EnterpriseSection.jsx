@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   Accordion, AccordionContent, AccordionItem, AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Check, Mail, Calculator, ArrowRight } from "lucide-react";
+import { Check, Mail, Layers, ArrowRight } from "lucide-react";
 import { usePresaleDialog } from "@/components/sections/PresaleDialog";
 
 const TIERS = [
@@ -84,22 +84,17 @@ const TIERS = [
 const MODULES = [
   "Planning & Organisation",
   "Time Tracking",
-  "Purchase Administration",
-  "Sales Administration",
+  "Purchase Admin",
+  "Sales Admin",
   "Accounting",
   "Invoicing & Finance",
   "Project Management",
   "HR & Personnel",
   "Operations & Processes",
-  "Marketing & Content",
+  "Marketing & Content (incl. Video & Design)",
   "Communication & Collaboration",
   "Compliance & Security",
 ];
-
-// Module calculator pricing: base €1,299 + €100 per selected module.
-// Full suite (12) lands at €2,499 — the Enterprise Basic price.
-const BASE_PRICE = 1299;
-const PER_MODULE = 100;
 
 export default function EnterpriseSection() {
   const { openDialog } = usePresaleDialog();
@@ -108,10 +103,6 @@ export default function EnterpriseSection() {
   const toggle = (m) =>
     setSelected((s) => (s.includes(m) ? s.filter((x) => x !== m) : [...s, m]));
 
-  const price = useMemo(
-    () => BASE_PRICE + selected.length * PER_MODULE,
-    [selected]
-  );
   const fullSuite = selected.length === MODULES.length;
 
   return (
@@ -215,21 +206,21 @@ export default function EnterpriseSection() {
           </Accordion>
         </div>
 
-        {/* Module calculator */}
+        {/* Module discovery tool */}
         <div
           className="mt-20 max-w-5xl mx-auto bg-white border rounded-2xl p-6 sm:p-8 zy-reveal"
           style={{ borderColor: "#D4AF37" }}
           data-testid="enterprise-calculator"
         >
           <div className="flex items-center gap-2 mb-1.5">
-            <Calculator size={16} style={{ color: "#1A4FFF" }} />
-            <p className="zy-eyebrow" style={{ fontSize: 11 }}>Module Calculator</p>
+            <Layers size={16} style={{ color: "#1A4FFF" }} />
+            <p className="zy-eyebrow" style={{ fontSize: 11 }}>What you need · what&apos;s included</p>
           </div>
           <h3 className="text-[22px] sm:text-[26px] font-bold tracking-tight">
-            Pick the domains you need — see your estimate.
+            Pick the modules you need — all 12 are included.
           </h3>
           <p className="text-[14px] text-[#555] mt-2 max-w-2xl">
-            Start with the full Zynthoro suite at <b>€2,499/mo</b> and deselect any modules you don&apos;t need. This estimate is indicative — final pricing is confirmed in your demo.
+            Tick the modules your business depends on. Whatever you choose, <b>Enterprise Basic includes all 12 modules from €2,499/month</b> — there&apos;s nothing to add on later.
           </p>
 
           <div className="mt-7 grid grid-cols-1 md:grid-cols-3 gap-7">
@@ -264,23 +255,17 @@ export default function EnterpriseSection() {
               }}
             >
               <p className="text-[11px] uppercase tracking-[0.18em] font-semibold text-[#666]">
-                Estimated price
+                Your selection
               </p>
-              <div className="mt-2 flex items-baseline gap-1.5">
-                <span
-                  className="text-[36px] font-bold tracking-tight"
-                  style={{ color: "#1A4FFF", fontVariantNumeric: "tabular-nums" }}
-                  data-testid="calculator-price"
-                >
-                  €{price.toLocaleString("en-US")}
-                </span>
-                <span className="text-[14px] text-[#666] font-medium">/mo</span>
-              </div>
-              <p className="text-[12.5px] text-[#555] mt-2">
-                {selected.length}/{MODULES.length} modules selected
+              <p
+                className="mt-2 text-[20px] font-bold tracking-tight text-black"
+                style={{ fontVariantNumeric: "tabular-nums" }}
+                data-testid="calculator-selection-summary"
+              >
+                {selected.length}/{MODULES.length} modules
                 {fullSuite && (
                   <span
-                    className="ml-2 text-[10.5px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full"
+                    className="ml-2 align-middle text-[10.5px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full"
                     style={{ background: "rgba(212,175,55,0.18)", color: "#8a6e1d" }}
                   >
                     Full suite
@@ -288,15 +273,31 @@ export default function EnterpriseSection() {
                 )}
               </p>
 
-              <button
-                onClick={openDialog}
-                className="zy-btn-primary w-full mt-5"
+              <div
+                className="mt-4 rounded-lg p-3.5"
+                style={{ background: "#fff", border: "1px dashed #D4AF37" }}
+              >
+                <p
+                  className="text-[13.5px] font-semibold leading-snug"
+                  style={{ color: "#1a1300" }}
+                  data-testid="calculator-message"
+                >
+                  All 12 modules included from <span style={{ color: "#8a6e1d" }}>€2,499/month</span>.
+                </p>
+                <p className="text-[12.5px] text-[#555] mt-1.5">
+                  Your selected modules are all part of Enterprise Basic — no per-module pricing, no add-ons.
+                </p>
+              </div>
+
+              <a
+                href="mailto:enterprise@zynthoro.ai?subject=Zynthoro%20Enterprise%20demo%20request"
+                className="zy-btn-primary w-full mt-5 inline-flex"
                 data-testid="calculator-demo-cta"
               >
                 Request a demo <ArrowRight size={15} />
-              </button>
+              </a>
               <p className="mt-3 text-[11.5px] text-[#888] leading-relaxed">
-                Talk to our team for a tailored proposal — including SSO, audit trail and the 14 enterprise modules.
+                We&apos;ll walk through your selection plus the 14 enterprise modules and SSO, audit trail and SLA options.
               </p>
             </aside>
           </div>

@@ -59,6 +59,7 @@ const plans = [
       "Pro project management & marketing",
       "5 company workspaces",
       "25 users · team structures",
+      "No ERP",
     ],
     cta: "Claim Presale Spot",
   },

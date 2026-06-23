@@ -7,33 +7,73 @@ const plans = [
     name: "Starter",
     price: "€499",
     suffix: "/mo",
-    desc: "For solo founders and small teams getting started.",
-    features: ["All 12 domains (essentials)", "1 workspace, up to 3 users", "Zynthoro Assist (basic)", "EU hosting & GDPR"],
-    cta: "Start Free Trial",
+    desc: "Basic modules for solo founders just getting started.",
+    features: [
+      "Basic planning & time tracking",
+      "Basic content & communication",
+      "1 company workspace",
+      "1 user · 1 email · 3 aliases",
+      "No ERP",
+    ],
+    cta: "Claim Presale Spot",
+  },
+  {
+    name: "Creator",
+    price: "€699",
+    suffix: "/mo",
+    desc: "Everything in Starter, plus the full AI creative suite.",
+    features: [
+      "AI video suite",
+      "AI photo suite",
+      "AI funnels & landing pages",
+      "1 company workspace",
+      "3 users · 3 emails · unlimited aliases",
+      "No ERP",
+    ],
+    cta: "Claim Presale Spot",
   },
   {
     name: "Business",
     price: "€899",
     suffix: "/mo",
-    desc: "The most popular plan for growing SMEs.",
-    features: ["Everything in Starter", "Up to 15 users", "Full AI automations", "Priority support"],
-    cta: "Start Free Trial",
+    desc: "More modules for growing SMEs and entrepreneurs.",
+    features: [
+      "Everything in Creator",
+      "Full time tracking & sales",
+      "Basic accounting & operations",
+      "3 company workspaces",
+      "10 users · unlimited emails",
+      "No ERP",
+    ],
+    cta: "Claim Presale Spot",
     popular: true,
   },
   {
     name: "Agency",
     price: "€1,199",
     suffix: "/mo",
-    desc: "For agencies managing multiple clients.",
-    features: ["Everything in Business", "Multi-client workspaces", "White-label invoices", "API access"],
-    cta: "Start Free Trial",
+    desc: "Full non-ERP suite for agencies and multi-client teams.",
+    features: [
+      "Everything in Business",
+      "Full accounting & inventory",
+      "Pro project management & marketing",
+      "5 company workspaces",
+      "25 users · team structures",
+    ],
+    cta: "Claim Presale Spot",
   },
   {
     name: "Enterprise",
     price: "from €2,499",
     suffix: "/mo",
-    desc: "For organisations with advanced needs.",
-    features: ["Unlimited users", "Dedicated AI tuning", "SSO + custom roles", "SLA & onboarding"],
+    desc: "All 12 domains, full ERP, unlimited companies.",
+    features: [
+      "All 12 domains · full ERP",
+      "Unlimited users",
+      "Unlimited company workspaces",
+      "SSO, audit trail, security policies",
+      "Dedicated support & onboarding",
+    ],
     cta: "Talk to Sales",
     enterprise: true,
   },
@@ -52,13 +92,13 @@ export default function Pricing() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
           {plans.map((p, i) => (
             <div
               key={p.name}
               data-testid={`pricing-card-${p.name.toLowerCase()}`}
               className={`zy-price-card zy-reveal ${p.popular ? "popular" : ""} ${p.enterprise ? "enterprise" : ""}`}
-              style={{ transitionDelay: `${i * 80}ms` }}
+              style={{ transitionDelay: `${i * 70}ms` }}
             >
               {p.popular && (
                 <span
@@ -79,15 +119,15 @@ export default function Pricing() {
 
               <h3 className="zy-h3 text-[1.05rem]">{p.name}</h3>
               <div className="mt-3 flex items-baseline gap-1">
-                <span className="text-[34px] font-bold tracking-tight text-black">{p.price}</span>
-                <span className="text-[#666] text-[15px]">{p.suffix}</span>
+                <span className="text-[28px] font-bold tracking-tight text-black">{p.price}</span>
+                <span className="text-[#666] text-[14px]">{p.suffix}</span>
               </div>
-              <p className="text-[14px] text-[#555] mt-2 leading-relaxed">{p.desc}</p>
+              <p className="text-[13.5px] text-[#555] mt-2 leading-relaxed min-h-[40px]">{p.desc}</p>
 
-              <ul className="mt-6 space-y-3 flex-1">
+              <ul className="mt-5 space-y-2.5 flex-1">
                 {p.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-[14px] text-[#333]">
-                    <Check size={16} className="mt-0.5 shrink-0" style={{ color: "var(--zy-blue)" }} />
+                  <li key={f} className="flex items-start gap-2 text-[13.5px] text-[#333]">
+                    <Check size={14} className="mt-0.5 shrink-0" style={{ color: "var(--zy-blue)" }} />
                     <span>{f}</span>
                   </li>
                 ))}
@@ -95,7 +135,8 @@ export default function Pricing() {
 
               <button
                 onClick={openDialog}
-                className={p.enterprise ? "zy-btn-gold mt-7 w-full" : "zy-btn-primary mt-7 w-full"}
+                className={p.enterprise ? "zy-btn-gold mt-6 w-full" : "zy-btn-primary mt-6 w-full"}
+                style={{ fontSize: 14, padding: "12px 18px" }}
               >
                 {p.cta}
               </button>
@@ -104,8 +145,8 @@ export default function Pricing() {
         </div>
 
         <div className="mt-12 text-center zy-reveal">
-          <a href="#presale" className="zy-link">
-            See all plans <ArrowRight size={16} />
+          <a href="#enterprise" className="zy-link">
+            See enterprise features <ArrowRight size={16} />
           </a>
         </div>
       </div>

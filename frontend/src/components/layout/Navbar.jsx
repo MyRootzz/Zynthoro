@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { HOME } from "@/constants/testIds";
 import { usePresaleDialog } from "@/components/sections/PresaleDialog";
@@ -58,7 +59,14 @@ export default function Navbar() {
           ))}
         </nav>
 
-        <div className="hidden md:block">
+        <div className="hidden md:flex items-center gap-3">
+          <Link
+            to="/login"
+            data-testid="nav-login"
+            className="zy-btn-nav-ghost"
+          >
+            Log in
+          </Link>
           <button
             data-testid={HOME.navCta}
             onClick={openDialog}

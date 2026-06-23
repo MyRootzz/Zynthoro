@@ -614,11 +614,11 @@ async def founder_flags_update(payload: FeatureFlagsIn, user=Depends(get_founder
 
 
 # ========================================================================
-#  Stripe placeholder (per user choice: skip Stripe completely until June 22)
+#  Stripe placeholder (per user choice: skip Stripe completely until launch)
 # ========================================================================
 @api_router.get("/checkout/status")
 async def checkout_status():
-    return {"enabled": False, "message": "Stripe checkout opens at launch on June 22, 2026."}
+    return {"enabled": False, "message": "Stripe checkout opens at launch on 30 June 2026."}
 
 
 # ========================================================================

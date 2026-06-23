@@ -218,7 +218,7 @@ export default function TeamPage() {
                   <span className="font-semibold">€{(seats.count * seatPrice).toFixed(2)}/mo</span>
                 </div>
                 <button
-                  onClick={() => toast.message("Seat purchase opens at launch on June 22, 2026.")}
+                  onClick={() => toast.message("Seat purchase opens at launch on 30 June 2026.")}
                   className="zy-btn-primary w-full"
                 >
                   Add seats

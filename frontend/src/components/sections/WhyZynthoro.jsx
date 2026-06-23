@@ -1,21 +1,21 @@
-import { Wallet, Zap, BrainCircuit } from "lucide-react";
+import { Workflow, Zap, ShieldCheck } from "lucide-react";
 import { HOME } from "@/constants/testIds";
 
 const items = [
   {
-    icon: Wallet,
-    title: "€10,000–€35,000/mo",
-    body: "The average SME spends this much on separate tools across finance, marketing, HR, content and ops.",
+    icon: Workflow,
+    title: "One platform, zero chaos",
+    body: "Twelve business domains, one connected workspace. No more juggling 15 tools that don't talk to each other.",
   },
   {
     icon: Zap,
     title: "From €499/month",
-    body: "Zynthoro replaces all of them — finance, ops, marketing, content, HR — in one connected workspace.",
+    body: "Replace €10,000–€35,000/month of separate tools — finance, ops, marketing, content, HR — with a single subscription.",
   },
   {
-    icon: BrainCircuit,
-    title: "Anthropic Claude AI",
-    body: "Powered by the world's most trusted enterprise AI. Selected for the Claude for Startups program.",
+    icon: ShieldCheck,
+    title: "Your data, your control",
+    body: "EU-hosted, GDPR-ready, audit trails and role-based access built in from day one. Compliance isn't an add-on.",
   },
 ];
 

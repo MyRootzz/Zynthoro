@@ -49,13 +49,24 @@ export function PresaleDialogProvider({ children }) {
 
   const onSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) {
-      toast.error("Please enter your name and email.");
+    const name = (form.name || "").trim();
+    const email = (form.email || "").trim();
+    if (!name) {
+      toast.error("Please enter your full name.");
+      return;
+    }
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Please enter a valid email address.");
       return;
     }
     setSubmitting(true);
     try {
-      await axios.post(`${API}/presale/signup`, form);
+      await axios.post(`${API}/presale/signup`, {
+        ...form,
+        name,
+        email,
+        company: (form.company || "").trim() || null,
+      });
       setSuccess(true);
       toast.success("You are on the founding member list.");
       try {
@@ -101,6 +112,8 @@ export function PresaleDialogProvider({ children }) {
                     placeholder="Ramona Vijfvinkel"
                     value={form.name}
                     onChange={(e) => update("name", e.target.value)}
+                    required
+                    autoComplete="name"
                   />
                 </div>
 
@@ -113,6 +126,8 @@ export function PresaleDialogProvider({ children }) {
                     placeholder="you@company.com"
                     value={form.email}
                     onChange={(e) => update("email", e.target.value)}
+                    required
+                    autoComplete="email"
                   />
                 </div>
 
@@ -138,6 +153,7 @@ export function PresaleDialogProvider({ children }) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Starter">Starter — €499/mo</SelectItem>
+                      <SelectItem value="Creator">Creator — €699/mo</SelectItem>
                       <SelectItem value="Business">Business — €899/mo</SelectItem>
                       <SelectItem value="Agency">Agency — €1,199/mo</SelectItem>
                       <SelectItem value="Enterprise">Enterprise — from €2,499/mo</SelectItem>
@@ -180,7 +196,7 @@ export function PresaleDialogProvider({ children }) {
                 You&apos;re on the founding list
               </h3>
               <p className="mt-3 text-[14px] text-[#555] max-w-sm mx-auto">
-                We&apos;ll email you {form.email} before launch on <b>June 22, 2026</b> with your founding-member pricing locked in for life.
+                We&apos;ll email you {form.email} before launch on <b>30 June 2026</b> with your founding-member pricing locked in for life.
               </p>
               <button
                 onClick={() => setOpen(false)}

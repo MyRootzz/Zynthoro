@@ -36,7 +36,7 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **Onboarding**: 6-step wizard (welcome, company, first action, meet Assist, ready, redirect).
 - **Dashboard**: blue sidebar (12 modules + Team + Settings + 3 AI assistants), top bar with greeting & plan badge, 4 KPI cards, 4 quick actions, AI Suggestions, empty-state activity feed.
 - **Zynthoro Assist** floating bubble — always visible in /dashboard/*, Claude Sonnet 4.5 via Emergent universal key, history persisted in `ai_messages`.
-- **Three specialised AI assistants** (`/dashboard/zyntha`, `/dashboard/thoro`, `/dashboard/zyon`) — each with own system prompt, gradient avatar, starter chips, chat persistence.
+- **Three specialised AI assistants** (`/dashboard/zyntha`, `/dashboard/thoro`, `/dashboard/zyona`) — each with own system prompt, gradient avatar, starter chips, chat persistence.
 - **Teams**: list + invite (role select per plan) + buy-seats placeholder modal.
 - **Builder Mode** (founder only): stats, feature flags (4 toggles), presale signups table.
 - **Stripe**: completely deferred — `/api/checkout/status` returns `{enabled:false, message:"…June 22, 2026."}` per user choice.
@@ -81,7 +81,7 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 ### P1 — Phase 3
 - 12 domain detail pages
 - Full Pricing page (all 9 tiers), Enterprise page
-- AI assistants Zyntha / Thoro / Zyon (Claude tools)
+- AI assistants Zyntha / Thoro / Zyona (Claude tools)
 - Dutch (NL) language toggle
 - Legal pages: Privacy, Terms, Cookie, DPA
 - Blog + Careers + Press pages

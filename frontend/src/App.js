@@ -49,7 +49,7 @@ function App() {
               <Route path="team" element={<TeamPage />} />
               <Route path="zyntha" element={<AssistantPage assistantKey="zyntha" />} />
               <Route path="thoro" element={<AssistantPage assistantKey="thoro" />} />
-              <Route path="zyon" element={<AssistantPage assistantKey="zyon" />} />
+              <Route path="zyona" element={<AssistantPage assistantKey="zyona" />} />
               <Route path=":slug" element={<ModulePlaceholder />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

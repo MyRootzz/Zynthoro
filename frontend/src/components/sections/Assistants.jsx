@@ -20,13 +20,13 @@ const ASSISTANTS = [
     image: "/assistants/thoro.png",
   },
   {
-    key: "zyon",
-    name: "Zyon",
+    key: "zyona",
+    name: "Zyona",
     specialty: "Business & Growth Specialist",
     personality: "Strategic, decisive, business-focused.",
     accent: "#D4AF37",
     accentSoft: "rgba(212,175,55,0.16)",
-    image: "/assistants/zyon.png",
+    image: "/assistants/zyona.png",
   },
 ];
 

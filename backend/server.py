@@ -107,7 +107,7 @@ class OnboardingIn(BaseModel):
 
 
 class AssistChatIn(BaseModel):
-    assistant: Literal["zynthoro_assist", "zyntha", "thoro", "zyon"]
+    assistant: Literal["zynthoro_assist", "zyntha", "thoro", "zyona"]
     session_id: Optional[str] = None
     message: str = Field(min_length=1, max_length=4000)
 
@@ -481,7 +481,7 @@ async def dashboard_summary(user=Depends(get_current_user_full)):
         "ai_suggestions": [
             "Create your first invoice to see live revenue here.",
             "Invite a teammate to start collaborating.",
-            "Ask Zyon how to price your first product.",
+            "Ask Zyona how to price your first product.",
         ],
         "recent_activity": [],
     }

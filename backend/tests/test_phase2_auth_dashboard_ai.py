@@ -283,7 +283,7 @@ class TestOnboardingDashboard:
 
 # ============ AI Chat ============
 class TestAIChat:
-    @pytest.mark.parametrize("assistant", ["zynthoro_assist", "zyntha", "thoro", "zyon"])
+    @pytest.mark.parametrize("assistant", ["zynthoro_assist", "zyntha", "thoro", "zyona"])
     def test_ai_chat(self, state, assistant):
         s = state["session"]
         r = s.post(f"{BASE_URL}/api/ai/chat", json={

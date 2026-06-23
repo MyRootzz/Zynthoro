@@ -25,7 +25,7 @@ const MODULES = [
 const ASSISTANTS = [
   { to: "/dashboard/zyntha", label: "Zyntha — Content", icon: Sparkles, color: "#8B5CF6" },
   { to: "/dashboard/thoro", label: "Thoro — Builder", icon: BrainCircuit, color: "#06B6D4" },
-  { to: "/dashboard/zyon", label: "Zyon — Growth", icon: TrendingUp, color: "#D4AF37" },
+  { to: "/dashboard/zyona", label: "Zyona — Growth", icon: TrendingUp, color: "#D4AF37" },
 ];
 
 export default function Sidebar({ user, mode, onToggleMode }) {

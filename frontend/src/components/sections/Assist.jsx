@@ -72,7 +72,7 @@ export default function Assist() {
 
               <div className="space-y-3 mt-5">
                 <div className="text-[13.5px] bg-[#F4F6FB] rounded-lg rounded-tl-sm px-4 py-3 max-w-[85%]">
-                  Hi Ramona — want me to draft this month&apos;s VAT report and pull in the unpaid invoices?
+                  Hi there — want me to draft this month&apos;s VAT report and pull in the unpaid invoices?
                 </div>
                 <div
                   className="text-[13.5px] rounded-lg rounded-tr-sm px-4 py-3 max-w-[85%] ml-auto text-white"

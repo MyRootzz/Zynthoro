@@ -659,7 +659,17 @@ async def founder_flags_update(payload: FeatureFlagsIn, user=Depends(get_founder
 # ========================================================================
 @api_router.get("/checkout/status")
 async def checkout_status():
-    return {"enabled": False, "message": "Stripe checkout opens at launch on 30 June 2026."}
+    mode = checkout_mod.stripe_mode()
+    return {
+        "enabled": mode in ("live", "test"),
+        "mode": mode,
+        "live": mode == "live",
+        "message": (
+            "Stripe live mode active." if mode == "live"
+            else "Stripe test mode active." if mode == "test"
+            else "Stripe not configured."
+        ),
+    }
 
 
 # ========================================================================

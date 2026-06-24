@@ -313,9 +313,10 @@ class TestAIChat:
 
 # ============ Checkout status ============
 class TestCheckout:
-    def test_checkout_disabled(self):
+    def test_checkout_status_live(self):
         r = requests.get(f"{BASE_URL}/api/checkout/status")
         assert r.status_code == 200
         d = r.json()
-        assert d["enabled"] is False
-        assert "june" in d["message"].lower() or "22" in d["message"]
+        # Stripe is now configured (live or test) — must be enabled.
+        assert d["enabled"] is True
+        assert d["mode"] in ("live", "test")

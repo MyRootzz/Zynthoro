@@ -42,10 +42,21 @@ PACKAGES: Dict[str, Dict] = {
 
 
 def _api_key() -> str:
-    key = os.environ.get("STRIPE_API_KEY")
+    # Prefer STRIPE_SECRET_KEY (live), fall back to STRIPE_API_KEY (legacy/test).
+    key = os.environ.get("STRIPE_SECRET_KEY") or os.environ.get("STRIPE_API_KEY")
     if not key:
-        raise RuntimeError("STRIPE_API_KEY not set")
+        raise RuntimeError("STRIPE_SECRET_KEY not set")
     return key
+
+
+def stripe_mode() -> str:
+    """Return 'live' | 'test' | 'unknown' based on key prefix."""
+    key = os.environ.get("STRIPE_SECRET_KEY") or os.environ.get("STRIPE_API_KEY") or ""
+    if key.startswith(("sk_live_", "rk_live_")):
+        return "live"
+    if key.startswith(("sk_test_", "rk_test_", "sk_test_emergent")) or key == "sk_test_emergent":
+        return "test"
+    return "unknown"
 
 
 def _client(host_url: str) -> StripeCheckout:

@@ -1,66 +1,100 @@
-"""AI assistant helpers — Claude Sonnet 4.5 via Emergent universal key.
+"""AI assistant helpers — multi-provider routing (Claude Sonnet 4.6 + Gemini 2.5 Flash).
 
-We expose four assistants:
-  - zynthoro_assist : in-platform guide (claude-sonnet-4-5-20250929)
-  - zyntha          : content & SEO specialist
-  - thoro           : builder & workflow specialist
-  - zyona            : business & growth specialist
+Routing matrix:
+  - zynthoro_assist : Claude Sonnet 4.6 — all tiers
+  - zyntha          : Gemini 2.5 Flash — all tiers (creative/multimodal)
+  - thoro           : Gemini 2.5 Flash for Starter/Creator/Presale tiers,
+                      Claude Sonnet 4.6 for Business/Agency/Enterprise tiers
+  - zyona           : Claude Sonnet 4.6 — all tiers
 
 Chat history is stored in MongoDB collection `ai_messages` per session.
+Per-call execution logs (assistant, provider, model, tier, timestamps) are
+stored in `ai_logs` for audit and the XPRIZE judging requirement.
 """
 import os
 import logging
 from datetime import datetime, timezone
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 logger = logging.getLogger(__name__)
 
-CLAUDE_MODEL = "claude-sonnet-4-5-20250929"
+# Model identifiers — kept centralised so they can be swapped via env if needed.
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
-ASSISTANTS: Dict[str, Dict[str, str]] = {
+# Tiers that count as "pro" — they unlock Claude on Thoro.
+PRO_TIERS = {
+    "business", "agency",
+    "enterprise", "enterprise basic", "enterprise plus",
+    "enterprise advanced", "enterprise elite", "enterprise unlimited",
+}
+
+
+def _normalize_plan(plan: Optional[str]) -> str:
+    return (plan or "").strip().lower()
+
+
+def _is_pro(plan: Optional[str]) -> bool:
+    return _normalize_plan(plan) in PRO_TIERS
+
+
+# --- System prompts (per user specification) ---
+SP_ZYNTHA = (
+    "You are Zyntha, the Content & SEO Specialist at Zynthoro. You are creative, energetic and inspiring. "
+    "You help users create compelling content, optimise for search engines, build content strategies and produce marketing copy. "
+    "You are powered by Gemini and excel at fast, creative, multimodal tasks. "
+    "Always be enthusiastic, practical and results-focused."
+)
+
+SP_THORO_BASIC = (
+    "You are Thoro, the Builder & Workflow Specialist at Zynthoro. You help users build workflows, "
+    "automate processes and set up their business operations. You are technical, precise and results-driven. "
+    "You are here to help users get things done efficiently."
+)
+
+SP_THORO_PRO = (
+    "You are Thoro, the Builder & Workflow Specialist at Zynthoro. You help users design complex workflows, "
+    "automate advanced business processes and architect scalable operations. You are powered by Claude and bring "
+    "deep analytical capability, strategic thinking and precision to every workflow challenge. "
+    "Users on Business plans and above experience the full depth of your capabilities."
+)
+
+SP_ZYONA = (
+    "You are Zyona, the Business & Growth Specialist at Zynthoro. You are strategic, decisive and deeply knowledgeable "
+    "about business growth, market positioning, financial planning and scaling. You are powered by Claude and bring "
+    "exceptional depth to every business challenge. You are the most strategically powerful assistant on the platform — "
+    "a true business genius."
+)
+
+SP_ASSIST = (
+    "You are Zynthoro Assist, the always-on AI guide for the Zynthoro platform. You help users navigate the platform, "
+    "find the right features, understand their subscription, and complete tasks step by step. You are calm, clear and "
+    "incredibly helpful. You are powered by Claude and available 24/7."
+)
+
+
+ASSISTANTS: Dict[str, Dict] = {
     "zynthoro_assist": {
         "name": "Zynthoro Assist",
         "specialty": "Your AI guide inside the platform",
         "avatar_color": "#1A4FFF",
-        "system": (
-            "You are Zynthoro Assist, a friendly and professional AI assistant built into the Zynthoro platform. "
-            "You help users navigate the platform, complete business tasks, and grow their business. "
-            "Always be helpful, concise and professional. When possible, offer clickable options rather than long text. "
-            "Check the user's subscription level before suggesting premium features. Never be pushy — always offer alternatives. "
-            "Keep replies under 5 short sentences unless the user asks for detail."
-        ),
     },
     "zyntha": {
         "name": "Zyntha",
         "specialty": "Content & SEO Specialist",
         "avatar_color": "#8B5CF6",
-        "system": (
-            "You are Zyntha, Zynthoro's Content & SEO specialist. You are creative, energetic and inspiring. "
-            "You help users create compelling content, optimize for search engines, and build their brand voice. "
-            "Always provide practical, actionable content that can be used immediately."
-        ),
     },
     "thoro": {
         "name": "Thoro",
         "specialty": "Builder & Workflow Specialist",
         "avatar_color": "#06B6D4",
-        "system": (
-            "You are Thoro, Zynthoro's Builder & Workflow specialist. You are technical, precise and results-driven. "
-            "You help users build efficient workflows, automations and processes. "
-            "Always provide clear, step-by-step instructions and focus on practical implementation."
-        ),
     },
     "zyona": {
         "name": "Zyona",
         "specialty": "Business & Growth Specialist",
         "avatar_color": "#D4AF37",
-        "system": (
-            "You are Zyona, Zynthoro's Business & Growth specialist. You are strategic, business-focused and decisive. "
-            "You help users grow their business, improve sales and make smart financial decisions. "
-            "Always provide data-driven insights and actionable growth strategies."
-        ),
     },
 }
 
@@ -70,6 +104,46 @@ def list_assistants():
         {"key": k, "name": v["name"], "specialty": v["specialty"], "avatar_color": v["avatar_color"]}
         for k, v in ASSISTANTS.items()
     ]
+
+
+def route_model(assistant_key: str, subscription_plan: Optional[str]) -> Tuple[str, str, str, str]:
+    """Return (provider, model, system_prompt, badge_label) for the assistant+tier.
+
+    badge_label is what the UI should render — e.g. "Powered by Claude" / "Powered by Gemini".
+    """
+    if assistant_key == "zyntha":
+        return ("gemini", GEMINI_MODEL, SP_ZYNTHA, "Powered by Gemini")
+
+    if assistant_key == "zyona":
+        return ("anthropic", CLAUDE_MODEL, SP_ZYONA, "Powered by Claude")
+
+    if assistant_key == "zynthoro_assist":
+        return ("anthropic", CLAUDE_MODEL, SP_ASSIST, "Powered by Claude")
+
+    if assistant_key == "thoro":
+        if _is_pro(subscription_plan):
+            return ("anthropic", CLAUDE_MODEL, SP_THORO_PRO, "Powered by Claude")
+        return ("gemini", GEMINI_MODEL, SP_THORO_BASIC, "Powered by Gemini")
+
+    raise ValueError(f"Unknown assistant: {assistant_key}")
+
+
+def _api_key_for(provider: str) -> str:
+    """Pick the right env key for the provider.
+
+    Priority:
+      1. Provider-specific key (ANTHROPIC_API_KEY / GEMINI_API_KEY)
+      2. Universal EMERGENT_LLM_KEY
+    """
+    if provider == "anthropic":
+        key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
+    elif provider == "gemini":
+        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("EMERGENT_LLM_KEY")
+    else:
+        key = os.environ.get("EMERGENT_LLM_KEY")
+    if not key:
+        raise RuntimeError(f"No API key configured for provider {provider}")
+    return key
 
 
 async def get_history(db, session_id: str, limit: int = 30) -> List[Dict]:
@@ -90,18 +164,44 @@ async def save_message(db, session_id: str, assistant: str, user_id: str, role: 
     })
 
 
-async def chat_complete(db, assistant_key: str, session_id: str, user_id: str, message: str) -> str:
+async def log_ai_call(
+    db, *, user_id: str, session_id: str, assistant: str,
+    provider: str, model: str, plan: Optional[str],
+    request_len: int, reply_len: int, latency_ms: int,
+    status: str, error: Optional[str] = None,
+):
+    await db.ai_logs.insert_one({
+        "user_id": user_id,
+        "session_id": session_id,
+        "assistant": assistant,
+        "provider": provider,
+        "model": model,
+        "subscription_plan": plan,
+        "request_chars": request_len,
+        "reply_chars": reply_len,
+        "latency_ms": latency_ms,
+        "status": status,
+        "error": error,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+
+async def chat_complete(
+    db,
+    assistant_key: str,
+    session_id: str,
+    user_id: str,
+    message: str,
+    subscription_plan: Optional[str] = None,
+) -> Dict:
     cfg = ASSISTANTS.get(assistant_key)
     if not cfg:
         raise ValueError(f"Unknown assistant: {assistant_key}")
 
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        raise RuntimeError("EMERGENT_LLM_KEY not configured")
+    provider, model, system_prompt, badge = route_model(assistant_key, subscription_plan)
+    api_key = _api_key_for(provider)
 
     history = await get_history(db, session_id)
-    # Prepend prior history as a single context block (emergentintegrations LlmChat
-    # session itself is per-call; we feed past messages via system addendum to keep it simple).
     history_text = ""
     if history:
         rendered = []
@@ -109,22 +209,46 @@ async def chat_complete(db, assistant_key: str, session_id: str, user_id: str, m
             who = "User" if m["role"] == "user" else "Assistant"
             rendered.append(f"{who}: {m['content']}")
         history_text = "\n\nPrior conversation:\n" + "\n".join(rendered)
-
-    system = cfg["system"] + history_text
+    system = system_prompt + history_text
 
     chat = LlmChat(
         api_key=api_key,
         session_id=session_id,
         system_message=system,
-    ).with_model("anthropic", CLAUDE_MODEL).with_params(max_tokens=900)
+    ).with_model(provider, model).with_params(max_tokens=900)
 
+    start = datetime.now(timezone.utc)
+    reply: str = ""
+    error_msg: Optional[str] = None
     try:
         reply = await chat.send_message(UserMessage(text=message))
     except Exception as e:
-        logger.exception("Claude chat failed")
+        error_msg = f"{type(e).__name__}: {e}"
+        logger.exception("LLM call failed (provider=%s model=%s)", provider, model)
+        latency_ms = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+        await log_ai_call(
+            db, user_id=user_id, session_id=session_id, assistant=assistant_key,
+            provider=provider, model=model, plan=subscription_plan,
+            request_len=len(message), reply_len=0, latency_ms=latency_ms,
+            status="error", error=error_msg,
+        )
         raise RuntimeError(f"AI service error: {e}") from e
 
-    # Persist
+    latency_ms = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+
+    # Persist conversation + audit log
     await save_message(db, session_id, assistant_key, user_id, "user", message)
     await save_message(db, session_id, assistant_key, user_id, "assistant", reply)
-    return reply
+    await log_ai_call(
+        db, user_id=user_id, session_id=session_id, assistant=assistant_key,
+        provider=provider, model=model, plan=subscription_plan,
+        request_len=len(message), reply_len=len(reply), latency_ms=latency_ms,
+        status="ok",
+    )
+
+    return {
+        "reply": reply,
+        "provider": provider,
+        "model": model,
+        "badge": badge,
+    }

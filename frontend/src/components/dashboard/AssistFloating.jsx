@@ -16,6 +16,7 @@ export default function AssistFloating() {
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [poweredBy, setPoweredBy] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -36,6 +37,7 @@ export default function AssistFloating() {
         message: text,
       });
       if (!sessionId) setSessionId(data.session_id);
+      if (data.badge) setPoweredBy({ badge: data.badge, provider: data.provider });
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
     } catch (err) {
       toast.error(formatApiError(err?.response?.data?.detail) || "Assistant is unavailable.");
@@ -69,7 +71,9 @@ export default function AssistFloating() {
           <ZyLogo size={15} />
           <div className="flex-1">
             <p className="text-[12.5px] font-semibold text-white">Zynthoro Assist</p>
-            <p className="text-[10.5px] text-white/65">Powered by Claude AI</p>
+            <p className="text-[10.5px] text-white/65">
+              {poweredBy?.badge || "Powered by Claude AI"}
+            </p>
           </div>
           <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white p-1" aria-label="Close" data-testid="assist-close">
             <X size={16} />

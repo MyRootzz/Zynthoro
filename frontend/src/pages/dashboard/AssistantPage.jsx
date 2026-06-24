@@ -53,6 +53,7 @@ export default function AssistantPage({ assistantKey }) {
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [poweredBy, setPoweredBy] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -83,6 +84,7 @@ export default function AssistantPage({ assistantKey }) {
         message: value,
       });
       if (!sessionId) setSessionId(data.session_id);
+      if (data.badge) setPoweredBy({ badge: data.badge, provider: data.provider, model: data.model });
       setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || `${cfg.name} is unavailable.`);
@@ -103,7 +105,23 @@ export default function AssistantPage({ assistantKey }) {
         </span>
         <div className="flex-1">
           <p className="zy-eyebrow mb-1.5" style={{ color: cfg.color }}>AI Assistant</p>
-          <h1 className="text-[28px] font-bold tracking-tight">{cfg.name}</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-[28px] font-bold tracking-tight">{cfg.name}</h1>
+            {poweredBy && (
+              <span
+                data-testid={`${assistantKey}-powered-by`}
+                className="text-[10.5px] font-bold tracking-[0.12em] uppercase px-2.5 py-1 rounded-full"
+                style={
+                  poweredBy.provider === "gemini"
+                    ? { background: "rgba(139,92,246,0.12)", color: "#6D28D9" }
+                    : { background: "rgba(26,79,255,0.10)", color: "#1A4FFF" }
+                }
+                title={poweredBy.model}
+              >
+                {poweredBy.badge}
+              </span>
+            )}
+          </div>
           <p className="text-[14.5px] text-[#555] mt-1">{cfg.description}</p>
         </div>
       </div>

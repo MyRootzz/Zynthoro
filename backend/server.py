@@ -546,12 +546,24 @@ async def list_ai_assistants():
 async def ai_chat(payload: AssistChatIn, user=Depends(get_current_user_full)):
     session_id = payload.session_id or f"{user['id']}:{payload.assistant}:{uuid.uuid4()}"
     try:
-        reply = await ai_assistants.chat_complete(
-            db, payload.assistant, session_id, user["id"], payload.message
+        result = await ai_assistants.chat_complete(
+            db,
+            payload.assistant,
+            session_id,
+            user["id"],
+            payload.message,
+            subscription_plan=user.get("subscription_plan"),
         )
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    return {"session_id": session_id, "reply": reply, "assistant": payload.assistant}
+    return {
+        "session_id": session_id,
+        "assistant": payload.assistant,
+        "reply": result["reply"],
+        "provider": result["provider"],
+        "model": result["model"],
+        "badge": result["badge"],
+    }
 
 
 @api_router.get("/ai/history")
@@ -578,6 +590,32 @@ async def founder_stats(user=Depends(get_founder_user)):
         "user_count": await db.users.count_documents({}),
         "team_members": await db.team_members.count_documents({}),
         "ai_messages": await db.ai_messages.count_documents({}),
+        "ai_calls": await db.ai_logs.count_documents({}),
+    }
+
+
+@api_router.get("/admin/ai-logs")
+async def admin_ai_logs(
+    user=Depends(get_founder_user),
+    limit: int = 200,
+    assistant: Optional[str] = None,
+    provider: Optional[str] = None,
+):
+    """XPRIZE: returns per-call AI execution logs for the platform.
+
+    Founder-only. Use ?assistant=zyntha&provider=gemini&limit=500 to filter.
+    """
+    q = {}
+    if assistant:
+        q["assistant"] = assistant
+    if provider:
+        q["provider"] = provider
+    cursor = db.ai_logs.find(q, {"_id": 0}).sort("timestamp", -1).limit(min(max(limit, 1), 1000))
+    rows = await cursor.to_list(length=None)
+    return {
+        "count": len(rows),
+        "total": await db.ai_logs.count_documents(q),
+        "logs": rows,
     }
 
 
@@ -670,6 +708,8 @@ async def startup():
     await db.ai_messages.create_index([("session_id", 1), ("created_at", 1)])
     await db.password_reset_tokens.create_index("token", unique=True)
     await db.login_attempts.create_index("identifier")
+    await db.ai_logs.create_index([("timestamp", -1)])
+    await db.ai_logs.create_index([("assistant", 1), ("timestamp", -1)])
     await seed_founder()
 
 

@@ -8,6 +8,7 @@ import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 export default function VerifyEmail() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const returnTo = params.get("return") || "/login";
   const [state, setState] = useState("verifying"); // verifying | ok | error
   const [msg, setMsg] = useState("");
 
@@ -37,8 +38,8 @@ export default function VerifyEmail() {
         {state === "ok" && (
           <>
             <CheckCircle2 size={48} style={{ color: "#16a34a" }} />
-            <button onClick={() => navigate("/login")} className="zy-btn-primary" data-testid="goto-login">
-              Continue to login
+            <button onClick={() => navigate(returnTo)} className="zy-btn-primary" data-testid="goto-login">
+              Continue
             </button>
           </>
         )}

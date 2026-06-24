@@ -11,6 +11,8 @@ import VerifyEmail from "@/pages/VerifyEmail";
 import TwoFactorSetup from "@/pages/TwoFactorSetup";
 import TwoFactorVerify from "@/pages/TwoFactorVerify";
 import Onboarding from "@/pages/Onboarding";
+import SubscribeStarter from "@/pages/SubscribeStarter";
+import SubscribeStarterReturn from "@/pages/SubscribeStarterReturn";
 import DashboardLayout from "@/pages/DashboardLayout";
 import DashboardHome from "@/pages/dashboard/DashboardHome";
 import ModulePlaceholder from "@/pages/dashboard/ModulePlaceholder";
@@ -29,6 +31,8 @@ function App() {
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/2fa/setup" element={<TwoFactorSetup />} />
             <Route path="/2fa/verify" element={<TwoFactorVerify />} />
+            <Route path="/subscribe/starter" element={<SubscribeStarter />} />
+            <Route path="/subscribe/starter/return" element={<SubscribeStarterReturn />} />
             <Route
               path="/onboarding"
               element={

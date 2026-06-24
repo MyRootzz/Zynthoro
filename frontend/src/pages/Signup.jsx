@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import axios from "axios";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import AuthLayout from "@/components/auth/AuthLayout";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,8 @@ function strengthOf(pw) {
 
 export default function Signup() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get("return") || "";
   const [form, setForm] = useState({
     first_name: "", last_name: "", email: "", password: "", company: "",
   });
@@ -42,7 +44,8 @@ export default function Signup() {
       const { data } = await axios.post(`${API}/auth/signup`, form);
       toast.success("Account created. Check your inbox to verify your email.");
       // No email service: pass the dev token so user can verify instantly.
-      navigate(`/verify-email?token=${encodeURIComponent(data.dev_verification_token || "")}&email=${encodeURIComponent(form.email)}`);
+      const retParam = returnTo ? `&return=${encodeURIComponent(returnTo)}` : "";
+      navigate(`/verify-email?token=${encodeURIComponent(data.dev_verification_token || "")}&email=${encodeURIComponent(form.email)}${retParam}`);
     } catch (err) {
       toast.error(formatApiError(err?.response?.data?.detail) || "Signup failed.");
     } finally {

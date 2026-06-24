@@ -1,4 +1,5 @@
 import { Check, ArrowRight } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { HOME } from "@/constants/testIds";
 import { usePresaleDialog } from "@/components/sections/PresaleDialog";
 
@@ -82,6 +83,16 @@ const plans = [
 
 export default function Pricing() {
   const { openDialog } = usePresaleDialog();
+  const navigate = useNavigate();
+
+  const onCta = (plan) => {
+    if (plan.name === "Starter") {
+      navigate("/subscribe/starter");
+    } else {
+      openDialog();
+    }
+  };
+
   return (
     <section id="pricing" data-testid={HOME.pricing} className="zy-section bg-white">
       <div className="zy-container">
@@ -135,9 +146,10 @@ export default function Pricing() {
               </ul>
 
               <button
-                onClick={openDialog}
+                onClick={() => onCta(p)}
                 className={p.enterprise ? "zy-btn-gold mt-6 w-full" : "zy-btn-primary mt-6 w-full"}
                 style={{ fontSize: 14, padding: "12px 18px" }}
+                data-testid={`pricing-cta-${p.name.toLowerCase()}`}
               >
                 {p.cta}
               </button>

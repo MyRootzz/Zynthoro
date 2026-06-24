@@ -26,6 +26,9 @@ from auth import (  # noqa: E402
     gen_token_url_safe, gen_numeric_code,
 )
 import ai_assistants  # noqa: E402
+import business_verification  # noqa: E402
+import checkout as checkout_mod  # noqa: E402
+from fastapi import UploadFile, File  # noqa: E402
 
 # MongoDB
 mongo_url = os.environ['MONGO_URL']
@@ -660,6 +663,263 @@ async def checkout_status():
 
 
 # ========================================================================
+#  Business verification + Starter checkout
+# ========================================================================
+MAX_PDF_BYTES = 8 * 1024 * 1024  # 8 MB
+
+
+@api_router.post("/business-verification/upload")
+async def business_verification_upload(
+    file: UploadFile = File(...),
+    user=Depends(get_current_user_full),
+):
+    """Upload a business registration PDF, run AI extraction, store result."""
+    if (file.content_type or "").lower() not in ("application/pdf", "application/x-pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
+    data = await file.read()
+    if len(data) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 8 MB).")
+    if len(data) < 100:
+        raise HTTPException(status_code=400, detail="File looks empty.")
+
+    session_id = f"verify:{user['id']}:{uuid.uuid4()}"
+    result = await business_verification.verify_pdf(data, session_id)
+
+    extraction = result.get("extraction") or {}
+    record = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "plan": "Starter",
+        "filename": file.filename,
+        "file_size": len(data),
+        "company_name": extraction.get("company_name"),
+        "registration_number": extraction.get("registration_number"),
+        "country": extraction.get("country"),
+        "document_type": extraction.get("document_type"),
+        "registration_date": result.get("registration_date"),
+        "age_days": result.get("age_days"),
+        "confidence": extraction.get("confidence"),
+        "status": result["status"],
+        "message": result["message"],
+        "ai_session_id": session_id,
+        "ai_provider": "anthropic",
+        "ai_model": ai_assistants.CLAUDE_MODEL,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.business_verifications.insert_one(record)
+
+    # Mirror to ai_logs for the XPRIZE audit trail
+    await db.ai_logs.insert_one({
+        "user_id": user["id"],
+        "session_id": session_id,
+        "assistant": "business_verification",
+        "provider": "anthropic",
+        "model": ai_assistants.CLAUDE_MODEL,
+        "subscription_plan": user.get("subscription_plan"),
+        "request_chars": len(data),
+        "reply_chars": len((result.get("extraction") or {}).get("company_name") or ""),
+        "latency_ms": 0,
+        "status": "ok" if record["status"] != "failed" else "fallback",
+        "error": None,
+        "timestamp": record["created_at"],
+    })
+
+    return {
+        "verification_id": record["id"],
+        "status": record["status"],
+        "message": record["message"],
+        "eligible": record["status"] == "eligible",
+        "company_name": record["company_name"],
+        "registration_number": record["registration_number"],
+        "country": record["country"],
+        "registration_date": record["registration_date"],
+    }
+
+
+class StarterCheckoutIn(BaseModel):
+    package_id: Literal["starter_founder", "starter_standard"]
+    origin_url: str
+    verification_id: Optional[str] = None
+
+
+@api_router.post("/checkout/starter/session")
+async def checkout_starter_session(
+    payload: StarterCheckoutIn,
+    request: Request,
+    user=Depends(get_current_user_full),
+):
+    # Hard server-side guard: founder package only allowed with an 'eligible' verification.
+    if payload.package_id == "starter_founder":
+        if not payload.verification_id:
+            raise HTTPException(status_code=400, detail="Verification required for founder pricing.")
+        v = await db.business_verifications.find_one(
+            {"id": payload.verification_id, "user_id": user["id"]},
+            {"_id": 0},
+        )
+        if not v or v.get("status") != "eligible":
+            raise HTTPException(status_code=400, detail="Verification not eligible for founder pricing.")
+
+    host_url = str(request.base_url)
+    try:
+        session = await checkout_mod.create_subscription_checkout(
+            package_id=payload.package_id,
+            host_url=host_url,
+            origin_url=payload.origin_url,
+            user_id=user["id"],
+            user_email=user["email"],
+            verification_id=payload.verification_id,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("Stripe session creation failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+
+    await db.payment_transactions.insert_one({
+        "id": str(uuid.uuid4()),
+        "session_id": session["session_id"],
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "package_id": payload.package_id,
+        "verification_id": payload.verification_id,
+        "amount": session["amount"],
+        "currency": session["currency"],
+        "metadata": session["metadata"],
+        "payment_status": "initiated",
+        "status": "open",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    return {
+        "session_id": session["session_id"],
+        "url": session["url"],
+        "package_id": payload.package_id,
+        "amount": session["amount"],
+        "currency": session["currency"],
+    }
+
+
+@api_router.get("/checkout/starter/status/{session_id}")
+async def checkout_starter_status(
+    session_id: str,
+    request: Request,
+    user=Depends(get_current_user_full),
+):
+    txn = await db.payment_transactions.find_one(
+        {"session_id": session_id, "user_id": user["id"]}, {"_id": 0}
+    )
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found.")
+
+    host_url = str(request.base_url)
+    try:
+        status = await checkout_mod.get_session_status(host_url, session_id)
+    except Exception as e:
+        logger.exception("Stripe status check failed")
+        raise HTTPException(status_code=502, detail=f"Stripe status error: {e}")
+
+    new_payment_status = status["payment_status"]
+    new_status = status["status"]
+    update = {
+        "payment_status": new_payment_status,
+        "status": new_status,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # Idempotent post-payment provisioning
+    if new_payment_status == "paid" and not txn.get("provisioned"):
+        update["provisioned"] = True
+        pkg = txn["package_id"]
+        meta = txn.get("metadata") or {}
+        months = int(meta.get("founder_window_months") or 0)
+        founder_window = checkout_mod.founder_pricing_window(months)
+        user_update = {
+            "subscription_plan": "Starter",
+            "subscription_status": "active",
+            "subscription_started_at": datetime.now(timezone.utc).isoformat(),
+            "billing_first_amount_eur": txn["amount"],
+            **founder_window,
+        }
+        if txn.get("verification_id"):
+            user_update["business_verification_id"] = txn["verification_id"]
+        await db.users.update_one({"id": user["id"]}, {"$set": user_update})
+
+    await db.payment_transactions.update_one(
+        {"session_id": session_id}, {"$set": update}
+    )
+
+    return {
+        "session_id": session_id,
+        "payment_status": new_payment_status,
+        "status": new_status,
+        "amount": txn["amount"],
+        "currency": txn["currency"],
+        "package_id": txn["package_id"],
+    }
+
+
+@api_router.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    host_url = str(request.base_url)
+    body = await request.body()
+    sig = request.headers.get("Stripe-Signature", "")
+    try:
+        client = checkout_mod._client(host_url)
+        event = await client.handle_webhook(body, sig)
+    except Exception as e:
+        logger.warning("Stripe webhook verify failed: %s", e)
+        raise HTTPException(status_code=400, detail="Invalid webhook")
+
+    # Idempotent: update the txn if not already provisioned
+    session_id = getattr(event, "session_id", None)
+    if session_id:
+        txn = await db.payment_transactions.find_one({"session_id": session_id})
+        if txn and not txn.get("provisioned") and getattr(event, "payment_status", "") == "paid":
+            meta = txn.get("metadata") or {}
+            months = int(meta.get("founder_window_months") or 0)
+            founder_window = checkout_mod.founder_pricing_window(months)
+            await db.users.update_one(
+                {"id": txn["user_id"]},
+                {"$set": {
+                    "subscription_plan": "Starter",
+                    "subscription_status": "active",
+                    "subscription_started_at": datetime.now(timezone.utc).isoformat(),
+                    "billing_first_amount_eur": txn["amount"],
+                    **founder_window,
+                }},
+            )
+            await db.payment_transactions.update_one(
+                {"session_id": session_id},
+                {"$set": {
+                    "payment_status": "paid",
+                    "status": "complete",
+                    "provisioned": True,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+    return {"received": True}
+
+
+@api_router.get("/admin/business-verifications")
+async def admin_business_verifications(
+    user=Depends(get_founder_user),
+    limit: int = 200,
+    status: Optional[str] = None,
+):
+    q = {}
+    if status:
+        q["status"] = status
+    rows = await db.business_verifications.find(q, {"_id": 0}).sort("created_at", -1).limit(min(max(limit, 1), 1000)).to_list(length=None)
+    return {
+        "count": len(rows),
+        "total": await db.business_verifications.count_documents(q),
+        "verifications": rows,
+    }
+
+
+# ========================================================================
 #  Startup
 # ========================================================================
 async def seed_founder():
@@ -710,6 +970,8 @@ async def startup():
     await db.login_attempts.create_index("identifier")
     await db.ai_logs.create_index([("timestamp", -1)])
     await db.ai_logs.create_index([("assistant", 1), ("timestamp", -1)])
+    await db.business_verifications.create_index([("user_id", 1), ("created_at", -1)])
+    await db.payment_transactions.create_index("session_id", unique=True)
     await seed_founder()
 
 

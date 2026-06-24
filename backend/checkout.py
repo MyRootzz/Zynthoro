@@ -61,7 +61,12 @@ def stripe_mode() -> str:
 
 def _client(host_url: str) -> StripeCheckout:
     webhook_url = f"{host_url.rstrip('/')}/api/webhook/stripe"
-    return StripeCheckout(api_key=_api_key(), webhook_url=webhook_url)
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    return StripeCheckout(
+        api_key=_api_key(),
+        webhook_secret=webhook_secret,
+        webhook_url=webhook_url,
+    )
 
 
 async def create_subscription_checkout(

@@ -13,6 +13,7 @@ stored in `ai_logs` for audit and the XPRIZE judging requirement.
 """
 import os
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple
 
@@ -391,3 +392,108 @@ async def chat_stream(
     )
 
     yield {"type": "done", "latency_ms": latency_ms, "chars": len(reply)}
+
+
+
+CAPTION_SYSTEM_PROMPT = (
+    "You are Zyntha — Zynthoro's Content & SEO Specialist. "
+    "You write punchy, on-brand social-media captions and matching hashtag sets for the user's post idea. "
+    "Tone: confident, warm, conversational; never spammy; never cliché 'unlock your potential' speak. "
+    "Caption length: 1–3 short paragraphs (max 280 characters total unless the platform is LinkedIn). "
+    "Include 1–2 well-placed emoji only if they add meaning. "
+    "Hashtags: 5–10, lower-case, no spaces, no leading '#'. "
+    "Return STRICT JSON ONLY in this exact shape and nothing else — no markdown fences, no preamble, no trailing text:\n"
+    '{"caption": "<the caption text>", "hashtags": ["tag1","tag2", ...]}'
+)
+
+
+def _coerce_caption_json(raw: str) -> Dict:
+    """Extract {caption, hashtags[]} from Zyntha's reply.
+
+    Handles three formats safely:
+      1. Pure JSON object
+      2. JSON wrapped in ```json fences
+      3. Free text — falls back to first paragraph as caption, no hashtags
+    """
+    import json
+    import re
+
+    s = (raw or "").strip()
+    # Strip markdown code fences if present (greedy — catches nested objects)
+    fence = re.search(r"```(?:json)?\s*(\{.*\})\s*```", s, re.DOTALL | re.IGNORECASE)
+    if fence:
+        s = fence.group(1)
+    else:
+        # Pick from first '{' to last '}' (greedy — survives nested arrays/objects)
+        first = s.find("{")
+        last = s.rfind("}")
+        if first != -1 and last != -1 and last > first:
+            s = s[first:last + 1]
+
+    try:
+        data = json.loads(s)
+        caption = str(data.get("caption", "")).strip()
+        tags = data.get("hashtags") or []
+        if not isinstance(tags, list):
+            tags = []
+        tags = [str(t).lstrip("#").strip().lower() for t in tags if str(t).strip()]
+        return {"caption": caption, "hashtags": tags[:10]}
+    except Exception:
+        # Final fallback: strip any code fences and return the rest as caption
+        cleaned = re.sub(r"```[a-zA-Z]*\n?|```", "", raw or "").strip()
+        first_paragraph = cleaned.split("\n\n")[0].strip()
+        return {"caption": first_paragraph, "hashtags": []}
+
+
+async def generate_caption(
+    db,
+    user_id: str,
+    idea: str,
+    platform: str = "instagram",
+    tone: Optional[str] = None,
+) -> Dict:
+    """One-shot caption generation via Zyntha (Gemini).
+
+    Always uses Gemini regardless of plan — captions are short and Gemini is fast.
+    Returns: {caption: str, hashtags: list[str], provider, model, latency_ms}
+    """
+    api_key = _api_key_for("gemini")
+    session_id = f"caption:{user_id}:{uuid.uuid4()}"
+
+    system = (
+        CAPTION_SYSTEM_PROMPT
+        + f"\n\nTarget platform: {platform}."
+        + (f"\nRequested tone: {tone}." if tone else "")
+    )
+
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=session_id,
+        system_message=system,
+    ).with_model("gemini", GEMINI_MODEL).with_params(max_tokens=600)
+
+    start = datetime.now(timezone.utc)
+    user_msg = f"Post idea: {idea.strip()}"
+    try:
+        reply = await chat.send_message(UserMessage(text=user_msg))
+    except Exception as e:
+        logger.exception("Caption generation failed")
+        raise RuntimeError(f"Zyntha caption error: {e}") from e
+    latency_ms = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+
+    parsed = _coerce_caption_json(reply)
+
+    await log_ai_call(
+        db, user_id=user_id, session_id=session_id, assistant="zyntha",
+        provider="gemini", model=GEMINI_MODEL, plan=None,
+        request_len=len(user_msg), reply_len=len(reply), latency_ms=latency_ms,
+        status="ok",
+    )
+
+    return {
+        "caption": parsed["caption"],
+        "hashtags": parsed["hashtags"],
+        "provider": "gemini",
+        "model": GEMINI_MODEL,
+        "latency_ms": latency_ms,
+    }

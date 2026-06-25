@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import axios from "axios";
+import { toast } from "sonner";
+import { useAuth, API, formatApiError } from "@/contexts/AuthContext";
 import UpgradeLock from "@/components/dashboard/UpgradeLock";
 import { planAtLeast, PLAN_BY_KEY } from "@/lib/planCatalog";
 import {
   Facebook, Instagram, Linkedin, Youtube, Twitter, Music2,
   Image as ImageIcon, Video, Calendar, BarChart3, Users, Mail, Sparkles,
-  Plus, Lock,
+  Plus, Lock, Loader2, Copy as CopyIcon, Check,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -154,25 +156,112 @@ export default function MarketingContent() {
 }
 
 function ComposePanel({ canCreator }) {
+  const [text, setText] = useState("");
+  const [hashtags, setHashtags] = useState([]);
+  const [platform, setPlatform] = useState("instagram");
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const generate = async () => {
+    const idea = text.trim();
+    if (!idea) {
+      toast.error("Type a few words about your post first.");
+      return;
+    }
+    if (idea.length < 3) {
+      toast.error("Add a little more detail so Zyntha can craft a great caption.");
+      return;
+    }
+    setGenerating(true);
+    try {
+      const { data } = await axios.post(`${API}/marketing/caption`, {
+        idea,
+        platform,
+      });
+      setText(data.caption || idea);
+      setHashtags(data.hashtags || []);
+      toast.success("Zyntha wrote your caption.");
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || "Zyntha couldn't generate a caption right now.");
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const copyAll = async () => {
+    const tagLine = hashtags.length ? "\n\n" + hashtags.map((t) => `#${t}`).join(" ") : "";
+    try {
+      await navigator.clipboard.writeText(text + tagLine);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch { /* ignored */ }
+  };
+
   return (
     <div className="space-y-5">
       <div className="bg-white border border-[#eee] rounded-2xl p-5">
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
           <Sparkles size={15} style={{ color: "#1A4FFF" }} />
           <h3 className="text-[14px] font-semibold">Create a post</h3>
-          {canCreator && (
-            <span className="ml-auto inline-flex items-center gap-1 text-[11px] font-semibold text-[#1A4FFF] bg-[#EAF0FF] px-2 py-0.5 rounded-full">
-              Zyntha caption AI
-            </span>
-          )}
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1A4FFF] bg-[#EAF0FF] px-2 py-0.5 rounded-full">
+            Zyntha caption AI · Gemini
+          </span>
+          <select
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value)}
+            data-testid="mc-platform-select"
+            className="ml-auto text-[12.5px] border border-[#eee] rounded-md px-2 py-1.5 focus:outline-none focus:border-[#1A4FFF]"
+          >
+            <option value="instagram">Instagram</option>
+            <option value="facebook">Facebook</option>
+            <option value="linkedin">LinkedIn</option>
+            <option value="tiktok">TikTok</option>
+            <option value="x">X</option>
+            <option value="youtube">YouTube</option>
+          </select>
         </div>
+
         <textarea
           rows={5}
-          placeholder="What do you want to share today?"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="What do you want to share today? A few words is enough — Zyntha will turn it into a caption."
           data-testid="mc-compose-textarea"
           className="w-full p-3 border border-[#eee] rounded-md text-[14px] focus:outline-none focus:border-[#1A4FFF] resize-y"
         />
+
+        {hashtags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3" data-testid="mc-hashtags">
+            {hashtags.map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center text-[12px] font-medium px-2 py-1 rounded-full"
+                style={{ background: "#EAF0FF", color: "#1A4FFF" }}
+              >
+                #{t}
+              </span>
+            ))}
+            <button
+              onClick={copyAll}
+              data-testid="mc-copy-all"
+              className="ml-auto inline-flex items-center gap-1 text-[11.5px] font-medium text-[#555] hover:text-[#1A4FFF] px-2 py-1 rounded-md border border-[#eee] bg-white"
+            >
+              {copied ? <Check size={11} /> : <CopyIcon size={11} />}
+              {copied ? "Copied" : "Copy caption + tags"}
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2 mt-3">
+          <button
+            onClick={generate}
+            disabled={generating}
+            className="zy-btn-outline disabled:opacity-60"
+            data-testid="mc-generate-caption"
+          >
+            {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            {generating ? "Zyntha is writing…" : "Generate caption with Zyntha"}
+          </button>
           <button className="zy-btn-outline" data-testid="mc-add-photo">
             <ImageIcon size={14} /> Add photo
           </button>
@@ -200,7 +289,7 @@ function ComposePanel({ canCreator }) {
       {!canCreator && (
         <UpgradeLock
           requiredPlan="Creator"
-          feature="AI captions, video uploads & scheduling"
+          feature="Video uploads, scheduling & content calendar"
           compact
         />
       )}

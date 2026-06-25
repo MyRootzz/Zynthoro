@@ -1,0 +1,53 @@
+{
+  "summary": "Tested the new Zyntha caption endpoint (POST /api/marketing/caption) end-to-end. Backend: 7/11 new caption tests PASS (validation 422 + 401 auth + ai_logs persistence + x platform happy path). 4/11 FAIL — instagram/facebook/linkedin/youtube happy-path tests return the RAW (unparsed/truncated) JSON string as the `caption` field, e.g. caption == '{\"caption\": \"Big news! …'. Root cause: Gemini occasionally returns truncated JSON for longer outputs and `_coerce_caption_json` falls back to first-paragraph, which IS the truncated JSON fragment itself. Frontend wiring works correctly when Gemini returns valid JSON (verified with 'New vegan bakery opening in Amsterdam this Friday' — caption was cleanly extracted, 7 hashtag chips rendered, Copy button visible, empty-idea toast shown). Full regression: 51 passed, 4 failed (all the new bug), 1 skipped — pre-existing 44+1 baseline preserved.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/marketing/caption",
+        "issue": "When Gemini's response is truncated mid-JSON (reproducible with idea 'Just launched our new sustainable coffee blend' on instagram/facebook/linkedin/youtube), `_coerce_caption_json` fails json.loads and the except-branch returns the raw truncated JSON fragment as the caption (e.g. caption == '{\"caption\": \"Big news! ✨ Our new sustainable coffee blend just dropped. \\n\\nCraf'). The endpoint returns HTTP 200 with caption that begins with '{\"caption\":' — exactly the failure mode the user wanted us to detect. Also returns hashtags=[] in that case.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Compose → Generate caption with Zyntha",
+        "issue": "Works correctly when Gemini returns valid JSON. But because the backend bug above can return raw '{\"caption\":...' as the caption text, the user will sometimes see literal JSON inside the textarea after clicking Generate (no client-side guard). Add a backend fix; optionally a frontend guard that rejects/retries when caption starts with '{\"caption\"'.",
+        "affected_selectors": ["[data-testid='mc-compose-textarea']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_marketing_caption.py",
+    "/app/test_reports/pytest/iter7_caption.xml",
+    "/app/test_reports/pytest/iter7_full.xml"
+  ],
+  "action_items": [
+    "Fix `_coerce_caption_json` in /app/backend/ai_assistants.py so a truncated Gemini reply never returns raw '{\"caption\":' as the caption. Recommended fixes (combine 2 of these): (a) Raise the Gemini max_tokens for caption from 600 → 1200 — current 600 is consistently being clipped for instagram/linkedin/youtube outputs. (b) When json.loads fails, try a regex extraction of the caption value: re.search(r'\"caption\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)', s) and unescape, then drop the unfinished tail and return that as the caption (with hashtags=[] is fine). (c) Pass a JSON response_format / response_mime_type='application/json' hint to Gemini via LlmChat.with_params so the model knows to emit a single JSON object.",
+    "Optionally add a guard in the endpoint: if result['caption'].lstrip().startswith('{\"caption\"') → retry once with a higher max_tokens, then 502 on second failure rather than returning broken text."
+  ],
+  "critical_code_review_comments": [
+    "ai_assistants.py:469-473 — max_tokens=600 for caption generation is too tight. Gemini's JSON-mode replies for LinkedIn / YouTube routinely exceed this and get truncated mid-string, which is the direct trigger of the bug above.",
+    "ai_assistants.py:441-445 — the except-branch of _coerce_caption_json silently returns the raw truncated JSON as 'caption'. It should at minimum strip a leading '{\"caption\":' marker so the user never sees raw JSON.",
+    "server.py:700-723 — `marketing_caption` correctly avoids any plan gating (Starter can use it), uses Pydantic Literal for platform (422 on snapchat verified), and validates idea min_length=3 (422 on 'hi' verified). Good.",
+    "server.py:120-123 — CaptionIn correctly uses EmailStr-free Literal for platform; values match the 6 in the spec exactly.",
+    "MarketingContent.jsx — data-testid coverage is complete (mc-compose-textarea, mc-platform-select, mc-generate-caption, mc-hashtags, mc-copy-all). Empty-idea toast 'Type a few words about your post first.' triggers correctly and does NOT call the backend (verified)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_marketing_caption.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "47/55 = 85% (4 failures all caused by the single _coerce_caption_json truncation bug)",
+    "frontend": "5/5 manually exercised flows pass (login + navigate + empty-toast + generate-happy-path + hashtag chips + copy button presence)"
+  },
+  "test_credentials": "Founder regie@myrootzz.com / Zynthoro2026!. TOTP is currently ENABLED on the founder (secret BKRO2AVFCA7WBNIC6ASHR63K4ZWDLB7P) — the test fixture handles the 2FA step automatically via pyotp.",
+  "seed_data_creation": "No new users. Only new ai_logs rows were added by the caption tests (~12 inserts, normal audit trail — not pollution).",
+  "retest_needed": true,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "The Starter-plan demote test was NOT executed — the endpoint code has zero plan gating (server.py:700-723 only depends on get_current_user_full, no plan check; ai_assistants.generate_caption() likewise has none), so it would have passed trivially. Skipped to preserve test tokens once the truncation bug was confirmed. The 'Copy caption + tags' clipboard string format was NOT exercised via clipboard API — only the button presence was verified; clipboard requires browser permissions and the handler in MarketingContent.jsx visibly composes `${caption}\\n\\n#tag1 #tag2 …` so it should work. After E1 fixes the JSON truncation, rerun: pytest backend/tests/test_marketing_caption.py -v and the 4 failing platforms should turn green. Founder is in Enterprise Unlimited / billing_exempt=true / TOTP enabled — state was NOT toggled during this iteration.",
+  "rca of the issue": "Reproduction: POST /api/marketing/caption with body {idea:'Just launched our new sustainable coffee blend', platform:'instagram'} (or facebook/linkedin/youtube). Expected: caption is a clean human-readable string. Actual: caption is the literal string '{\"caption\": \"Big news! ✨ Our new sustainable coffee blend just dropped. \\n\\nCraf' — i.e. raw JSON with no closing quote/brace. Mechanism: Gemini's reply exceeds max_tokens=600 and is truncated mid-string → json.loads throws → _coerce_caption_json's fallback emits cleaned.split('\\n\\n')[0] which IS the truncated JSON because the unfinished string contains escape literals (`\\n\\n`) not real newlines. Mitigation: bump max_tokens to ≥1200 and/or regex-extract the value of the 'caption' key even from a partial JSON string."
+}

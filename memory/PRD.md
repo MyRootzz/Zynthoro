@@ -43,8 +43,41 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **Logo**: full gold `ZYNTHORO` everywhere (homepage navbar/footer, auth pages on dark chip, dashboard sidebar).
 - **Tests**: 25/25 backend tests passing (`/app/backend/tests/test_phase2_auth_dashboard_ai.py`).
 
+## What's Implemented (Real Stripe Checkout — Fix 8 + Fix 9 wired LIVE — done 2026-02-05)
+
+**Plan upgrades (Fix 8)**
+- New module `/app/backend/stripe_subscriptions.py` with 7 PLAN_PRICE_IDS (Starter €499, Creator €699, Business €899, Agency €1,199, Enterprise Basic €2,499, Plus €3,999, Advanced €5,999).
+- New endpoint `POST /api/checkout/subscription/session {plan_key}` returns a real `cs_live_*` Stripe Checkout URL in `subscription` mode.
+- Frontend `ChangePlanDialog.jsx` now expands to all 7 plan cards (data-testid pattern `changeplan-{key-dashed}`), clicks redirect to Stripe-hosted checkout.
+
+**Extra seats (Fix 9)**
+- SEAT_PRICE_IDS for Business (€4.99/seat) and Agency (€3.99/seat). Enterprise = unlimited (400 with friendly message). Starter/Creator → 400 with upgrade prompt.
+- New endpoint `POST /api/checkout/seats/session {quantity}` (bounds 1..100).
+- Frontend `Team.jsx` "Add seats — checkout" button (data-testid='seats-checkout-btn') redirects to Stripe.
+
+**Webhook (full subscription event handling)**
+- `/api/webhook/stripe` now uses raw Stripe SDK `construct_event()` first (handles ALL event types), falls back to Emergent wrapper for the legacy Starter one-time flow.
+- `checkout.session.completed` (mode=subscription) → sets `user.subscription_plan`, `stripe_subscription_id`, `stripe_customer_id`; or for seat-addon kind, `$inc user.extra_seats` by quantity.
+- `customer.subscription.deleted` → marks `subscription_status='cancelled'`.
+
+**Return handlers**
+- `?checkout=success` / `?checkout=cancelled` on `/dashboard/settings` and `/dashboard/team` show success/cancel toasts and clean the URL.
+
+**Test results — iteration 9:**
+- 21/21 new Stripe checkout tests PASS (`test_stripe_subscription_checkout.py`)
+- 48/48 regression PASS + 1 skipped by design
+- All 7 plan keys produce valid `cs_live_*` URLs
+- Validation: invalid plan_key → 422, no auth → 401, billing_exempt → 400 with friendly message
+- Webhook: no/invalid signature → 400 (real signed events only verifiable via Stripe CLI in prod)
+
+**Deployment readiness:** ✅ PASS (deployment_agent confirmed no blockers).
+
+
 ## What's Implemented (Zyntha Caption AI — done 2026-02-05)
 
+**Zyntha Caption AI (Marketing & Content > Compose)**
+- New backend endpoint `POST /api/marketing/caption` calls Gemini 2.5 Flash with a strict JSON-mode prompt. Available to ALL paying tiers (Starter included) — Zyntha's free hook.
+- Returns `{caption, hashtags[5-10], provider, model, platform, badge}` in 2-5s.
 **Zyntha Caption AI (Marketing & Content > Compose)**
 - New backend endpoint `POST /api/marketing/caption` calls Gemini 2.5 Flash via emergentintegrations with a strict JSON-mode system prompt. Available to ALL paying tiers (Starter included) — Zyntha's free hook.
 - Returns `{caption, hashtags[5-10], provider, model, platform, badge}` in 2-5s.

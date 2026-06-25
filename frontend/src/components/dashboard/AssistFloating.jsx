@@ -80,23 +80,43 @@ export default function AssistFloating() {
           </button>
         </div>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3" data-testid="assist-messages">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3.5" data-testid="assist-messages">
           {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`max-w-[85%] text-[13.5px] leading-relaxed px-3.5 py-2.5 rounded-lg whitespace-pre-wrap ${
-                m.role === "user"
-                  ? "ml-auto rounded-tr-sm text-white"
-                  : "rounded-tl-sm bg-[#F4F6FB]"
-              }`}
-              style={m.role === "user" ? { background: "#1A4FFF" } : {}}
-            >
-              {m.content}
-            </div>
+            m.role === "user" ? (
+              <div
+                key={i}
+                className="max-w-[85%] ml-auto text-[13.5px] leading-relaxed px-3.5 py-2.5 rounded-lg rounded-tr-sm text-white whitespace-pre-wrap"
+                style={{ background: "#1A4FFF" }}
+              >
+                {m.content}
+              </div>
+            ) : (
+              <div key={i} className="flex items-start gap-2 max-w-[92%]">
+                <span
+                  className="w-7 h-7 rounded-full inline-flex items-center justify-center shrink-0 text-[10px] font-extrabold tracking-[0.04em]"
+                  style={{ background: "#0A1628", color: "#D4AF37", border: "1.5px solid #D4AF37" }}
+                  aria-label="Zynthoro Assist"
+                  data-testid="assist-msg-avatar"
+                >
+                  Z
+                </span>
+                <div className="text-[13.5px] leading-relaxed px-3.5 py-2.5 rounded-lg rounded-tl-sm bg-[#F4F6FB] whitespace-pre-wrap">
+                  {m.content}
+                </div>
+              </div>
+            )
           ))}
           {busy && (
-            <div className="flex items-center gap-2 text-[#888] text-[12.5px]">
-              <Loader2 size={13} className="animate-spin" /> Zynthoro Assist is thinking…
+            <div className="flex items-center gap-2">
+              <span
+                className="w-7 h-7 rounded-full inline-flex items-center justify-center text-[10px] font-extrabold opacity-80"
+                style={{ background: "#0A1628", color: "#D4AF37", border: "1.5px solid #D4AF37" }}
+              >
+                Z
+              </span>
+              <div className="flex items-center gap-2 text-[#888] text-[12.5px] bg-[#F4F6FB] px-3.5 py-2 rounded-lg rounded-tl-sm">
+                <Loader2 size={13} className="animate-spin" /> Zynthoro Assist is thinking…
+              </div>
             </div>
           )}
         </div>

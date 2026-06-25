@@ -12,6 +12,7 @@ const CONFIGS = {
     color: "#8B5CF6",
     bg: "linear-gradient(135deg,#8B5CF6 0%,#6D28D9 100%)",
     icon: Sparkles,
+    avatar: "/assistants/zyntha.png",
     starters: [
       "Write 5 LinkedIn captions for our launch",
       "Draft an SEO blog post on AI ERP for SMEs",
@@ -25,6 +26,7 @@ const CONFIGS = {
     color: "#06B6D4",
     bg: "linear-gradient(135deg,#06B6D4 0%,#0E7490 100%)",
     icon: BrainCircuit,
+    avatar: "/assistants/thoro.png",
     starters: [
       "Build a customer onboarding workflow",
       "Write an SOP for invoice approval",
@@ -38,6 +40,7 @@ const CONFIGS = {
     color: "#D4AF37",
     bg: "linear-gradient(135deg,#D4AF37 0%,#8a6e1d 100%)",
     icon: TrendingUp,
+    avatar: "/assistants/zyona.png",
     starters: [
       "Outline a 90-day growth plan",
       "Build a sales script for first calls",
@@ -127,21 +130,42 @@ export default function AssistantPage({ assistantKey }) {
       </div>
 
       <div className="mt-7 bg-white border border-[#eee] rounded-2xl flex flex-col" style={{ minHeight: 480 }}>
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-3" data-testid={`${assistantKey}-messages`}>
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-4" data-testid={`${assistantKey}-messages`}>
           {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`max-w-[80%] text-[14px] leading-relaxed px-4 py-2.5 rounded-lg whitespace-pre-wrap ${
-                m.role === "user" ? "ml-auto rounded-tr-sm text-white" : "rounded-tl-sm bg-[#F4F6FB]"
-              }`}
-              style={m.role === "user" ? { background: "#1A4FFF" } : {}}
-            >
-              {m.content}
-            </div>
+            m.role === "user" ? (
+              <div
+                key={i}
+                className="max-w-[80%] ml-auto text-[14px] leading-relaxed px-4 py-2.5 rounded-lg rounded-tr-sm text-white whitespace-pre-wrap"
+                style={{ background: "#1A4FFF" }}
+              >
+                {m.content}
+              </div>
+            ) : (
+              <div key={i} className="flex items-start gap-2.5 max-w-[88%]">
+                <img
+                  src={cfg.avatar}
+                  alt={`${cfg.name} avatar`}
+                  className="w-9 h-9 rounded-full object-cover shrink-0"
+                  style={{ border: `2px solid ${cfg.color}`, objectPosition: "center top" }}
+                  data-testid={`${assistantKey}-msg-avatar`}
+                />
+                <div className="text-[14px] leading-relaxed px-4 py-2.5 rounded-lg rounded-tl-sm bg-[#F4F6FB] whitespace-pre-wrap">
+                  {m.content}
+                </div>
+              </div>
+            )
           ))}
           {busy && (
-            <div className="flex items-center gap-2 text-[#888] text-[12.5px]">
-              <Loader2 size={13} className="animate-spin" /> {cfg.name} is thinking…
+            <div className="flex items-center gap-2.5">
+              <img
+                src={cfg.avatar}
+                alt=""
+                className="w-9 h-9 rounded-full object-cover opacity-70"
+                style={{ border: `2px solid ${cfg.color}`, objectPosition: "center top" }}
+              />
+              <div className="flex items-center gap-2 text-[#888] text-[12.5px] bg-[#F4F6FB] px-4 py-2.5 rounded-lg rounded-tl-sm">
+                <Loader2 size={13} className="animate-spin" /> {cfg.name} is thinking…
+              </div>
             </div>
           )}
         </div>

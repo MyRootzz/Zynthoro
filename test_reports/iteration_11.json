@@ -1,0 +1,40 @@
+{
+  "summary": "Validated the new internal Stripe webhook → Resend email alert wiring. Added /app/backend/tests/test_stripe_webhook_alerts.py with 22 tests covering email_service helpers, server._plan_rank classification, all webhook event branches (subscribe/upgrade/downgrade/seats/cancel/payment_failed/trial_end/other) using in-process patching of stripe_sdk.Webhook.construct_event and email_service.send_stripe_alert, plus a fire-and-forget robustness test. Full pytest regression: 106 passed + 1 skipped (baseline 84 + new 22). Frontend smoke: /dashboard and /dashboard/marketing render correctly for the founder, no console errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/2fa/verify (TOTP)", "issue": "TOTP secret in /app/memory/test_credentials.md (4FIFMTFPW3H2H7PFE6MPMXWDC2E53HQJ) does NOT match the seeded user's actual TOTP secret — all 3 freshly-generated codes rejected with 'Invalid authenticator code'. Email 2FA path works fine (login completed via /api/auth/2fa/email/request → code from backend.err.log → /api/auth/2fa/verify method=email). Out of scope for this iteration but flagging credential drift."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stripe_webhook_alerts.py",
+    "/app/test_reports/pytest/iter11_full.xml"
+  ],
+  "action_items": [
+    "(OPTIONAL) Update /app/memory/test_credentials.md with the current TOTP secret OR rotate the founder's TOTP back to the documented secret — currently mismatched, forcing testers onto the email-2FA path.",
+    "(NON-BLOCKING / EXPECTED) Verify zynthoro.ai DNS in Resend dashboard so internal alert emails to info@zynthoro.ai actually deliver. Until then, the resend.Emails.send call throws 'domain not verified' and send_stripe_alert returns None (webhook stays 200 — this is the correct design)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 1609 lines — well over the 700-line guideline. Strongly recommend extracting the Stripe webhook handler (lines ~1216-1395) into a dedicated `stripe_webhook.py` module along with the related plan-rank helpers. Easier to unit-test and reduces blast radius of future edits.",
+    "_plan_rank fallback to rank=1 for unknown plans is correct for the legacy-Starter case but silently mis-classifies any future-introduced plan as Starter-tier. Consider logging a WARNING when ValueError is hit so unrecognised plans surface in logs.",
+    "The four catch-all event types (customer.subscription.updated / invoice.paid / charge.refunded / checkout.session.expired) all collapse to kind='other'. If you want distinct email subject lines later you'll need to split these — currently the founder will see eight different events all titled '[Zynthoro] Stripe event'.",
+    "asyncio.create_task(email_service.send_stripe_alert(...)) is fire-and-forget AND there is no `BackgroundTasks` reference — if the FastAPI worker is recycled between the `await db.users.update_one` and the task scheduling, the email is lost. Acceptable for an internal alert (Stripe will retry the webhook), but worth a one-line comment for future maintainers.",
+    "_fmt_eur in email_service.py treats `cents_or_eur=0` as falsy and short-circuits via `if amount_eur:` in the subject_bits builder (server-side use is fine, but a 0€ refund alert would render with no amount in the subject). Minor.",
+    "Webhook handler does not handle the case where event_type matches one of the subscription/invoice branches but the inner `obj` lookup yields no matching user in MongoDB. Currently it still fires the alert with user_email=None — that's fine, but a stray cancel for a customer that was already deleted will produce a half-populated email."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stripe_webhook_alerts.py (NEW — 22 tests)"
+  ],
+  "success_rate": {"backend": "100% (106/106 + 1 skipped)", "frontend": "100% (smoke)"},
+  "test_credentials": "Founder regie@myrootzz.com / Zynthoro2026! — TOTP secret in test_credentials.md is STALE; use email-2FA path. Code is written plaintext to /var/log/supervisor/backend.err.log as '2FA email code: NNNNNN'.",
+  "seed_data_creation": "Tests create+delete `TEST_wh_user_<hex>` users inline via the seed_user fixture; no residual rows left after teardown.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The new test_stripe_webhook_alerts.py uses a single shared event loop (_SHARED_LOOP) because the running server's motor MongoClient is bound to its own loop AND the test imports server.py in-process. If you add more webhook scenarios, use the _run() / _FakeRequest pattern already in place — do NOT create per-test event loops, they will hit 'Event loop is closed' on the second motor call. Patching is done via monkeypatch on server_mod.email_service.send_stripe_alert and server_mod.stripe_sdk.Webhook.construct_event — these are the actual module references used by the webhook handler at runtime. TOTP for the founder is broken (documented secret doesn't match DB); use the email-2FA path described in test_credentials.md.",
+  "rca of the issue": "N/A — no bugs in scope. The 'domain not verified' from Resend is an expected upstream failure documented by the requesting agent. The webhook handler correctly schedules send_stripe_alert as an asyncio.create_task, the alert helper catches the resend.Emails.send exception in its `try/except Exception` and returns None — webhook stays 2xx, plan flip persists. All 22 new tests + 84 pre-existing tests pass."
+}

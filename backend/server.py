@@ -32,6 +32,24 @@ import checkout as checkout_mod  # noqa: E402
 import stripe_subscriptions as subs_mod  # noqa: E402
 import stripe as stripe_sdk  # noqa: E402
 import email_service  # noqa: E402
+import asyncio  # noqa: E402
+
+# Plan ordering for upgrade/downgrade classification in webhook alerts.
+_PLAN_ORDER = [
+    "Presale", "Starter", "Creator", "Business", "Agency",
+    "Enterprise Basic", "Enterprise Plus", "Enterprise Advanced",
+    "Enterprise Unlimited",
+]
+
+
+def _plan_rank(plan_key: Optional[str]) -> int:
+    if not plan_key:
+        return 0
+    try:
+        return _PLAN_ORDER.index(plan_key)
+    except ValueError:
+        # Unknown plan → rank just above Presale so 'subscribe' classification still works
+        return 1
 from fastapi import UploadFile, File  # noqa: E402
 
 # MongoDB
@@ -1226,6 +1244,10 @@ async def stripe_webhook(request: Request):
 
             if user_id and kind == "subscription_change":
                 plan_key = meta.get("plan_key") or "Starter"
+                # Look up prior plan so we can classify upgrade vs downgrade
+                prev_doc = await db.users.find_one({"id": user_id}, {"subscription_plan": 1, "email": 1})
+                prev_plan = (prev_doc or {}).get("subscription_plan") or "Presale"
+                user_email = (prev_doc or {}).get("email")
                 await db.users.update_one(
                     {"id": user_id},
                     {"$set": {
@@ -1239,12 +1261,28 @@ async def stripe_webhook(request: Request):
                     }},
                 )
                 logger.info("User %s plan -> %s via session %s", user_id, plan_key, session_id)
+                # Alert email
+                alert_kind = "subscribe" if prev_plan in (None, "Presale", "") else (
+                    "upgrade" if _plan_rank(plan_key) > _plan_rank(prev_plan) else "downgrade"
+                )
+                asyncio.create_task(email_service.send_stripe_alert(
+                    kind=alert_kind,
+                    event_type=event_type,
+                    user_email=user_email,
+                    user_id=user_id,
+                    plan_key=plan_key,
+                    amount_eur=float(meta.get("amount_eur") or 0) or None,
+                    stripe_session_id=session_id,
+                    stripe_subscription_id=obj.get("subscription"),
+                    extra={"Previous plan": prev_plan} if prev_plan and prev_plan != plan_key else None,
+                ))
 
             elif user_id and kind == "seat_addon":
                 try:
                     qty = int(meta.get("seat_quantity") or 1)
                 except Exception:
                     qty = 1
+                prev_doc = await db.users.find_one({"id": user_id}, {"email": 1, "subscription_plan": 1})
                 await db.users.update_one(
                     {"id": user_id},
                     {
@@ -1256,6 +1294,16 @@ async def stripe_webhook(request: Request):
                     },
                 )
                 logger.info("User %s purchased %d extra seats via session %s", user_id, qty, session_id)
+                asyncio.create_task(email_service.send_stripe_alert(
+                    kind="seats",
+                    event_type=event_type,
+                    user_email=(prev_doc or {}).get("email"),
+                    user_id=user_id,
+                    plan_key=(prev_doc or {}).get("subscription_plan"),
+                    quantity=qty,
+                    stripe_session_id=session_id,
+                    stripe_subscription_id=obj.get("subscription"),
+                ))
 
             await db.payment_transactions.update_one(
                 {"session_id": session_id},
@@ -1273,6 +1321,9 @@ async def stripe_webhook(request: Request):
         # === Subscription cancelled / lapsed ===
         if event_type == "customer.subscription.deleted":
             sub_id = obj.get("id")
+            cancelled_user = await db.users.find_one(
+                {"stripe_subscription_id": sub_id}, {"id": 1, "email": 1, "subscription_plan": 1}
+            )
             await db.users.update_one(
                 {"stripe_subscription_id": sub_id},
                 {"$set": {
@@ -1280,7 +1331,57 @@ async def stripe_webhook(request: Request):
                     "subscription_cancelled_at": datetime.now(timezone.utc).isoformat(),
                 }},
             )
+            asyncio.create_task(email_service.send_stripe_alert(
+                kind="cancel",
+                event_type=event_type,
+                user_email=(cancelled_user or {}).get("email"),
+                user_id=(cancelled_user or {}).get("id"),
+                plan_key=(cancelled_user or {}).get("subscription_plan"),
+                stripe_subscription_id=sub_id,
+            ))
             return {"received": True, "kind": "subscription_cancelled"}
+
+        # === Payment failed ===
+        if event_type == "invoice.payment_failed":
+            cust_email = obj.get("customer_email") or ""
+            asyncio.create_task(email_service.send_stripe_alert(
+                kind="payment_failed",
+                event_type=event_type,
+                user_email=cust_email or None,
+                amount_eur=(obj.get("amount_due") or 0) / 100 if obj.get("amount_due") else None,
+                stripe_subscription_id=obj.get("subscription"),
+                extra={"Attempt": obj.get("attempt_count"), "Next attempt": obj.get("next_payment_attempt")},
+            ))
+            return {"received": True, "kind": "payment_failed"}
+
+        # === Trial ending soon ===
+        if event_type == "customer.subscription.trial_will_end":
+            cust = obj.get("customer")
+            user_doc = await db.users.find_one({"stripe_customer_id": cust}, {"email": 1, "id": 1, "subscription_plan": 1})
+            asyncio.create_task(email_service.send_stripe_alert(
+                kind="trial_end",
+                event_type=event_type,
+                user_email=(user_doc or {}).get("email"),
+                user_id=(user_doc or {}).get("id"),
+                plan_key=(user_doc or {}).get("subscription_plan"),
+                stripe_subscription_id=obj.get("id"),
+                extra={"Trial ends": obj.get("trial_end")},
+            ))
+            return {"received": True, "kind": "trial_end"}
+
+        # === Catch-all: any other event we want to know about ===
+        if event_type in (
+            "customer.subscription.updated",
+            "invoice.paid",
+            "charge.refunded",
+            "checkout.session.expired",
+        ):
+            asyncio.create_task(email_service.send_stripe_alert(
+                kind="other",
+                event_type=event_type,
+                stripe_subscription_id=obj.get("subscription") or obj.get("id"),
+            ))
+            return {"received": True, "kind": event_type}
 
     # === Fallback: legacy Starter one-time flow via Emergent wrapper ===
     try:

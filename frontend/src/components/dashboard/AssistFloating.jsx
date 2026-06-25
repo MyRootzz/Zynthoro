@@ -19,6 +19,27 @@ export default function AssistFloating() {
   const [poweredBy, setPoweredBy] = useState(null);
   const scrollRef = useRef(null);
 
+  // Resume last conversation when the user opens the panel for the first time
+  useEffect(() => {
+    if (!open || sessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API}/ai/sessions`, { params: { assistant: "zynthoro_assist", limit: 1 } });
+        const last = data.sessions?.[0];
+        if (last && !cancelled) {
+          const hist = await axios.get(`${API}/ai/history`, { params: { session_id: last.session_id } });
+          const msgs = (hist.data.messages || []).map((m) => ({ role: m.role, content: m.content }));
+          if (msgs.length) {
+            setSessionId(last.session_id);
+            setMessages(msgs);
+          }
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [open, sessionId]);
+
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, open]);

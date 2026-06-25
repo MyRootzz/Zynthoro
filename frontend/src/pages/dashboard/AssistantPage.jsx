@@ -60,14 +60,33 @@ export default function AssistantPage({ assistantKey }) {
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    setMessages([
-      {
-        role: "assistant",
-        content: `Hi! I'm ${cfg.name}, your ${cfg.specialty.toLowerCase()}. What are we working on today?`,
-      },
-    ]);
-    setSessionId(null);
-    // eslint-disable-next-line
+    let cancelled = false;
+    (async () => {
+      // Resume the user's most recent session with this assistant
+      let resumed = false;
+      try {
+        const { data } = await axios.get(`${API}/ai/sessions`, { params: { assistant: assistantKey, limit: 1 } });
+        const last = data.sessions?.[0];
+        if (last && !cancelled) {
+          const hist = await axios.get(`${API}/ai/history`, { params: { session_id: last.session_id } });
+          const msgs = (hist.data.messages || []).map((m) => ({ role: m.role, content: m.content }));
+          if (msgs.length) {
+            setSessionId(last.session_id);
+            setMessages(msgs);
+            resumed = true;
+          }
+        }
+      } catch {}
+      if (!resumed && !cancelled) {
+        setMessages([{
+          role: "assistant",
+          content: `Hi! I'm ${cfg.name}, your ${cfg.specialty.toLowerCase()}. What are we working on today?`,
+        }]);
+        setSessionId(null);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assistantKey]);
 
   useEffect(() => {

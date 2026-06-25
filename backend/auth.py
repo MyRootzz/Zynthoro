@@ -80,9 +80,17 @@ async def get_current_user_full(request: Request):
         raise HTTPException(status_code=401, detail="Invalid token type")
     if not payload.get("twofa"):
         raise HTTPException(status_code=401, detail="2FA required")
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0, "totp_secret": 0})
+    user = await db.users.find_one(
+        {"id": payload["sub"]},
+        {"_id": 0, "password_hash": 0, "totp_secret": 0, "company_logo_data": 0},
+    )
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    user["has_company_logo"] = bool(user.pop("company_logo_size", None)) or False
+    # Re-check by looking up flag without pulling the data
+    if not user.get("has_company_logo"):
+        exists = await db.users.find_one({"id": payload["sub"], "company_logo_mime": {"$exists": True}}, {"_id": 1})
+        user["has_company_logo"] = bool(exists)
     return user
 
 

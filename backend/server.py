@@ -28,6 +28,7 @@ from auth import (  # noqa: E402
 import ai_assistants  # noqa: E402
 import business_verification  # noqa: E402
 import checkout as checkout_mod  # noqa: E402
+import email_service  # noqa: E402
 from fastapi import UploadFile, File  # noqa: E402
 
 # MongoDB
@@ -219,15 +220,23 @@ async def auth_signup(payload: SignupIn, response: Response):
     }
     await db.users.insert_one(doc)
 
-    # No email service — log the verification link (Phase 2 user choice)
-    logger.info("[email-mock from=hello@zynthoro.ai to=%s] Verification link: /verify-email?token=%s", email, verification_token)
+    # Try to send a real verification email via Resend if configured.
+    base = os.environ.get("PUBLIC_APP_URL", "https://zynthoro.ai").rstrip("/")
+    verify_link = f"{base}/verify-email?token={verification_token}"
+    email_id = await email_service.send_verification(email, verify_link)
+    if email_id:
+        logger.info("Verification email sent to %s id=%s", email, email_id)
+    else:
+        logger.info("[email-mock from=hello@zynthoro.ai to=%s] Verification link: /verify-email?token=%s", email, verification_token)
 
-    return {
+    resp = {
         "message": "We've sent you a verification link. Please check your inbox.",
         "user_id": user_id,
-        # Phase 2 only: return token so the UI can show a 'mock' link banner.
-        "dev_verification_token": verification_token,
     }
+    # Only expose the dev token when Resend is NOT configured (dev/test).
+    if not email_service.is_enabled():
+        resp["dev_verification_token"] = verification_token
+    return resp
 
 
 @api_router.get("/auth/verify-email")
@@ -363,9 +372,17 @@ async def twofa_email_request(payload: EmailCodeRequestIn):
         {"id": user["id"]},
         {"$set": {"email_2fa_code_hash": code_hash, "email_2fa_expires_at": expires}},
     )
-    # No email service: log to console + return dev_code for the UI.
-    logger.info("[email-mock from=support@zynthoro.ai to=%s] 2FA email code: %s", user["email"], code)
-    return {"message": "Code sent. Check your inbox.", "dev_code": code}
+    # Real email via Resend if configured; otherwise fall back to log + dev_code.
+    email_id = await email_service.send_2fa_code(user["email"], code)
+    if email_id:
+        logger.info("2FA email sent to %s id=%s", user["email"], email_id)
+    else:
+        logger.info("[email-mock from=support@zynthoro.ai to=%s] 2FA email code: %s", user["email"], code)
+
+    resp = {"message": "Code sent. Check your inbox."}
+    if not email_service.is_enabled():
+        resp["dev_code"] = code
+    return resp
 
 
 @api_router.post("/auth/2fa/verify")
@@ -426,8 +443,17 @@ async def auth_forgot(payload: ForgotPasswordIn):
         await db.password_reset_tokens.insert_one({
             "token": token, "user_id": user["id"], "expires_at": expires, "used": False,
         })
-        logger.info("[email-mock from=support@zynthoro.ai to=%s] Password reset link: /reset-password?token=%s", email, token)
-        return {"message": "If the email exists, a reset link has been sent.", "dev_reset_token": token}
+        base = os.environ.get("PUBLIC_APP_URL", "https://zynthoro.ai").rstrip("/")
+        reset_link = f"{base}/reset-password?token={token}"
+        email_id = await email_service.send_password_reset(email, reset_link)
+        if email_id:
+            logger.info("Password reset email sent to %s id=%s", email, email_id)
+        else:
+            logger.info("[email-mock from=support@zynthoro.ai to=%s] Password reset link: /reset-password?token=%s", email, token)
+        resp = {"message": "If the email exists, a reset link has been sent."}
+        if not email_service.is_enabled():
+            resp["dev_reset_token"] = token
+        return resp
     return {"message": "If the email exists, a reset link has been sent."}
 
 
@@ -533,8 +559,17 @@ async def team_invite(payload: TeamInviteIn, user=Depends(get_current_user_full)
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.team_members.insert_one(doc)
-    logger.info("[email-mock from=hello@zynthoro.ai to=%s by=%s] Team invite token=%s", email, user["email"], invite_token)
-    return {"id": doc["id"], "email": email, "role": payload.role, "dev_invite_token": invite_token}
+    base = os.environ.get("PUBLIC_APP_URL", "https://zynthoro.ai").rstrip("/")
+    accept_link = f"{base}/accept-invite?token={invite_token}"
+    email_id = await email_service.send_team_invite(email, user["email"], accept_link, payload.role)
+    if email_id:
+        logger.info("Team invite email sent to %s id=%s", email, email_id)
+    else:
+        logger.info("[email-mock from=hello@zynthoro.ai to=%s by=%s] Team invite token=%s", email, user["email"], invite_token)
+    resp = {"id": doc["id"], "email": email, "role": payload.role}
+    if not email_service.is_enabled():
+        resp["dev_invite_token"] = invite_token
+    return resp
 
 
 # ========================================================================
@@ -575,6 +610,39 @@ async def ai_history(session_id: str, user=Depends(get_current_user_full)):
         {"session_id": session_id, "user_id": user["id"]}, {"_id": 0}
     ).sort("created_at", 1).to_list(200)
     return {"messages": rows}
+
+
+@api_router.get("/ai/sessions")
+async def ai_sessions(
+    assistant: str,
+    user=Depends(get_current_user_full),
+    limit: int = 30,
+):
+    """Return the user's past sessions with an assistant, newest first."""
+    pipeline = [
+        {"$match": {"assistant": assistant, "user_id": user["id"]}},
+        {"$sort": {"created_at": -1}},
+        {"$group": {
+            "_id": "$session_id",
+            "last_at": {"$first": "$created_at"},
+            "first_at": {"$last": "$created_at"},
+            "last_role": {"$first": "$role"},
+            "last_content": {"$first": "$content"},
+            "count": {"$sum": 1},
+        }},
+        {"$sort": {"last_at": -1}},
+        {"$limit": min(max(limit, 1), 100)},
+    ]
+    cursor = db.ai_messages.aggregate(pipeline)
+    rows = await cursor.to_list(length=None)
+    sessions = [{
+        "session_id": r["_id"],
+        "last_at": r["last_at"],
+        "first_at": r["first_at"],
+        "messages": r["count"],
+        "preview": (r["last_content"] or "")[:120],
+    } for r in rows]
+    return {"assistant": assistant, "sessions": sessions}
 
 
 # ========================================================================
@@ -927,6 +995,104 @@ async def admin_business_verifications(
         "total": await db.business_verifications.count_documents(q),
         "verifications": rows,
     }
+
+
+# ========================================================================
+#  Account / Company Settings
+# ========================================================================
+import base64 as _b64  # noqa: E402
+
+MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB raw upload
+ALLOWED_LOGO_TYPES = {"image/png", "image/jpeg", "image/svg+xml", "image/webp"}
+
+
+class CompanySettingsIn(BaseModel):
+    company_name: Optional[str] = None
+    company_country: Optional[str] = None
+    company_industry: Optional[str] = None
+    company_employees: Optional[str] = None
+    company_website: Optional[str] = None
+    vat_number: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
+
+
+@api_router.get("/account/me")
+async def account_me(user=Depends(get_current_user_full)):
+    # has_company_logo is already populated by get_current_user_full.
+    return user
+
+
+@api_router.patch("/account/company")
+async def account_update_company(payload: CompanySettingsIn, user=Depends(get_current_user_full)):
+    updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
+    if updates:
+        await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "password_hash": 0, "totp_secret": 0, "company_logo_data": 0})
+    return fresh
+
+
+@api_router.post("/account/logo")
+async def account_upload_logo(
+    file: UploadFile = File(...),
+    user=Depends(get_current_user_full),
+):
+    ctype = (file.content_type or "").lower()
+    if ctype not in ALLOWED_LOGO_TYPES:
+        raise HTTPException(status_code=400, detail="Only PNG, JPEG, SVG or WebP images are accepted.")
+    data = await file.read()
+    if len(data) < 64:
+        raise HTTPException(status_code=400, detail="File looks empty.")
+    if len(data) > MAX_LOGO_BYTES:
+        raise HTTPException(status_code=413, detail="Logo too large (max 2 MB).")
+    encoded = _b64.b64encode(data).decode("ascii")
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "company_logo_data": encoded,
+            "company_logo_mime": ctype,
+            "company_logo_size": len(data),
+            "company_logo_filename": file.filename,
+            "company_logo_updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+    )
+    return {
+        "ok": True,
+        "size": len(data),
+        "mime": ctype,
+        "url": f"/api/account/logo?u={user['id']}",
+    }
+
+
+@api_router.delete("/account/logo")
+async def account_delete_logo(user=Depends(get_current_user_full)):
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$unset": {
+            "company_logo_data": "",
+            "company_logo_mime": "",
+            "company_logo_size": "",
+            "company_logo_filename": "",
+            "company_logo_updated_at": "",
+        }},
+    )
+    return {"ok": True}
+
+
+@api_router.get("/account/logo")
+async def account_get_logo(u: Optional[str] = None, user=Depends(get_current_user_full)):
+    """Stream the logo back. If `u` is supplied, must match the caller's id."""
+    target_id = u or user["id"]
+    if target_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    rec = await db.users.find_one({"id": target_id}, {"company_logo_data": 1, "company_logo_mime": 1})
+    if not rec or not rec.get("company_logo_data"):
+        raise HTTPException(status_code=404, detail="No logo uploaded.")
+    from fastapi.responses import Response
+    raw = _b64.b64decode(rec["company_logo_data"])
+    return Response(content=raw, media_type=rec.get("company_logo_mime") or "image/png")
 
 
 # ========================================================================

@@ -17,6 +17,7 @@ import DashboardLayout from "@/pages/DashboardLayout";
 import DashboardHome from "@/pages/dashboard/DashboardHome";
 import ModulePlaceholder from "@/pages/dashboard/ModulePlaceholder";
 import TeamPage from "@/pages/dashboard/Team";
+import Settings from "@/pages/dashboard/Settings";
 import AssistantPage from "@/pages/dashboard/AssistantPage";
 
 function App() {
@@ -51,6 +52,7 @@ function App() {
             >
               <Route index element={<DashboardHome />} />
               <Route path="team" element={<TeamPage />} />
+              <Route path="settings" element={<Settings />} />
               <Route path="zyntha" element={<AssistantPage assistantKey="zyntha" />} />
               <Route path="thoro" element={<AssistantPage assistantKey="thoro" />} />
               <Route path="zyona" element={<AssistantPage assistantKey="zyona" />} />

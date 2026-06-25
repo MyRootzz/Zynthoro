@@ -15,8 +15,15 @@ export default function ProtectedRoute({ children, founderOnly = false }) {
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
-  if (!user.onboarding_completed && location.pathname !== "/onboarding") {
+  // Presale users skip onboarding entirely — straight to dashboard.
+  const isPresale = (user.subscription_plan || "").toLowerCase() === "presale";
+  // Force onboarding only when not yet completed AND user is on a paid plan.
+  if (!user.onboarding_completed && !isPresale && location.pathname !== "/onboarding") {
     return <Navigate to="/onboarding" replace />;
+  }
+  // Already onboarded? Don't show /onboarding again on direct navigation.
+  if ((user.onboarding_completed || isPresale) && location.pathname === "/onboarding") {
+    return <Navigate to="/dashboard" replace />;
   }
   if (founderOnly && !user.is_founder) {
     return <Navigate to="/dashboard" replace />;

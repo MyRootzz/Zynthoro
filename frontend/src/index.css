@@ -380,3 +380,30 @@ body {
   color: #8a6e1d;
   border: 1px solid rgba(212,175,55,0.4);
 }
+
+
+/* ===== Mobile responsive polish (Fix 13) ===== */
+@media (max-width: 640px) {
+  .zy-btn-primary,
+  .zy-btn-outline {
+    /* Ensure ≥44px touch targets on mobile */
+    min-height: 44px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    font-size: 14.5px;
+  }
+  .zy-section {
+    padding-top: 56px;
+    padding-bottom: 56px;
+  }
+  .zy-h1 { font-size: 2.25rem !important; }
+  .zy-h2 { font-size: 1.75rem !important; }
+  .zy-container { padding-left: 20px; padding-right: 20px; }
+  .legal-prose h2 { font-size: 1.1rem !important; }
+}
+
+/* Tap-friendly cursor + active feedback on touch devices */
+@media (hover: none) {
+  .zy-btn-primary:active,
+  .zy-btn-outline:active { transform: scale(0.985); }
+}

@@ -25,6 +25,41 @@ const ROLES_BY_PLAN = {
   Presale: ["Owner", "Admin", "Employee"],
 };
 
+const PLAN_MAX_LEVEL = {
+  Presale: 5,
+  Starter: 3,
+  Creator: 3,
+  Business: 5,
+  Agency: 7,
+  "Enterprise Basic": 10,
+  "Enterprise Plus": 10,
+  "Enterprise Advanced": 10,
+  "Enterprise Elite": 10,
+  "Enterprise Unlimited": 10,
+};
+
+const LEVEL_LABELS = {
+  10: "Owner",
+  9: "Director",
+  8: "Director",
+  7: "Senior Manager",
+  6: "Senior Manager",
+  5: "Manager",
+  4: "Manager",
+  3: "Employee",
+  2: "Employee",
+  1: "Intern / Guest",
+};
+
+function levelColor(level) {
+  if (level >= 10) return { bg: "rgba(212,175,55,0.2)", fg: "#8a6e1d" };
+  if (level >= 8) return { bg: "rgba(26,79,255,0.14)", fg: "#1A4FFF" };
+  if (level >= 6) return { bg: "rgba(26,79,255,0.1)", fg: "#1A4FFF" };
+  if (level >= 4) return { bg: "#EEF1F6", fg: "#444" };
+  if (level >= 2) return { bg: "#F4F6FB", fg: "#666" };
+  return { bg: "#F4F6FB", fg: "#999" };
+}
+
 const SEAT_PRICE = {
   Business: 4.99,
   Agency: 3.99,
@@ -33,12 +68,14 @@ const SEAT_PRICE = {
 export default function TeamPage() {
   const { user } = useAuth();
   const [members, setMembers] = useState([]);
-  const [invite, setInvite] = useState({ open: false, email: "", role: "Employee", submitting: false });
+  const [invite, setInvite] = useState({ open: false, email: "", role: "Employee", level: 2, submitting: false });
   const [seats, setSeats] = useState({ open: false, count: 1 });
 
   const plan = user?.subscription_plan || "Presale";
   const roleOptions = ROLES_BY_PLAN[plan] || ROLES_BY_PLAN.Presale;
   const seatPrice = SEAT_PRICE[plan];
+  const maxLevel = PLAN_MAX_LEVEL[plan] ?? 5;
+  const availableLevels = Array.from({ length: maxLevel }, (_, i) => i + 1).reverse();
 
   const load = async () => {
     try {
@@ -54,9 +91,9 @@ export default function TeamPage() {
     e.preventDefault();
     setInvite((s) => ({ ...s, submitting: true }));
     try {
-      await axios.post(`${API}/team/invite`, { email: invite.email, role: invite.role });
+      await axios.post(`${API}/team/invite`, { email: invite.email, role: invite.role, level: invite.level });
       toast.success("Invitation sent.");
-      setInvite({ open: false, email: "", role: "Employee", submitting: false });
+      setInvite({ open: false, email: "", role: "Employee", level: 2, submitting: false });
       load();
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || "Could not invite.");
@@ -89,15 +126,18 @@ export default function TeamPage() {
           <thead className="bg-[#FAFAFB] text-[12px] uppercase tracking-wider text-[#777]">
             <tr>
               <th className="text-left px-5 py-3">Member</th>
+              <th className="text-left px-5 py-3">Level</th>
               <th className="text-left px-5 py-3">Role</th>
-              <th className="text-left px-5 py-3">Status</th>
-              <th className="text-left px-5 py-3">2FA</th>
-              <th className="text-left px-5 py-3">Last login</th>
+              <th className="text-left px-5 py-3 hidden sm:table-cell">Status</th>
+              <th className="text-left px-5 py-3 hidden md:table-cell">2FA</th>
+              <th className="text-left px-5 py-3 hidden md:table-cell">Last login</th>
             </tr>
           </thead>
           <tbody>
             {members.map((m, i) => {
               const initials = (m.name || m.email || "?").split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase();
+              const lv = m.level || (m.is_owner ? 10 : 2);
+              const lvColors = levelColor(lv);
               return (
                 <tr key={m.id || m.email} className={i % 2 ? "bg-[#FAFAFB]" : ""} data-testid={`team-row-${i}`}>
                   <td className="px-5 py-3">
@@ -114,8 +154,19 @@ export default function TeamPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-5 py-3">{m.role}</td>
                   <td className="px-5 py-3">
+                    <span
+                      className="inline-flex items-center gap-1.5 text-[12px] font-bold px-2 py-0.5 rounded-full"
+                      style={{ background: lvColors.bg, color: lvColors.fg }}
+                      data-testid={`team-level-${i}`}
+                      title={LEVEL_LABELS[lv]}
+                    >
+                      <span className="text-[11px] opacity-80">L</span>
+                      <span>{lv}</span>
+                    </span>
+                  </td>
+                  <td className="px-5 py-3">{m.role}</td>
+                  <td className="px-5 py-3 hidden sm:table-cell">
                     <span
                       className="text-[11.5px] font-semibold px-2 py-0.5 rounded-full"
                       style={
@@ -127,7 +178,7 @@ export default function TeamPage() {
                       {m.status}
                     </span>
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-5 py-3 hidden md:table-cell">
                     {m.twofa ? (
                       <span className="inline-flex items-center gap-1 text-[12.5px]" style={{ color: "#16a34a" }}>
                         <ShieldCheck size={13} /> Enabled
@@ -138,7 +189,7 @@ export default function TeamPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-5 py-3 text-[#666]">{m.last_login ? new Date(m.last_login).toLocaleDateString() : "—"}</td>
+                  <td className="px-5 py-3 hidden md:table-cell text-[#666]">{m.last_login ? new Date(m.last_login).toLocaleDateString() : "—"}</td>
                 </tr>
               );
             })}
@@ -174,6 +225,30 @@ export default function TeamPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[13px] font-medium">
+                Access level{" "}
+                <span className="text-[11.5px] text-[#888] font-normal">
+                  · plan max: L{maxLevel}
+                </span>
+              </Label>
+              <Select
+                value={String(invite.level)}
+                onValueChange={(v) => setInvite((s) => ({ ...s, level: parseInt(v, 10) }))}
+              >
+                <SelectTrigger data-testid="invite-level"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {availableLevels.map((l) => (
+                    <SelectItem key={l} value={String(l)}>
+                      L{l} · {LEVEL_LABELS[l]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11.5px] text-[#888]">
+                Each level grants access to everything below it.
+              </p>
             </div>
             <button type="submit" disabled={invite.submitting} className="zy-btn-primary w-full disabled:opacity-70" data-testid="invite-submit">
               {invite.submitting ? "Sending…" : "Send invitation"}

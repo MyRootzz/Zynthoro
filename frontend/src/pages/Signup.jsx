@@ -25,6 +25,7 @@ export default function Signup() {
   const [form, setForm] = useState({
     first_name: "", last_name: "", email: "", password: "", company: "",
   });
+  const [agreeLegal, setAgreeLegal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const strength = useMemo(() => strengthOf(form.password), [form.password]);
@@ -37,6 +38,10 @@ export default function Signup() {
     e.preventDefault();
     if (form.password.length < 8) {
       toast.error("Password must be at least 8 characters.");
+      return;
+    }
+    if (!agreeLegal) {
+      toast.error("Please accept the Terms of Service and Privacy Policy to continue.");
       return;
     }
     setSubmitting(true);
@@ -107,11 +112,33 @@ export default function Signup() {
           <Input id="co" data-testid="signup-company" value={form.company} onChange={onChange("company")} required />
         </div>
 
+        <label className="flex items-start gap-2.5 cursor-pointer select-none pt-1">
+          <input
+            type="checkbox"
+            checked={agreeLegal}
+            onChange={(e) => setAgreeLegal(e.target.checked)}
+            data-testid="signup-agree-legal"
+            className="mt-1 w-4 h-4 rounded border-[#ccc] accent-[#1A4FFF] cursor-pointer"
+            required
+          />
+          <span className="text-[12.5px] leading-relaxed text-[#555]">
+            I agree to Zynthoro&apos;s{" "}
+            <Link to="/legal/terms-of-service" target="_blank" className="text-[#1A4FFF] font-semibold underline-offset-2 hover:underline">
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link to="/legal/privacy-policy" target="_blank" className="text-[#1A4FFF] font-semibold underline-offset-2 hover:underline">
+              Privacy Policy
+            </Link>
+            .
+          </span>
+        </label>
+
         <button
           type="submit"
           data-testid="signup-submit"
-          disabled={submitting}
-          className="zy-btn-primary w-full mt-2 disabled:opacity-70"
+          disabled={submitting || !agreeLegal}
+          className="zy-btn-primary w-full mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? "Creating account…" : "Create Account"}
         </button>

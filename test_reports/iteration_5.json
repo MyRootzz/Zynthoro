@@ -1,0 +1,46 @@
+{
+  "summary": "Comprehensive E2E test of Zynthoro batch fixes 4-13. Backend: 44 passed, 1 skipped (full regression 40/1 + new test_team_level.py 4/0 for FIX 7 plan-based level enforcement). Frontend: All 10 fixes verified end-to-end via Playwright on the public preview URL. Founder plan and 2FA flipped via mongosh (Starter <-> Enterprise Unlimited, billing_exempt true/false) to drive gating paths; all paths restored before finish.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Team.jsx -> Buy extra seats dialog (FIX 9)", "issue": "When current plan is 'Starter' (or 'Creator'/'Presale' — anything without a SEAT_PRICE entry) the dialog falls into the else branch and renders 'Your Enterprise plan includes unlimited seats — no extra purchase needed.' That message is wrong for a Starter user. Should either hide the 'Buy extra seats' button on Starter/Creator, or display a 'Upgrade to Business to add seats' copy.", "selector": "[data-testid='buy-seats'] dialog body", "priority": "MEDIUM"},
+      {"component": "PricingComparisonTables.jsx (FIX 12)", "issue": "Enterprise savings row says 'from €2.499/month' (EU decimal dot). Spec wording said 'from €2,499/month' (comma). Cosmetic — number is correct, just the locale separator differs. Decide on a single locale convention.", "selector": "[data-testid='pricing-table-savings']", "priority": "LOW"},
+      {"component": "PricingComparisonTables.jsx footnote (FIX 12)", "issue": "Footnote text content starts with '* ' then bold 'Starter is your foundation'. Spec said the footnote should start with 'Starter is your foundation'. Visible text is correct apart from the leading asterisk marker; consider removing the '* ' or moving it to a superscript ref.", "selector": "[data-testid='pricing-comparison-tables'] p.italic", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_team_level.py",
+    "/app/backend/tests/test_phase2_auth_dashboard_ai.py",
+    "/app/backend/tests/test_streaming_legal.py",
+    "/app/backend/tests/test_presale.py",
+    "/app/test_reports/pytest/iter5_results.xml",
+    "/app/test_reports/pytest/iter5_team_level.xml"
+  ],
+  "action_items": [
+    "Fix Team.jsx Buy-seats dialog: render an upgrade-prompt copy for Starter/Creator instead of the Enterprise wording. Or hide the 'Buy extra seats' button when SEAT_PRICE[plan] is undefined and plan is not Enterprise.",
+    "(Optional) Standardise EU number formatting in PricingComparisonTables.jsx Enterprise row to match spec (€2,499 vs €2.499).",
+    "(Optional) Remove leading '* ' from the italic footnote so the visible text starts with 'Starter is your foundation' per spec."
+  ],
+  "critical_code_review_comments": [
+    "Team.jsx SEAT_PRICE dict only has Business/Agency entries — the else branch hard-codes an Enterprise message which leaks to all other plans. Use an explicit plan-class check (e.g. plan.startsWith('Enterprise')) or a switch on plan for safe defaults.",
+    "MarketingContent.jsx plan-gating correctly defers to planAtLeast() helpers from planCatalog.js — verified via Starter run: only Facebook/Instagram unlocked, LinkedIn/TikTok/X/YouTube show 'Creator+'. Calendar/Photo/Video/Campaigns/Analytics/Clients all show correct upgrade-lock with the correct CTA (creator/business/agency).",
+    "ChangePlanDialog.jsx behaviour is exactly per spec: current-plan card has 'Current' badge + disabled 'Your plan' button, non-current cards show 'Coming soon' enabled, clicking them only toasts. No Stripe call fires.",
+    "Backend team_invite enforces PLAN_MAX_LEVEL correctly: Starter user invited at level=3 OK, level=10 returns 403 with detail 'Your Starter plan only allows members up to level 3...'. Pydantic field validation rejects level>10 with 422.",
+    "PricingComparisonTables uses EU dot decimal (€2.499) while spec asked for comma (€2,499). Pick one and apply across the app."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_team_level.py (new — 4 tests for Fix 7 plan-based level enforcement)"
+  ],
+  "success_rate": {"backend": "100% (44 passed, 1 skipped — email-2FA-skip is by design when Resend live)", "frontend": "100% on data-testid coverage and gating logic; 1 medium copy bug in Buy-Seats dialog for non-Business plans + 2 low-priority cosmetic deviations on the pricing tables"},
+  "test_credentials": "Founder regie@myrootzz.com / Zynthoro2026! used. TOTP reset via mongosh between phases; final state restored to twofa_enabled=false, totp_secret unset, subscription_plan='Enterprise Unlimited', billing_exempt=true.",
+  "seed_data_creation": "Several TEST_lvl_* signups + TEST_lvl3/lvl10_* team_members created during gating tests; all cleaned up via mongosh deleteMany at finish.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Founder credentials are clean (twofa off, Enterprise Unlimited, billing_exempt true). To re-test FIX 8 visibility for non-founder, either signup a fresh user or temporarily set founder.billing_exempt=false. The Buy-seats Starter-message bug reproduces by simply: login as a Starter user → /dashboard/team → click [data-testid='buy-seats']. Backend regression command: `pytest /app/backend/tests/ -v` should return 44 passed, 1 skipped.",
+  "rca of the issue": "Buy-extra-seats Starter wording: Team.jsx const SEAT_PRICE = { Business: 4.99, Agency: 3.99 }. For Starter/Creator/Presale, seatPrice is undefined, so the ternary `seatPrice ? <chips/> : <enterprise message/>` falls through to the Enterprise copy. Fix: either gate the button display on (seatPrice || plan.startsWith('Enterprise')) and hide for Starter/Creator, or split the else into two branches based on plan.startsWith('Enterprise')."
+}

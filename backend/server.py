@@ -120,6 +120,35 @@ class AssistChatIn(BaseModel):
 class TeamInviteIn(BaseModel):
     email: EmailStr
     role: str = Field(default="Employee")
+    level: int = Field(default=2, ge=1, le=10)
+
+
+# Plan → max member level (Fix 7 — Employee hierarchy)
+PLAN_MAX_LEVEL = {
+    "Presale": 5,
+    "Starter": 3,
+    "Creator": 3,
+    "Business": 5,
+    "Agency": 7,
+    "Enterprise Basic": 10,
+    "Enterprise Plus": 10,
+    "Enterprise Advanced": 10,
+    "Enterprise Elite": 10,
+    "Enterprise Unlimited": 10,
+}
+
+LEVEL_LABELS = {
+    1: "Intern / Guest",
+    2: "Employee",
+    3: "Employee",
+    4: "Manager",
+    5: "Manager",
+    6: "Senior Manager",
+    7: "Senior Manager",
+    8: "Director",
+    9: "Director",
+    10: "Owner",
+}
 
 
 def _serialize_user(u: dict) -> dict:
@@ -525,23 +554,39 @@ async def team_list(user=Depends(get_current_user_full)):
     rows = await db.team_members.find(
         {"workspace_owner": user["id"]}, {"_id": 0}
     ).to_list(500)
-    # Always include the owner first
+    plan = user.get("subscription_plan", "Presale")
+    max_level = PLAN_MAX_LEVEL.get(plan, 5)
+    # Always include the owner first (level 10 always)
     owner = {
         "id": user["id"],
         "name": f'{user.get("first_name","")} {user.get("last_name","")}'.strip() or user["email"],
         "email": user["email"],
         "role": user.get("role", "Owner"),
+        "level": 10,
+        "level_label": LEVEL_LABELS[10],
         "status": "active",
         "twofa": user.get("twofa_enabled", False),
         "last_login": user.get("created_at"),
         "is_owner": True,
     }
-    return {"members": [owner] + rows}
+    # Backfill level on existing members
+    for r in rows:
+        lv = int(r.get("level") or 2)
+        r["level"] = lv
+        r["level_label"] = LEVEL_LABELS.get(lv, "Employee")
+    return {"members": [owner] + rows, "plan": plan, "max_level": max_level}
 
 
 @api_router.post("/team/invite", status_code=201)
 async def team_invite(payload: TeamInviteIn, user=Depends(get_current_user_full)):
     email = payload.email.lower().strip()
+    plan = user.get("subscription_plan", "Presale")
+    max_level = PLAN_MAX_LEVEL.get(plan, 5)
+    if payload.level > max_level:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Your {plan} plan only allows members up to level {max_level}. Upgrade to invite higher-level roles.",
+        )
     existing = await db.team_members.find_one(
         {"workspace_owner": user["id"], "email": email}
     )
@@ -553,6 +598,7 @@ async def team_invite(payload: TeamInviteIn, user=Depends(get_current_user_full)
         "workspace_owner": user["id"],
         "email": email,
         "role": payload.role,
+        "level": payload.level,
         "status": "invited",
         "twofa": False,
         "invite_token": invite_token,

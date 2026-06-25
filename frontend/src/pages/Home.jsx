@@ -6,10 +6,12 @@ import SocialProof from "@/components/sections/SocialProof";
 import WhyZynthoro from "@/components/sections/WhyZynthoro";
 import Domains from "@/components/sections/Domains";
 import Pricing from "@/components/sections/Pricing";
+import PricingComparisonTables from "@/components/sections/PricingComparisonTables";
 import EnterpriseSection from "@/components/sections/EnterpriseSection";
 import Assist from "@/components/sections/Assist";
 import Assistants from "@/components/sections/Assistants";
 import Comparison from "@/components/sections/Comparison";
+import AnyDeviceSection from "@/components/sections/AnyDeviceSection";
 import PresaleCTA from "@/components/sections/PresaleCTA";
 import { PresaleDialogProvider } from "@/components/sections/PresaleDialog";
 
@@ -59,9 +61,11 @@ export default function Home() {
         <Domains />
         <Assistants />
         <Pricing />
+        <PricingComparisonTables />
         <EnterpriseSection />
         <Assist />
         <Comparison />
+        <AnyDeviceSection />
         <PresaleCTA />
       </main>
       <Footer />

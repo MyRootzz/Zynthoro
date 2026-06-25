@@ -24,12 +24,12 @@ export default function TopBar({ title }) {
   ).toUpperCase();
 
   return (
-    <header className="h-[72px] bg-white border-b border-[#eee] flex items-center justify-between px-6 sm:px-8 sticky top-0 z-20">
+    <header className="h-[64px] sm:h-[72px] bg-white border-b border-[#eee] flex items-center justify-between pl-14 lg:pl-6 pr-4 sm:pr-8 sticky top-0 z-20">
       <div>
         {title ? (
-          <h1 className="text-[20px] font-semibold tracking-tight text-black">{title}</h1>
+          <h1 className="text-[16px] sm:text-[20px] font-semibold tracking-tight text-black truncate">{title}</h1>
         ) : (
-          <h1 className="text-[20px] font-semibold tracking-tight text-black" data-testid="greeting">
+          <h1 className="text-[16px] sm:text-[20px] font-semibold tracking-tight text-black truncate" data-testid="greeting">
             {greeting()}, {user?.first_name || "there"}
           </h1>
         )}

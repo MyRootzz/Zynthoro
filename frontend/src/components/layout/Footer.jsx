@@ -1,6 +1,7 @@
 import { Linkedin, Twitter, Instagram } from "lucide-react";
 import { Link } from "react-router-dom";
 import { HOME } from "@/constants/testIds";
+import { CookieSettingsLink } from "@/components/CookieSettings";
 
 const cols = [
   {
@@ -98,11 +99,14 @@ export default function Footer() {
 
         <div className="mt-14 pt-6 border-t border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <p className="text-white/55 text-[13px]">
-            © 2026 Zynthoro — Casa Haya International BV. All rights reserved.
+            © 2026 Zynthoro — Casa Haya International BV (KvK 99196581). All rights reserved.
           </p>
-          <p className="text-white/45 text-[12px]">
-            Powered by Anthropic Claude AI · Selected for the Anthropic Claude for Startups program
-          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <CookieSettingsLink />
+            <p className="text-white/45 text-[12px]">
+              Powered by Anthropic Claude AI · Selected for the Anthropic Claude for Startups program
+            </p>
+          </div>
         </div>
       </div>
     </footer>

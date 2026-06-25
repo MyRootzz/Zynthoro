@@ -1,6 +1,7 @@
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { CookieSettingsProvider } from "@/components/CookieSettings";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 import Home from "@/pages/Home";
@@ -18,6 +19,7 @@ import ModulePlaceholder from "@/pages/dashboard/ModulePlaceholder";
 import TeamPage from "@/pages/dashboard/Team";
 import Settings from "@/pages/dashboard/Settings";
 import AssistantPage from "@/pages/dashboard/AssistantPage";
+import MarketingContent from "@/pages/dashboard/MarketingContent";
 import PrivacyPolicy from "@/pages/legal/PrivacyPolicy";
 import TermsOfService from "@/pages/legal/TermsOfService";
 import CookiePolicy from "@/pages/legal/CookiePolicy";
@@ -28,7 +30,8 @@ function App() {
   return (
     <div className="App">
       <AuthProvider>
-        <BrowserRouter>
+        <CookieSettingsProvider>
+          <BrowserRouter>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/signup" element={<Signup />} />
@@ -69,12 +72,14 @@ function App() {
               <Route path="zyntha" element={<AssistantPage assistantKey="zyntha" />} />
               <Route path="thoro" element={<AssistantPage assistantKey="thoro" />} />
               <Route path="zyona" element={<AssistantPage assistantKey="zyona" />} />
+              <Route path="marketing" element={<MarketingContent />} />
               <Route path=":slug" element={<ModulePlaceholder />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </BrowserRouter>
         <Toaster richColors position="top-center" />
+        </CookieSettingsProvider>
       </AuthProvider>
     </div>
   );

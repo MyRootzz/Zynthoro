@@ -3,8 +3,9 @@ import axios from "axios";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Image as ImageIcon, Loader2, Trash2, Upload, Save } from "lucide-react";
+import { Image as ImageIcon, Loader2, Trash2, Upload, Save, CreditCard } from "lucide-react";
 import { API, formatApiError, useAuth } from "@/contexts/AuthContext";
+import ChangePlanDialog from "@/components/dashboard/ChangePlanDialog";
 
 export default function Settings() {
   const { user, refresh } = useAuth();
@@ -22,6 +23,7 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [logoPreview, setLogoPreview] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [changePlanOpen, setChangePlanOpen] = useState(false);
 
   const refreshLogo = () => {
     if (!user?.id) return;
@@ -162,17 +164,38 @@ export default function Settings() {
         </div>
       </form>
 
-      <section className="mt-6 bg-white border border-[#eee] rounded-2xl p-6">
-        <h2 className="text-[15px] font-semibold mb-2">Subscription</h2>
-        <p className="text-[13.5px] text-[#555]">
-          You&apos;re on the <b>{user?.subscription_plan || "Presale"}</b> plan.
-          {user?.founder_pricing && (
-            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(212,175,55,0.18)", color: "#8a6e1d" }}>
-              Founder pricing active
-            </span>
+      <section id="billing" className="mt-6 bg-white border border-[#eee] rounded-2xl p-6" data-testid="billing-section">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <h2 className="text-[15px] font-semibold mb-1">Subscription &amp; Billing</h2>
+            <p className="text-[13.5px] text-[#555]">
+              You&apos;re on the <b>{user?.subscription_plan || "Presale"}</b> plan.
+              {user?.founder_pricing && (
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(212,175,55,0.18)", color: "#8a6e1d" }}>
+                  Founder pricing active
+                </span>
+              )}
+              {user?.is_founder && user?.billing_exempt && (
+                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: "rgba(34,197,94,0.12)", color: "#16a34a" }}>
+                  Owner Unlimited · No billing
+                </span>
+              )}
+            </p>
+          </div>
+          {!user?.billing_exempt && (
+            <button
+              type="button"
+              onClick={() => setChangePlanOpen(true)}
+              className="zy-btn-primary"
+              data-testid="change-plan-btn"
+            >
+              <CreditCard size={14} /> Change plan
+            </button>
           )}
-        </p>
+        </div>
       </section>
+
+      <ChangePlanDialog open={changePlanOpen} onOpenChange={setChangePlanOpen} />
     </div>
   );
 }

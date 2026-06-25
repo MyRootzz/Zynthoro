@@ -43,7 +43,53 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **Logo**: full gold `ZYNTHORO` everywhere (homepage navbar/footer, auth pages on dark chip, dashboard sidebar).
 - **Tests**: 25/25 backend tests passing (`/app/backend/tests/test_phase2_auth_dashboard_ai.py`).
 
-## What's Implemented (Streaming + Branded Export + Final Legal Polish — done 2026-02-05)
+## What's Implemented (Mega-Batch Fixes 4–13 — done 2026-02-05)
+
+**Fix 4 — Signup legal checkbox**
+- Required "I agree to Terms & Privacy Policy" checkbox on `/signup` linking to `/legal/terms-of-service` and `/legal/privacy-policy`. Submit button disabled until checked. data-testid: `signup-agree-legal`.
+
+**Fix 5 — Social Media Studio + plan-gating (UI shell)**
+- New page `/dashboard/marketing` (`MarketingContent.jsx`) with: 6 platform tiles (FB, IG always available; LinkedIn, TikTok, X, YouTube unlocked from Creator), 7 tabs (compose, calendar, photo, video, campaigns, analytics, clients).
+- Per-plan gating: Calendar/Photo Suite/Video Suite → Creator; Campaigns/Analytics → Business; Clients → Agency.
+- OAuth + real photo/video AI deferred per user choice (UI shell only).
+
+**Fix 6 — UpgradeLock component**
+- `UpgradeLock.jsx` (card + compact variants) used across the platform. Always shows what's missing + an "Upgrade to <plan>" CTA → `/dashboard/settings#billing`. Never hard-blocks.
+
+**Fix 7 — Employee hierarchy 1-10**
+- Backend (`server.py`): `TeamInviteIn.level (1-10)`, `PLAN_MAX_LEVEL` (Business 5 / Agency 7 / Enterprise 10), `team_invite` returns HTTP 403 if level exceeds plan max.
+- Frontend (`Team.jsx`): new "Level" column with coloured badge (`team-level-${i}`), level Select in invite dialog (`invite-level`) showing only plan-allowed levels.
+- New backend test file `tests/test_team_level.py` (4 tests, all passing).
+
+**Fix 8 — Change Plan dialog**
+- `ChangePlanDialog.jsx` invoked from Settings → Billing section (`change-plan-btn`). Shows all 5 plans with current-plan highlight; non-Starter cards show "Coming soon" (Stripe price IDs not yet wired).
+
+**Fix 9 — Buy extra seats**
+- `Team.jsx` seats dialog now correctly branches:
+  - Business/Agency → chips + price preview
+  - Enterprise → "Unlimited included"
+  - Starter/Creator → "Upgrade to Business" copy + CTA navigating to `/dashboard/settings#billing` (`seats-upgrade-cta`)
+
+**Fix 10 — User ↔ Builder mode**
+- Sidebar toggle `switch-mode` already wired; `BuilderModePanel` renders for `is_founder` users only.
+
+**Fix 11 — Cookie settings**
+- `CookieSettingsProvider` mounts a first-visit banner (`cookie-banner`) + Customize modal (`cookie-settings-modal`) with locked "Necessary" + toggle "Functional" + toggle "Analytics". Saves to `localStorage['zy_cookie_prefs_v1']`. Footer link (`footer-cookie-settings`) reopens the modal anywhere.
+
+**Fix 12 — Two pricing comparison tables**
+- New section `PricingComparisonTables.jsx` mounted on Home between Pricing and Enterprise sections. Table 1 (`pricing-table-replacement`) = 13 tool categories vs. cost vs. included-from-plan. Table 2 (`pricing-table-savings`) = 5 plan rows with gold-highlighted Enterprise row. Blue (#1A4FFF) headers, mobile cards on <768px.
+
+**Fix 13 — Mobile responsive audit**
+- `index.css`: `@media (max-width:640px)` block ensures ≥44px touch targets, smaller hero typography, tighter container padding.
+- `DashboardLayout.jsx`: main padding `px-3 sm:px-6` instead of `px-4 sm:px-8`.
+- `TopBar.jsx`: 64px height on mobile (was 72px), truncated title, smaller font.
+- Team table: status + 2FA + last-login columns hidden on small screens (`hidden sm:table-cell`, `hidden md:table-cell`).
+- New marketing section `AnyDeviceSection.jsx` ("Works on any device") with CSS-only phone/tablet/desktop mockups.
+
+**Test results — iterations 5 + 6**
+- 44/44 backend tests pass + 1 skipped by design.
+- All 13 fixes verified end-to-end via Playwright.
+- 3 minor deviations from iteration 5 (Buy-seats Starter copy, Enterprise comma, footnote asterisk) all fixed and re-verified in iteration 6.
 
 **Fix 1 — Streaming AI responses (no more truncation)**
 - New `POST /api/ai/stream` SSE endpoint in `server.py` emitting `event: meta` (provider/model/badge/session_id), `event: delta` ({content}), `event: error`, `event: done` (latency_ms, chars).

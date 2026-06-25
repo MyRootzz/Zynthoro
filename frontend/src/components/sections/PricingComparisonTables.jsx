@@ -178,7 +178,7 @@ export default function PricingComparisonTables() {
           </div>
 
           <p className="mt-3 text-[12.5px] text-[#555] italic">
-            * <b>Starter is your foundation</b> — start lean, scale smart. The real savings begin at Creator.
+            <b>Starter is your foundation</b> — start lean, scale smart. The real savings begin at Creator.
           </p>
         </div>
       </div>

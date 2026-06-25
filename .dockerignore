@@ -1,0 +1,34 @@
+# Files to exclude from Docker / Emergent deployment images.
+# Keep in sync with .gitignore.
+
+# Local dev caches
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/node_modules
+.venv
+.env.local
+
+# Build artefacts
+build/
+dist/
+.next/
+
+# Test + memory artefacts (sensitive credentials, internal PRD)
+memory/test_credentials.md
+memory/PRD.md
+memory/ROADMAP.md
+memory/CHANGELOG.md
+test_reports/
+.emergent/automation_output/
+
+# Project meta
+.git
+.github
+.gitignore
+README.md
+*.md
+
+# IDE
+.vscode
+.idea

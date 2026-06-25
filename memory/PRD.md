@@ -43,6 +43,26 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **Logo**: full gold `ZYNTHORO` everywhere (homepage navbar/footer, auth pages on dark chip, dashboard sidebar).
 - **Tests**: 25/25 backend tests passing (`/app/backend/tests/test_phase2_auth_dashboard_ai.py`).
 
+## What's Implemented (Internal Stripe-Event Alerts — done 2026-02-05)
+
+**Every Stripe webhook → email to info@zynthoro.ai**
+- New `email_service.send_stripe_alert(kind, event_type, …)` renders a branded HTML email (Zynthoro navy header, accent-coloured left border per event kind) and dispatches via Resend.
+- Webhook handler now fires `asyncio.create_task(send_stripe_alert(...))` (fire-and-forget, non-blocking) for **every** recognised event:
+  - `checkout.session.completed` (mode=subscription) → `subscribe` (Presale → paid), `upgrade`, or `downgrade` based on `_plan_rank` comparison
+  - `checkout.session.completed` (kind=seat_addon) → `seats` with quantity
+  - `customer.subscription.deleted` → `cancel`
+  - `invoice.payment_failed` → `payment_failed` with amount
+  - `customer.subscription.trial_will_end` → `trial_end`
+  - Catch-all (updated / paid / refunded / expired) → `other`
+- Robust: webhook returns 2xx even when Resend rejects (currently "domain not verified" until DNS is added). All plan-flip / extra-seats DB writes happen FIRST, alert is best-effort.
+
+**Test results — iteration 11:**
+- 22/22 new alert tests PASS (`test_stripe_webhook_alerts.py`) covering every event branch + fire-and-forget robustness
+- 106/106 backend regression PASS + 1 skipped by design
+- Mocked Resend failure verified: webhook still returns 2xx and plan flip persists
+
+**Deployment readiness:** ✅ PASS — `deployment_agent` confirmed zero blockers.
+
 ## What's Implemented (Builder-Mode Live Stripe Widget — done 2026-02-05)
 
 **Live MRR + ARR widget for founders**

@@ -17,8 +17,12 @@ export default function SLA() {
     >
       <p className="text-[16px] text-black/80 mb-10 leading-[1.8]">
         This Service Level Agreement ("SLA") describes the uptime, support and
-        service-credit commitments Zynthoro makes for paying customers. It is
-        incorporated into the Zynthoro Terms of Service.
+        service-credit commitments Zynthoro makes for Enterprise customers
+        (and other paying tiers). It is provided by{" "}
+        <strong>Casa Haya International BV</strong> (KvK 99196581) and is
+        incorporated into the Zynthoro Terms of Service. Zynthoro is hosted
+        in the European Union — primarily in the Republic of Ireland
+        (eu-west region) — for GDPR-compliant data residency.
       </p>
 
       <LegalSection id="commitment" number="1" title="Uptime commitment by plan">

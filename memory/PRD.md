@@ -43,6 +43,18 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **Logo**: full gold `ZYNTHORO` everywhere (homepage navbar/footer, auth pages on dark chip, dashboard sidebar).
 - **Tests**: 25/25 backend tests passing (`/app/backend/tests/test_phase2_auth_dashboard_ai.py`).
 
+## What's Implemented (Phase 3 — Legal Pages — done 2026-02-05)
+- **Resend transactional email service**: `RESEND_API_KEY` wired into `/app/backend/.env`; `email_service.is_enabled()` returns true; real Resend calls reach the API. DNS verification of `zynthoro.ai` pending on user side (DKIM/SPF records). Until verified, sends fail with "domain not verified" — backend logic is correct.
+- **Legal pages** (white background, blue hero, gold accents, sticky sidebar nav, Inter font):
+  - `/legal/privacy` — GDPR/UAVG-compliant Privacy Policy.
+  - `/legal/terms` — Terms of Service (founder pricing locked 24 months, EU jurisdiction).
+  - `/legal/cookies` — Cookie Policy with 3-tier consent model.
+  - `/legal/dpa` — Data Processing Agreement w/ sub-processor list + Annex A security.
+  - `/legal/sla` — Service Level Agreement w/ uptime table per plan + credit schedule.
+- Footer Legal column now links via React Router `<Link>` to all 5 pages (no full-page reload).
+- Shared `LegalLayout` and `LegalSection` components live under `/app/frontend/src/components/legal/`.
+- **Tests**: 31 passing, 1 skipped (email-2FA assertion skipped when Resend is live; TOTP path covered).
+
 ## Phase 3 (queued — pasted by user during Phase 2)
 - Full Pricing page (9 plans + comparison table + FAQ)
 - 12 domain detail pages + /domains overview

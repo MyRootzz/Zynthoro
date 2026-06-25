@@ -1,4 +1,5 @@
 import { Linkedin, Twitter, Instagram } from "lucide-react";
+import { Link } from "react-router-dom";
 import { HOME } from "@/constants/testIds";
 
 const cols = [
@@ -32,10 +33,11 @@ const cols = [
   {
     title: "Legal",
     links: [
-      { label: "Privacy Policy", href: "#" },
-      { label: "Terms of Service", href: "#" },
-      { label: "Cookie Policy", href: "#" },
-      { label: "DPA", href: "#" },
+      { label: "Privacy Policy", href: "/legal/privacy" },
+      { label: "Terms of Service", href: "/legal/terms" },
+      { label: "Cookie Policy", href: "/legal/cookies" },
+      { label: "DPA", href: "/legal/dpa" },
+      { label: "SLA", href: "/legal/sla" },
     ],
   },
 ];
@@ -73,13 +75,22 @@ export default function Footer() {
                 {c.title}
               </h4>
               <ul className="space-y-3">
-                {c.links.map((l) => (
-                  <li key={l.label}>
-                    <a href={l.href} className="text-[14px]">
-                      {l.label}
-                    </a>
-                  </li>
-                ))}
+                {c.links.map((l) => {
+                  const isInternal = l.href.startsWith("/");
+                  return (
+                    <li key={l.label}>
+                      {isInternal ? (
+                        <Link to={l.href} className="text-[14px]" data-testid={`footer-link-${l.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                          {l.label}
+                        </Link>
+                      ) : (
+                        <a href={l.href} className="text-[14px]">
+                          {l.label}
+                        </a>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ))}

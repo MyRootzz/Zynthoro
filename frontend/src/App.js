@@ -19,6 +19,11 @@ import ModulePlaceholder from "@/pages/dashboard/ModulePlaceholder";
 import TeamPage from "@/pages/dashboard/Team";
 import Settings from "@/pages/dashboard/Settings";
 import AssistantPage from "@/pages/dashboard/AssistantPage";
+import PrivacyPolicy from "@/pages/legal/PrivacyPolicy";
+import TermsOfService from "@/pages/legal/TermsOfService";
+import CookiePolicy from "@/pages/legal/CookiePolicy";
+import DPA from "@/pages/legal/DPA";
+import SLA from "@/pages/legal/SLA";
 
 function App() {
   return (
@@ -34,6 +39,11 @@ function App() {
             <Route path="/2fa/verify" element={<TwoFactorVerify />} />
             <Route path="/subscribe/starter" element={<SubscribeStarter />} />
             <Route path="/subscribe/starter/return" element={<SubscribeStarterReturn />} />
+            <Route path="/legal/privacy" element={<PrivacyPolicy />} />
+            <Route path="/legal/terms" element={<TermsOfService />} />
+            <Route path="/legal/cookies" element={<CookiePolicy />} />
+            <Route path="/legal/dpa" element={<DPA />} />
+            <Route path="/legal/sla" element={<SLA />} />
             <Route
               path="/onboarding"
               element={

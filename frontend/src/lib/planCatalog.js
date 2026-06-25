@@ -1,9 +1,9 @@
 /**
  * Canonical Zynthoro plan catalog used across the dashboard for
- * upgrade nudges, change-plan dialog, and feature gating.
+ * upgrade nudges, the Change-Plan dialog (Fix 8) and feature gating.
  *
- * Keep names in sync with backend `PLAN_MAX_LEVEL` and Stripe price IDs
- * once they are configured.
+ * Keep `key` values in sync with backend `PLAN_PRICE_IDS`
+ * in `/app/backend/stripe_subscriptions.py`.
  */
 export const PLANS = [
   {
@@ -15,8 +15,6 @@ export const PLANS = [
     workspaces: 1,
     maxLevel: 3,
     highlights: ["Connect 2 social accounts", "Manual posting", "Basic photo & video tools"],
-    upgradePath: "/subscribe/starter",
-    comingSoon: false,
   },
   {
     key: "Creator",
@@ -33,8 +31,6 @@ export const PLANS = [
       "AI video suite (CapCut-level)",
       "AI funnels & landing pages",
     ],
-    upgradePath: "/subscribe/creator",
-    comingSoon: true,
   },
   {
     key: "Business",
@@ -44,6 +40,7 @@ export const PLANS = [
     tagline: "Most Popular — full sales + accounting.",
     workspaces: 3,
     maxLevel: 5,
+    badge: "Most Popular",
     highlights: [
       "Everything in Creator",
       "AI email campaigns",
@@ -51,9 +48,6 @@ export const PLANS = [
       "Post analytics & AI lead scoring",
       "Levels 1–5",
     ],
-    upgradePath: "/subscribe/business",
-    badge: "Most Popular",
-    comingSoon: true,
   },
   {
     key: "Agency",
@@ -70,48 +64,80 @@ export const PLANS = [
       "White-label reports",
       "Levels 1–7",
     ],
-    upgradePath: "/subscribe/agency",
-    comingSoon: true,
   },
   {
-    key: "Enterprise",
-    name: "Enterprise",
+    key: "Enterprise Basic",
+    name: "Enterprise Basic",
     price: 2499,
-    priceLabel: "from €2,499 / month",
+    priceLabel: "€2,499 / month",
     tagline: "All 12 domains + full ERP.",
     workspaces: "Unlimited",
     maxLevel: 10,
+    isEnterprise: true,
     highlights: [
       "Everything in Agency",
       "All 12 ERP domains",
-      "Levels 1–10 + custom level names",
+      "Levels 1–10",
       "Unlimited workspaces",
       "Unlimited team members",
     ],
-    upgradePath: "/subscribe/enterprise",
-    comingSoon: true,
+  },
+  {
+    key: "Enterprise Plus",
+    name: "Enterprise Plus",
+    price: 3999,
+    priceLabel: "€3,999 / month",
+    tagline: "Higher AI quotas + priority support.",
+    workspaces: "Unlimited",
+    maxLevel: 10,
+    isEnterprise: true,
+    highlights: [
+      "Everything in Enterprise Basic",
+      "3x AI generation quotas",
+      "Dedicated CSM",
+      "Priority Claude routing",
+      "8h SLA support",
+    ],
+  },
+  {
+    key: "Enterprise Advanced",
+    name: "Enterprise Advanced",
+    price: 5999,
+    priceLabel: "€5,999 / month",
+    tagline: "Mission-critical SLA + custom integrations.",
+    workspaces: "Unlimited",
+    maxLevel: 10,
+    isEnterprise: true,
+    highlights: [
+      "Everything in Enterprise Plus",
+      "99.99% uptime SLA",
+      "Custom integrations",
+      "24/7 phone support",
+      "Custom level names",
+    ],
   },
 ];
 
 export const PLAN_BY_KEY = Object.fromEntries(PLANS.map((p) => [p.key, p]));
 
-/** Returns the plan ABOVE the user's current plan, or null if already on top. */
-export function nextPlanAfter(currentKey) {
-  // Normalise enterprise variants
-  const cur = currentKey?.startsWith("Enterprise") ? "Enterprise" : currentKey || "Presale";
-  const idx = PLANS.findIndex((p) => p.key === cur);
-  if (idx < 0) return PLANS[1]; // Presale → Creator
-  return PLANS[idx + 1] || null;
-}
-
-/** Plan order index (0 = Starter, … 4 = Enterprise). Presale → -1. */
+/** Plan order index. Presale → -1. Any Enterprise tier maps to its own index. */
 export function planOrder(key) {
   if (!key) return -1;
-  if (key.startsWith("Enterprise")) return 4;
-  return PLANS.findIndex((p) => p.key === key);
+  const idx = PLANS.findIndex((p) => p.key === key);
+  if (idx >= 0) return idx;
+  // Legacy / shorthand 'Enterprise' label → first Enterprise tier
+  if (key.startsWith("Enterprise")) return PLANS.findIndex((p) => p.isEnterprise);
+  return -1;
 }
 
 /** Is the user's plan at or above the required plan? */
 export function planAtLeast(userPlan, requiredPlanKey) {
   return planOrder(userPlan) >= planOrder(requiredPlanKey);
+}
+
+/** Returns the plan immediately above the user's current plan, or null if on top. */
+export function nextPlanAfter(currentKey) {
+  const idx = planOrder(currentKey);
+  if (idx < 0) return PLANS[1];
+  return PLANS[idx + 1] || null;
 }

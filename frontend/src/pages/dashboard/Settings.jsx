@@ -25,6 +25,20 @@ export default function Settings() {
   const [uploading, setUploading] = useState(false);
   const [changePlanOpen, setChangePlanOpen] = useState(false);
 
+  // Handle Stripe Checkout return: ?checkout=success&session_id=… or ?checkout=cancelled
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("checkout");
+    if (status === "success") {
+      toast.success("Subscription updated. Your new plan is active.");
+      refresh?.();
+      window.history.replaceState({}, "", "/dashboard/settings");
+    } else if (status === "cancelled") {
+      toast.message("Checkout cancelled — no charges made.");
+      window.history.replaceState({}, "", "/dashboard/settings");
+    }
+  }, [refresh]);
+
   const refreshLogo = () => {
     if (!user?.id) return;
     // Bust cache after upload/delete

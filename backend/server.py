@@ -29,6 +29,8 @@ from auth import (  # noqa: E402
 import ai_assistants  # noqa: E402
 import business_verification  # noqa: E402
 import checkout as checkout_mod  # noqa: E402
+import stripe_subscriptions as subs_mod  # noqa: E402
+import stripe as stripe_sdk  # noqa: E402
 import email_service  # noqa: E402
 from fastapi import UploadFile, File  # noqa: E402
 
@@ -121,6 +123,17 @@ class CaptionIn(BaseModel):
     idea: str = Field(min_length=3, max_length=2000)
     platform: Literal["instagram", "facebook", "linkedin", "tiktok", "x", "youtube"] = "instagram"
     tone: Optional[str] = Field(default=None, max_length=80)
+
+
+class SubscriptionCheckoutIn(BaseModel):
+    plan_key: Literal[
+        "Starter", "Creator", "Business", "Agency",
+        "Enterprise Basic", "Enterprise Plus", "Enterprise Advanced",
+    ]
+
+
+class SeatsCheckoutIn(BaseModel):
+    quantity: int = Field(ge=1, le=100)
 
 
 class TeamInviteIn(BaseModel):
@@ -1057,23 +1070,219 @@ async def checkout_starter_status(
     }
 
 
+@api_router.post("/checkout/subscription/session")
+async def checkout_subscription_session(
+    payload: SubscriptionCheckoutIn,
+    request: Request,
+    user=Depends(get_current_user_full),
+):
+    """Create a Stripe Checkout Session in `subscription` mode for plan upgrades (Fix 8)."""
+    if user.get("billing_exempt"):
+        raise HTTPException(status_code=400, detail="Your account is billing-exempt — no checkout required.")
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    try:
+        session = subs_mod.create_subscription_session(
+            plan_key=payload.plan_key,
+            origin_url=origin,
+            user_id=user["id"],
+            user_email=user["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("Stripe subscription session creation failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+
+    await db.payment_transactions.insert_one({
+        "id": str(uuid.uuid4()),
+        "session_id": session["session_id"],
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "kind": "subscription_change",
+        "plan_key": payload.plan_key,
+        "amount_eur": session["amount_eur"],
+        "payment_status": "initiated",
+        "status": "open",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {"url": session["url"], "session_id": session["session_id"], "plan_key": payload.plan_key}
+
+
+@api_router.post("/checkout/seats/session")
+async def checkout_seats_session(
+    payload: SeatsCheckoutIn,
+    request: Request,
+    user=Depends(get_current_user_full),
+):
+    """Create a Stripe Checkout Session for extra team-seat add-ons (Fix 9)."""
+    if user.get("billing_exempt"):
+        raise HTTPException(status_code=400, detail="Your account is billing-exempt — extra seats are free.")
+    plan = user.get("subscription_plan") or "Presale"
+    # Normalise Enterprise variants — they get unlimited seats, no checkout needed
+    if plan.startswith("Enterprise"):
+        raise HTTPException(status_code=400, detail="Your Enterprise plan already includes unlimited seats.")
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    try:
+        session = subs_mod.create_seats_session(
+            current_plan=plan,
+            quantity=payload.quantity,
+            origin_url=origin,
+            user_id=user["id"],
+            user_email=user["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("Stripe seats session creation failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+
+    await db.payment_transactions.insert_one({
+        "id": str(uuid.uuid4()),
+        "session_id": session["session_id"],
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "kind": "seat_addon",
+        "plan_key": plan,
+        "seat_quantity": payload.quantity,
+        "unit_amount_eur": session["unit_amount_eur"],
+        "payment_status": "initiated",
+        "status": "open",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+    return {
+        "url": session["url"],
+        "session_id": session["session_id"],
+        "quantity": payload.quantity,
+        "unit_amount_eur": session["unit_amount_eur"],
+    }
+
+
+@api_router.get("/checkout/session/{session_id}")
+async def checkout_session_status(
+    session_id: str,
+    user=Depends(get_current_user_full),
+):
+    """Return high-level status for any Checkout Session this user owns."""
+    txn = await db.payment_transactions.find_one(
+        {"session_id": session_id, "user_id": user["id"]}, {"_id": 0}
+    )
+    if not txn:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    try:
+        summary = subs_mod.get_session_summary(session_id)
+    except Exception as e:
+        logger.warning("Stripe session lookup failed: %s", e)
+        summary = {"status": "unknown"}
+    return {"txn": txn, "stripe": summary}
+
+
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     host_url = str(request.base_url)
     body = await request.body()
     sig = request.headers.get("Stripe-Signature", "")
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+    # First try direct Stripe SDK verification — this works for ALL event types,
+    # including subscription events from Fix 8 & 9 plus the legacy Starter flow.
+    event = None
+    if webhook_secret:
+        try:
+            stripe_sdk.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+            event = stripe_sdk.Webhook.construct_event(body, sig, webhook_secret)
+        except Exception as e:
+            logger.warning("Stripe webhook SDK verify failed: %s", e)
+
+    if event:
+        event_type = event.get("type")
+        obj = event["data"]["object"] if event.get("data") else {}
+
+        # === Subscription checkout completed (Fix 8 + Fix 9) ===
+        if event_type == "checkout.session.completed" and obj.get("mode") == "subscription":
+            session_id = obj.get("id")
+            meta = obj.get("metadata") or {}
+            user_id = meta.get("user_id") or obj.get("client_reference_id")
+            kind = meta.get("kind", "")
+            now_iso = datetime.now(timezone.utc).isoformat()
+
+            if user_id and kind == "subscription_change":
+                plan_key = meta.get("plan_key") or "Starter"
+                await db.users.update_one(
+                    {"id": user_id},
+                    {"$set": {
+                        "subscription_plan": plan_key,
+                        "subscription_status": "active",
+                        "subscription_started_at": now_iso,
+                        "stripe_subscription_id": obj.get("subscription"),
+                        "stripe_customer_id": obj.get("customer"),
+                        # New paid plan supersedes any founder window
+                        "founder_pricing": False,
+                    }},
+                )
+                logger.info("User %s plan -> %s via session %s", user_id, plan_key, session_id)
+
+            elif user_id and kind == "seat_addon":
+                try:
+                    qty = int(meta.get("seat_quantity") or 1)
+                except Exception:
+                    qty = 1
+                await db.users.update_one(
+                    {"id": user_id},
+                    {
+                        "$inc": {"extra_seats": qty},
+                        "$set": {
+                            "stripe_seats_subscription_id": obj.get("subscription"),
+                            "updated_at": now_iso,
+                        },
+                    },
+                )
+                logger.info("User %s purchased %d extra seats via session %s", user_id, qty, session_id)
+
+            await db.payment_transactions.update_one(
+                {"session_id": session_id},
+                {"$set": {
+                    "payment_status": obj.get("payment_status") or "paid",
+                    "status": "complete",
+                    "provisioned": True,
+                    "stripe_subscription_id": obj.get("subscription"),
+                    "stripe_customer_id": obj.get("customer"),
+                    "updated_at": now_iso,
+                }},
+            )
+            return {"received": True, "kind": kind}
+
+        # === Subscription cancelled / lapsed ===
+        if event_type == "customer.subscription.deleted":
+            sub_id = obj.get("id")
+            await db.users.update_one(
+                {"stripe_subscription_id": sub_id},
+                {"$set": {
+                    "subscription_status": "cancelled",
+                    "subscription_cancelled_at": datetime.now(timezone.utc).isoformat(),
+                }},
+            )
+            return {"received": True, "kind": "subscription_cancelled"}
+
+    # === Fallback: legacy Starter one-time flow via Emergent wrapper ===
     try:
         client = checkout_mod._client(host_url)
-        event = await client.handle_webhook(body, sig)
+        legacy_event = await client.handle_webhook(body, sig)
     except Exception as e:
-        logger.warning("Stripe webhook verify failed: %s", e)
-        raise HTTPException(status_code=400, detail="Invalid webhook")
+        if not event:
+            logger.warning("Stripe webhook verify failed (both paths): %s", e)
+            raise HTTPException(status_code=400, detail="Invalid webhook")
+        return {"received": True, "kind": event.get("type") if event else "unknown"}
 
-    # Idempotent: update the txn if not already provisioned
-    session_id = getattr(event, "session_id", None)
+    session_id = getattr(legacy_event, "session_id", None)
     if session_id:
         txn = await db.payment_transactions.find_one({"session_id": session_id})
-        if txn and not txn.get("provisioned") and getattr(event, "payment_status", "") == "paid":
+        if txn and not txn.get("provisioned") and getattr(legacy_event, "payment_status", "") == "paid":
             meta = txn.get("metadata") or {}
             months = int(meta.get("founder_window_months") or 0)
             founder_window = checkout_mod.founder_pricing_window(months)

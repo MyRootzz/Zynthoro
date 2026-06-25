@@ -1,0 +1,31 @@
+{
+  "summary": "Full backend + frontend verification of Fix 8 (Change Plan) and Fix 9 (Buy extra seats) wired to LIVE Stripe Subscription Checkout. Backend: 21/21 new tests PASS in test_stripe_subscription_checkout.py (all 7 plans return cs_live_* URLs starting with https://checkout.stripe.com/, payment_transactions rows created with correct kind/plan_key/payment_status/status, validation for invalid plan_key/missing auth/billing_exempt all correct, seats endpoint returns 4.99 for Business and 3.99 for Agency, rejects Enterprise/Starter/Creator with correct messages, quantity bounds 1..100 enforced, webhook returns 400 on no-signature and invalid-signature). Regression: 48 passed + 1 skipped in test_phase2_auth_dashboard_ai/test_streaming_legal/test_team_level/test_marketing_caption — matches the baseline exactly. Frontend: change-plan-btn correctly hidden for billing_exempt founder; after toggling billing_exempt=false+plan=Business and reloading, the button appears, the dialog opens with all 7 expected plan testids (changeplan-starter, -creator, -business, -agency, -enterprise-basic, -enterprise-plus, -enterprise-advanced), clicking changeplan-creator-select redirects the browser to a real https://checkout.stripe.com/c/pay/cs_live_… URL. Team page: buy-seats opens dialog showing 'Plan Business · €4.99/seat/month' with +1/+5/+10 chips; seats-checkout-btn redirects to cs_live_… on Stripe. Return-handler toasts work on both pages: settings?checkout=success → 'Subscription updated…', settings?checkout=cancelled → 'Checkout cancelled — no charges made.', team?checkout=success → 'Extra seats added — they're available now.'; URL is cleaned via history.replaceState in all three cases. Founder restored to billing_exempt=true / subscription_plan='Enterprise Unlimited' after the run.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_stripe_subscription_checkout.py",
+    "/app/test_reports/pytest/iter9_stripe.xml",
+    "/app/test_reports/pytest/iter9_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "stripe_subscriptions.py is clean: clear separation from the legacy Emergent checkout.py, Price IDs centralised, dedicated functions per flow, RuntimeError surfaced as 503 in server.py — good error taxonomy.",
+    "server.py:1125 — the check `plan.startswith('Enterprise')` will also block a hypothetical user on 'Enterprise Unlimited'. That's intentional and consistent with the SEAT_PRICE_IDS dict (only Business/Agency listed), so fine.",
+    "server.py:1185-1199 — webhook now uses Stripe SDK first then falls back to Emergent wrapper. The negative path returns 400 on both 'no signature' and 'invalid signature' as expected. The happy path (real Stripe-signed event) can only be exercised in production via Stripe CLI or a real checkout — not testable from this environment, which is acknowledged by the review request.",
+    "Frontend ChangePlanDialog.jsx — generic data-testid templating (`changeplan-${plan.key.toLowerCase().replace(/\\s+/g,'-')}`) produces exactly the 7 expected testids, including the dashed enterprise variants. No drift.",
+    "Frontend return-handler in Settings + Team uses URLSearchParams + history.replaceState — clean implementation, no React-Router back-button regressions."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stripe_subscription_checkout.py (NEW — 21 new tests)"
+  ],
+  "success_rate": {
+    "backend": "21/21 new tests (100%) + 48/48 + 1 skipped regression (100%)",
+    "frontend": "5/5 UI scenarios passed (button-hidden, dialog-opens, Stripe-redirect on Change Plan, Stripe-redirect on Buy Seats, all 3 return-handler toasts)"
+  },
+  "test_credentials": "Founder regie@myrootzz.com / Zynthoro2026! — TOTP secret generated fresh each run via the 2fa/totp/setup endpoint (handled by pyotp). Founder restored to billing_exempt=true / Enterprise Unlimited at end of run.",
+  "seed_data_creation": "~14 payment_transactions rows created (7 subscription_change for the parametrised plan test + 2 seat_addon for Business/Agency happy paths + 5 from frontend redirects). All are kind='subscription_change' or 'seat_addon' with payment_status='initiated' — safe audit trail, no production state changes since no card was submitted.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Stripe LIVE subscription checkout is fully wired and verified end-to-end (except the post-payment webhook happy-path, which is only exercisable via a real card in production). The only follow-up worth doing in production is to use Stripe CLI `stripe trigger checkout.session.completed` against /api/webhook/stripe to verify the subscription_plan / stripe_subscription_id / extra_seats update logic in server.py:1207-1245. Founder state is fully restored. No regression introduced.",
+  "rca of the issue": "N/A — feature verification, not a bug fix. All assertions in the review request were met."
+}

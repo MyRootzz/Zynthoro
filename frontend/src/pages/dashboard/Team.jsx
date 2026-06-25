@@ -66,7 +66,7 @@ const SEAT_PRICE = {
 };
 
 export default function TeamPage() {
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
   const [members, setMembers] = useState([]);
   const [invite, setInvite] = useState({ open: false, email: "", role: "Employee", level: 2, submitting: false });
   const [seats, setSeats] = useState({ open: false, count: 1 });
@@ -76,6 +76,20 @@ export default function TeamPage() {
   const seatPrice = SEAT_PRICE[plan];
   const maxLevel = PLAN_MAX_LEVEL[plan] ?? 5;
   const availableLevels = Array.from({ length: maxLevel }, (_, i) => i + 1).reverse();
+
+  // Handle Stripe seats checkout return (?checkout=success&session_id=…)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get("checkout");
+    if (status === "success") {
+      toast.success("Extra seats added — they're available now.");
+      refresh?.();
+      window.history.replaceState({}, "", "/dashboard/team");
+    } else if (status === "cancelled") {
+      toast.message("Checkout cancelled — no charges made.");
+      window.history.replaceState({}, "", "/dashboard/team");
+    }
+  }, [refresh]);
 
   const load = async () => {
     try {
@@ -293,10 +307,22 @@ export default function TeamPage() {
                   <span className="font-semibold">€{(seats.count * seatPrice).toFixed(2)}/mo</span>
                 </div>
                 <button
-                  onClick={() => toast.message("Seat purchase opens at launch on 30 June 2026.")}
+                  onClick={async () => {
+                    try {
+                      const { data } = await axios.post(`${API}/checkout/seats/session`, { quantity: seats.count });
+                      if (data?.url) {
+                        window.location.href = data.url;
+                        return;
+                      }
+                      toast.error("Checkout could not be opened — please try again.");
+                    } catch (e) {
+                      toast.error(formatApiError(e?.response?.data?.detail) || "Stripe checkout error.");
+                    }
+                  }}
                   className="zy-btn-primary w-full"
+                  data-testid="seats-checkout-btn"
                 >
-                  Add seats
+                  Add seats — checkout
                 </button>
               </>
             ) : plan?.startsWith("Enterprise") ? (

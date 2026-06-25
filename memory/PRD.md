@@ -43,6 +43,21 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **Logo**: full gold `ZYNTHORO` everywhere (homepage navbar/footer, auth pages on dark chip, dashboard sidebar).
 - **Tests**: 25/25 backend tests passing (`/app/backend/tests/test_phase2_auth_dashboard_ai.py`).
 
+## What's Implemented (Zyntha Caption AI — done 2026-02-05)
+
+**Zyntha Caption AI (Marketing & Content > Compose)**
+- New backend endpoint `POST /api/marketing/caption` calls Gemini 2.5 Flash via emergentintegrations with a strict JSON-mode system prompt. Available to ALL paying tiers (Starter included) — Zyntha's free hook.
+- Returns `{caption, hashtags[5-10], provider, model, platform, badge}` in 2-5s.
+- Robust `_coerce_caption_json` parser handles raw JSON, fenced JSON, AND mid-truncation (regex extraction of caption + hashtags from partial output). max_tokens=1500.
+- Frontend `MarketingContent.jsx` Compose panel now has a platform select (IG/FB/LinkedIn/TikTok/X/YouTube), a "Generate caption with Zyntha" button (spinner during call), hashtag chips below the textarea, and a "Copy caption + tags" button that puts `caption\\n\\n#tag1 #tag2 …` on the clipboard.
+
+**Verification (iterations 7 + 8):**
+- 11/11 caption pytest pass across all 6 platforms.
+- Full backend suite: 55 passed, 1 skipped.
+- Manual end-to-end via Playwright: empty-idea toast works, no backend call on empty, hashtag chips render, copy button copies the right format.
+
+**Deployment readiness:** ✅ PASS (deployment_agent confirmed no blockers).
+
 ## What's Implemented (Mega-Batch Fixes 4–13 — done 2026-02-05)
 
 **Fix 4 — Signup legal checkbox**

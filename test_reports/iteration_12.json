@@ -1,0 +1,39 @@
+{
+  "summary": "Validated the XPRIZE jury demo account end-to-end: idempotent seed (5 team / 5 projects / 6 invoices), login bypass (stage='ok' with no 2FA gate), Enterprise Advanced flags, demo data endpoints, is_demo cannot be injected via signup, workspace isolation for non-demo users, founder regression (TOTP stale → email-2FA used). Frontend: /dashboard greeting shows 'XPRIZE', /dashboard/projects renders 5 demo rows with progress bars (AI Caption=100%), /dashboard/finance shows €61,440 / €13,980 / €47,460 + 6 invoices (Sable=Sent, Northwind=Overdue), /dashboard/team shows 6 members at L10/L9/L7/L5/L3/L1 with correct roles + invited status for Nina. Added /app/backend/tests/test_jury_demo.py (10 tests, all pass). Full pytest regression: 116 passed + 1 skipped (baseline 106 + 10 new = 116, exactly as expected).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/2fa/verify (TOTP)", "issue": "Documented TOTP secret CGONDSXBH34RCLJEZVW7ZTHNOGQI5UNZ in /app/memory/test_credentials.md still does NOT match the founder's actual DB secret. Carried over from iter11 — email-2FA path works (code lifted from /var/log/supervisor/backend.err.log). Out of scope for this iteration."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_jury_demo.py",
+    "/app/test_reports/pytest/iter12_full.xml"
+  ],
+  "action_items": [
+    "(OPTIONAL) Rotate the founder TOTP secret back to the documented value OR update /app/memory/test_credentials.md with the current secret — same drift flagged in iter11."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 1749 lines (was 1609). The jury-demo seed (~110 lines) and the two /api/demo/* endpoints could move into a dedicated `demo_seed.py` module — keeps server.py focused on auth/AI/Stripe.",
+    "seed_jury_demo() force-resets the user doc on every boot (`await db.users.update_one({...}, {'$set': base_doc})`). This means any in-app changes a juror makes to their profile (name, company, role) are wiped on next backend restart — that's intentional but worth a comment in the function.",
+    "Demo data is keyed by `workspace_owner=user_id` of the jury user only. If a future demo seed adds a second demo user (e.g. partner demo), each will need its own owner — the model already supports that, but `/api/demo/projects` is implicitly scoped to the *current* user, so a non-demo user always sees an empty list (verified). Good isolation by construction.",
+    "DemoInvoices / DemoProjects in ModulePlaceholder.jsx do not surface a user-facing error if the GET fails — they silently flip `loading=false` with an empty list. For a jury demo this is fine, but consider adding a small 'Unable to load demo data' chip for future resilience.",
+    "ModulePlaceholder.jsx is now 239 lines and mixes Construction placeholder + two full data pages. Once the real Projects/Finance modules ship, split DemoProjects/DemoInvoices into their own files so the placeholder can stay tiny.",
+    "The /api/demo/projects sort is `due ASC` (matches spec). /api/demo/invoices sorts by `issued DESC` — that wasn't explicit in the spec but is the natural finance-page ordering and the UI renders correctly with it."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_jury_demo.py (NEW — 10 tests)"
+  ],
+  "success_rate": {"backend": "100% (116/116 + 1 skipped)", "frontend": "100% (login, dashboard, projects, finance, team all rendered correctly with all required data)"},
+  "test_credentials": "DEMO: jury@zynthoro.ai / ZynthoroDemo2026! (no 2FA, lands on /dashboard). FOUNDER: regie@myrootzz.com / Zynthoro2026! — TOTP secret in test_credentials.md is STALE; use email-2FA path (code in /var/log/supervisor/backend.err.log as '2FA email code: NNNNNN').",
+  "seed_data_creation": "Backend seeded by startup hook: user jury@zynthoro.ai + 5 team_members + 5 demo_projects + 6 demo_invoices, all keyed by workspace_owner=jury.id. Verified idempotent across two consecutive `supervisorctl restart backend` cycles (counts stay 5/5/6). Tests create transient TEST_demoreg_* / TEST_inject_* users but do not clean them up — they are harmless and isolated by the unique TEST_ prefix.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "When testing the /dashboard/finance demo page, allow ~3-4 seconds AFTER `wait_for_selector('demo-invoices-page')` before scraping inner_text — the GET /api/demo/invoices fetch fires inside useEffect and the initial render shows 'Loading demo invoices…' with €0 stat pills. Don't mistake that for a bug (I did initially). Same for projects but its fetch happens to resolve faster. For backend regression after any future seed-related change, run: `cd /app/backend && python -m pytest tests/test_jury_demo.py -v` — it covers login bypass, is_demo injection hardening (signup ignores `is_demo:true` in payload — Pydantic strips it), demo endpoints, team levels, isolation, and idempotency in one shot. The founder TOTP drift persists from iter11 — email-2FA path is the documented workaround. Full suite takes ~140s (over the 120s default bash timeout) — run with timeout=300 or split by file.",
+  "rca of the issue": "No bugs in scope. The single transient false-positive (finance page appeared blank in first browser pass) was a test-timing artefact — fetch had not resolved before inner_text scrape; confirmed working with a 4s wait. Founder TOTP mismatch is a pre-existing credential drift (iter11) and does not block the regression test (email-2FA path succeeded and confirmed is_demo=None, plan='Enterprise Unlimited', /api/demo/* returns empty lists for the founder)."
+}

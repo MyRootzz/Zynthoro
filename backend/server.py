@@ -346,6 +346,18 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             "available_methods": ["totp", "email"],
         }
 
+    # Demo accounts (XPRIZE jury, etc.) bypass the 2FA setup gate — judges
+    # should land in the dashboard with a single click. The is_demo flag is
+    # set by the seed function and can never be granted via the API.
+    if user.get("is_demo"):
+        access = create_access_token(user["id"], user["email"], twofa_passed=True)
+        _set_auth_cookies(response, access)
+        return {
+            "stage": "ok",
+            "access_token": access,
+            "user": _serialize_user(user),
+        }
+
     # No 2FA yet → must set it up before issuing full access token.
     pre = create_pretwofa_token(user["id"], user["email"])
     return {
@@ -1467,6 +1479,25 @@ async def account_me(user=Depends(get_current_user_full)):
     return user
 
 
+@api_router.get("/demo/projects")
+async def demo_projects(user=Depends(get_current_user_full)):
+    """List demo projects for the current workspace (jury demo + any future demo seeds)."""
+    rows = await db.demo_projects.find(
+        {"workspace_owner": user["id"]}, {"_id": 0}
+    ).sort("due", 1).to_list(50)
+    return {"projects": rows}
+
+
+@api_router.get("/demo/invoices")
+async def demo_invoices(user=Depends(get_current_user_full)):
+    rows = await db.demo_invoices.find(
+        {"workspace_owner": user["id"]}, {"_id": 0}
+    ).sort("issued", -1).to_list(50)
+    total = sum((r.get("amount_eur") or 0) for r in rows)
+    paid = sum((r.get("amount_eur") or 0) for r in rows if r.get("status") == "Paid")
+    return {"invoices": rows, "total_eur": total, "paid_eur": paid}
+
+
 @api_router.patch("/account/company")
 async def account_update_company(payload: CompanySettingsIn, user=Depends(get_current_user_full)):
     updates = {k: v for k, v in payload.model_dump(exclude_unset=True).items() if v is not None}
@@ -1578,6 +1609,114 @@ async def seed_founder():
         )
 
 
+async def seed_jury_demo():
+    """XPRIZE / investor demo account, pre-populated with realistic sample data.
+
+    Always force-resets the user's auth state on each boot so judges land in
+    the dashboard with one click — no email verification, no 2FA prompt, no
+    onboarding wizard. The flag `is_demo=True` exempts the account from any
+    real billing or destructive operations.
+    """
+    email = "jury@zynthoro.ai"
+    password = "ZynthoroDemo2026!"
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    base_doc = {
+        "email": email,
+        "first_name": "XPRIZE",
+        "last_name": "Jury",
+        "company": "Zynthoro Demo Workspace",
+        "password_hash": hash_password(password),
+        "role": "Demo · Enterprise",
+        "is_demo": True,
+        "is_unlimited": True,
+        "billing_exempt": True,
+        "subscription_plan": "Enterprise Advanced",
+        "subscription_status": "active",
+        "email_verified": True,
+        "twofa_enabled": False,
+        "twofa_method": None,
+        "onboarding_completed": True,
+        "updated_at": now_iso,
+    }
+
+    existing = await db.users.find_one({"email": email})
+    if not existing:
+        user_id = str(uuid.uuid4())
+        await db.users.insert_one({
+            "id": user_id,
+            **base_doc,
+            "created_at": now_iso,
+        })
+        logger.info("Jury demo account seeded: %s", email)
+    else:
+        user_id = existing["id"]
+        # Always force-reset password + flags so judges can never be locked out
+        # even if a previous boot left the account in a half-state.
+        await db.users.update_one({"id": user_id}, {"$set": base_doc})
+
+    # ----- Demo data (idempotent — only inserts if absent) -----
+    workspace_owner = user_id
+
+    # Team members
+    if await db.team_members.count_documents({"workspace_owner": workspace_owner}) == 0:
+        demo_team = [
+            ("amelia.chen@zynthoro-demo.ai",  "Amelia Chen",   "Director",        9, "active"),
+            ("daniel.kruger@zynthoro-demo.ai","Daniel Krüger", "Senior Manager",  7, "active"),
+            ("priya.shah@zynthoro-demo.ai",   "Priya Shah",    "Manager",         5, "active"),
+            ("luca.rossi@zynthoro-demo.ai",   "Luca Rossi",    "Employee",        3, "active"),
+            ("nina.adebayo@zynthoro-demo.ai", "Nina Adebayo",  "Intern",          1, "invited"),
+        ]
+        await db.team_members.insert_many([
+            {
+                "id": str(uuid.uuid4()),
+                "workspace_owner": workspace_owner,
+                "email": em.lower(),
+                "name": nm,
+                "role": role,
+                "level": lv,
+                "status": st,
+                "twofa": True,
+                "last_login": now_iso,
+                "created_at": now_iso,
+                "is_demo": True,
+            }
+            for (em, nm, role, lv, st) in demo_team
+        ])
+        logger.info("Seeded %d demo team members for jury workspace", len(demo_team))
+
+    # Projects
+    if await db.demo_projects.count_documents({"workspace_owner": workspace_owner}) == 0:
+        demo_projects = [
+            {"name": "Q1 Product Roadmap",      "domain": "Project Management", "status": "On track",  "progress": 72,  "owner": "Amelia Chen",   "due": "2026-03-31"},
+            {"name": "Spring Marketing Launch", "domain": "Marketing & Content","status": "On track",  "progress": 48,  "owner": "Priya Shah",    "due": "2026-04-15"},
+            {"name": "SOC 2 Type II Audit",     "domain": "Compliance",         "status": "At risk",   "progress": 31,  "owner": "Daniel Krüger", "due": "2026-05-30"},
+            {"name": "EU Sales Pipeline 2026",  "domain": "Sales Admin",        "status": "On track",  "progress": 64,  "owner": "Luca Rossi",    "due": "2026-12-31"},
+            {"name": "AI Caption Engine v2",    "domain": "Operations",         "status": "Completed", "progress": 100, "owner": "Amelia Chen",   "due": "2026-01-28"},
+        ]
+        await db.demo_projects.insert_many([
+            {**p, "id": str(uuid.uuid4()), "workspace_owner": workspace_owner, "created_at": now_iso, "is_demo": True}
+            for p in demo_projects
+        ])
+        logger.info("Seeded %d demo projects for jury workspace", len(demo_projects))
+
+    # Invoices
+    if await db.demo_invoices.count_documents({"workspace_owner": workspace_owner}) == 0:
+        demo_invoices = [
+            {"number": "ZY-2026-0042", "client": "Aurora Studios B.V.",       "amount_eur": 4990, "issued": "2026-01-04", "due": "2026-02-04", "status": "Paid"},
+            {"number": "ZY-2026-0043", "client": "Helix Robotics GmbH",       "amount_eur": 8990, "issued": "2026-01-12", "due": "2026-02-12", "status": "Paid"},
+            {"number": "ZY-2026-0044", "client": "Lumen Therapeutics PLC",    "amount_eur": 11990,"issued": "2026-01-21", "due": "2026-02-21", "status": "Sent"},
+            {"number": "ZY-2026-0045", "client": "Sable & Co. Architects",    "amount_eur": 6990, "issued": "2026-01-28", "due": "2026-02-28", "status": "Sent"},
+            {"number": "ZY-2026-0046", "client": "Verdant Foods Co-op",       "amount_eur": 3490, "issued": "2026-02-02", "due": "2026-03-02", "status": "Draft"},
+            {"number": "ZY-2026-0047", "client": "Northwind Capital Partners","amount_eur": 24990,"issued": "2026-02-04", "due": "2026-03-04", "status": "Overdue"},
+        ]
+        await db.demo_invoices.insert_many([
+            {**inv, "id": str(uuid.uuid4()), "workspace_owner": workspace_owner, "created_at": now_iso, "is_demo": True}
+            for inv in demo_invoices
+        ])
+        logger.info("Seeded %d demo invoices for jury workspace", len(demo_invoices))
+
+
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)
@@ -1591,6 +1730,7 @@ async def startup():
     await db.business_verifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.payment_transactions.create_index("session_id", unique=True)
     await seed_founder()
+    await seed_jury_demo()
 
 
 @app.on_event("shutdown")

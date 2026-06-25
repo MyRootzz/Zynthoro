@@ -43,17 +43,37 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **Logo**: full gold `ZYNTHORO` everywhere (homepage navbar/footer, auth pages on dark chip, dashboard sidebar).
 - **Tests**: 25/25 backend tests passing (`/app/backend/tests/test_phase2_auth_dashboard_ai.py`).
 
-## What's Implemented (Phase 3 — Legal Pages — done 2026-02-05)
-- **Resend transactional email service**: `RESEND_API_KEY` wired into `/app/backend/.env`; `email_service.is_enabled()` returns true; real Resend calls reach the API. DNS verification of `zynthoro.ai` pending on user side (DKIM/SPF records). Until verified, sends fail with "domain not verified" — backend logic is correct.
-- **Legal pages** (white background, blue hero, gold accents, sticky sidebar nav, Inter font):
-  - `/legal/privacy` — GDPR/UAVG-compliant Privacy Policy.
-  - `/legal/terms` — Terms of Service (founder pricing locked 24 months, EU jurisdiction).
-  - `/legal/cookies` — Cookie Policy with 3-tier consent model.
-  - `/legal/dpa` — Data Processing Agreement w/ sub-processor list + Annex A security.
-  - `/legal/sla` — Service Level Agreement w/ uptime table per plan + credit schedule.
-- Footer Legal column now links via React Router `<Link>` to all 5 pages (no full-page reload).
-- Shared `LegalLayout` and `LegalSection` components live under `/app/frontend/src/components/legal/`.
-- **Tests**: 31 passing, 1 skipped (email-2FA assertion skipped when Resend is live; TOTP path covered).
+## What's Implemented (Streaming + Branded Export + Final Legal Polish — done 2026-02-05)
+
+**Fix 1 — Streaming AI responses (no more truncation)**
+- New `POST /api/ai/stream` SSE endpoint in `server.py` emitting `event: meta` (provider/model/badge/session_id), `event: delta` ({content}), `event: error`, `event: done` (latency_ms, chars).
+- `max_tokens` raised from 900 → 4000 for all four assistants.
+- `chat_stream` in `ai_assistants.py` persists user + final assistant messages and writes ai_logs after stream completes.
+- Frontend reads SSE via `fetch()` + ReadableStream (`/app/frontend/src/lib/aiStream.js`), renders tokens progressively with a pulsing blue caret.
+
+**Fix 2 — Corrected system prompts**
+- `SP_THORO_BASIC` / `SP_THORO_PRO` now contain an ABSOLUTE RULE forbidding Shopify, WooCommerce, BigCommerce, HubSpot, Notion, QuickBooks etc. as primary recommendations — Zynthoro's Sales Admin / Invoicing & Finance / Marketing & Content / Operations domains come first.
+- `SP_ZYONA` explicitly bans inventing fake assistant names (Lexara, Finara, Creova, Marketa, Operea, Legara, Salesa, HRova, Procura, Brandara, Insighta…) and pins the universe of assistants to exactly four real ones.
+- Verified by testing agent against the actual model outputs in iteration_3.
+
+**Fix 3 — Copy + Download-PDF buttons on every assistant message**
+- `/app/frontend/src/lib/aiExport.js` exposes `stripMarkdown` (no **, _, #, ` symbols) and `downloadAssistantPdf` (jsPDF — navy header with gold ZYNTHORO wordmark, blue #1A4FFF accent line, ISO date, white background, `zynthoro.ai` footer).
+- `AssistantActions.jsx` renders the action row beneath every completed assistant reply on both the per-page assistant route and the floating Zynthoro Assist bubble.
+- Verified by testing agent: PDF download triggered with filename pattern `<assistant>-YYYY-MM-DD.pdf`; clipboard content is plain text.
+
+**Fix 4 — Canonical legal page paths + GDPR content**
+- New routes: `/legal/privacy-policy`, `/legal/terms-of-service`, `/legal/cookie-policy`, `/legal/dpa`, `/legal/sla`.
+- Old short paths `/legal/privacy`, `/legal/terms`, `/legal/cookies` now redirect via `<Navigate to=…>`.
+- Every legal page now references `Casa Haya International BV` + `KvK 99196581` + `info@zynthoro.ai`.
+- Privacy + DPA + SLA all explicitly mention Republic of Ireland (eu-west) EU hosting.
+- Footer "Legal" column has all five `data-testid='footer-link-*'` Link entries.
+
+**Test results — iteration 3 + iteration 4**
+- 9/9 new streaming + prompt-fix backend tests PASS.
+- 24/25 phase-2 regression PASS (1 skipped by design — email-2FA can't be tested when Resend is live).
+- 5/5 legal pages PASS (Ireland mention added to SLA in retest, iteration 4 confirmed).
+- Streaming UI verified progressive (msg length grew 151 → 161 → 628 → 1114 chars during a single send).
+- Copy + Download-PDF buttons verified on both the page-level assistants and the floating bubble.
 
 ## Phase 3 (queued — pasted by user during Phase 2)
 - Full Pricing page (9 plans + comparison table + FAQ)

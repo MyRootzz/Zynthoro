@@ -25,10 +25,10 @@ const REPLACEMENT_ROWS = [
 
 const SAVINGS_ROWS = [
   { plan: "Starter",    market: "€100 - €200/month",     zynthoro: "€499/month",        save: "Growing investment — foundation for scale" },
-  { plan: "Creator",    market: "€300 - €600/month",     zynthoro: "€699/month",        save: "Up to €-300/month*" },
+  { plan: "Creator",    market: "€300 - €600/month",     zynthoro: "€699/month",        save: "Up to €-300/month" },
   { plan: "Business",   market: "€600 - €1.500/month",   zynthoro: "€899/month",        save: "Up to €600/month" },
   { plan: "Agency",     market: "€1.500 - €3.000/month", zynthoro: "€1.199/month",      save: "Up to €1.800/month" },
-  { plan: "Enterprise", market: "€10.000 - €35.000/mo",  zynthoro: "from €2.499/month", save: "Up to €32.500/month" },
+  { plan: "Enterprise", market: "€10.000 - €35.000/mo",  zynthoro: "from €2,499/month", save: "Up to €32.500/month" },
 ];
 
 function tierAccent(name) {

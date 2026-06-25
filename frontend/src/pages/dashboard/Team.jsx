@@ -299,10 +299,25 @@ export default function TeamPage() {
                   Add seats
                 </button>
               </>
-            ) : (
+            ) : plan?.startsWith("Enterprise") ? (
               <p className="text-[13.5px] text-[#555]">
                 Your Enterprise plan includes unlimited seats — no extra purchase needed.
               </p>
+            ) : (
+              <div className="text-[13.5px] text-[#555] space-y-3">
+                <p>
+                  Extra seats are a Business+ add-on. Upgrade to Business
+                  (€899/mo) to add seats at €4.99/seat/month, or Agency
+                  (€1,199/mo) at €3.99/seat/month.
+                </p>
+                <button
+                  onClick={() => { setSeats({ open: false, count: 1 }); window.location.href = "/dashboard/settings#billing"; }}
+                  className="zy-btn-primary w-full"
+                  data-testid="seats-upgrade-cta"
+                >
+                  Upgrade to Business
+                </button>
+              </div>
             )}
           </div>
         </DialogContent>

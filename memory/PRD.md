@@ -43,6 +43,22 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **Logo**: full gold `ZYNTHORO` everywhere (homepage navbar/footer, auth pages on dark chip, dashboard sidebar).
 - **Tests**: 25/25 backend tests passing (`/app/backend/tests/test_phase2_auth_dashboard_ai.py`).
 
+## What's Implemented (XPRIZE Jury Demo Account — done 2026-02-05)
+
+**One-click demo for XPRIZE judges / investors**
+- New `seed_jury_demo()` hook runs on every backend startup. Creates user `jury@zynthoro.ai` / `ZynthoroDemo2026!` with `is_demo=true`, plan `Enterprise Advanced`, `email_verified=true`, `twofa_enabled=false`, `onboarding_completed=true`. Force-resets on every boot so judges can never be locked out.
+- Login bypass: `/api/auth/login` returns `stage='ok'` directly for `is_demo` accounts — no email verify, no 2FA setup gate. `is_demo` can ONLY be set by the seed (verified via signup-injection test).
+- Seeded demo data (idempotent — only inserts if absent):
+  - 5 team members at levels L9 / L7 / L5 / L3 / L1
+  - 5 projects across Project Management, Marketing, Compliance, Sales, Operations
+  - 6 invoices totalling €61,440 (€13,980 paid · €47,460 outstanding · 1 overdue)
+- Frontend `/dashboard/projects` and `/dashboard/finance` render the full Projects table and Finance dashboard for demo users (via `GET /api/demo/projects` & `GET /api/demo/invoices`); non-demo users see the construction placeholder unchanged.
+
+**Test results — iteration 12:**
+- 10/10 new jury-demo tests PASS (login bypass, signup-injection hardening, demo endpoints, workspace isolation, idempotency)
+- 116/116 backend regression PASS + 1 skipped by design
+- Frontend E2E verified all 6 surfaces (login → dashboard → projects → finance → team → founder regression)
+
 ## What's Implemented (Internal Stripe-Event Alerts — done 2026-02-05)
 
 **Every Stripe webhook → email to info@zynthoro.ai**

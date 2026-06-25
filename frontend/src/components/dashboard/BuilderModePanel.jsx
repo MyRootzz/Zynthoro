@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { API, formatApiError } from "@/contexts/AuthContext";
 import { Flag, Users, MessageCircle, Database, Beaker } from "lucide-react";
+import StripeMetricsCard from "@/components/dashboard/StripeMetricsCard";
 
 export default function BuilderModePanel() {
   const [stats, setStats] = useState(null);
@@ -54,6 +55,8 @@ export default function BuilderModePanel() {
         <StatCard icon={MessageCircle} label="AI messages" value={stats?.ai_messages} />
         <StatCard icon={Database} label="Team members" value={stats?.team_members} />
       </div>
+
+      <StripeMetricsCard />
 
       {flags && (
         <div className="bg-white rounded-lg border border-[#eee] p-4 mb-6">

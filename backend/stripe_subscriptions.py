@@ -7,6 +7,7 @@ in code), so they live here for clarity instead of in `.env`.
 """
 import os
 import logging
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 import stripe
@@ -177,3 +178,92 @@ def get_session_summary(session_id: str) -> Dict:
 def normalised_plan_label(plan_key: str) -> Optional[str]:
     cfg = PLAN_PRICE_IDS.get(plan_key)
     return cfg["label"] if cfg else None
+
+
+# ===============================================================
+# Builder-Mode metrics — live Stripe MRR / ARR / breakdown
+# ===============================================================
+
+# Reverse map: price_id -> plan_key (built from PLAN_PRICE_IDS)
+_PRICE_TO_PLAN = {cfg["price_id"]: key for key, cfg in PLAN_PRICE_IDS.items()}
+_SEAT_PRICE_TO_PLAN = {cfg["price_id"]: key for key, cfg in SEAT_PRICE_IDS.items()}
+
+
+def compute_stripe_mrr() -> Dict:
+    """Pull every ACTIVE Stripe subscription and aggregate MRR + ARR.
+
+    Pricing logic:
+      - Sums actual `unit_amount * quantity` from each subscription item.
+      - Monthly intervals stay as-is. Yearly intervals divided by 12.
+    """
+    _configure()
+    plan_counts: Dict[str, int] = {}
+    plan_mrr: Dict[str, float] = {}
+    seat_counts: Dict[str, int] = {}
+    seat_mrr: Dict[str, float] = {}
+    active = 0
+    total_mrr = 0.0
+    seats_total_mrr = 0.0
+
+    starting_after: Optional[str] = None
+    while True:
+        kwargs = {"status": "active", "limit": 100, "expand": ["data.items.data.price"]}
+        if starting_after:
+            kwargs["starting_after"] = starting_after
+        page = stripe.Subscription.list(**kwargs)
+        for sub in page.data:
+            active += 1
+            for item in sub["items"]["data"]:
+                price = item.get("price") or {}
+                unit_amount = price.get("unit_amount") or 0
+                qty = item.get("quantity") or 1
+                interval = (price.get("recurring") or {}).get("interval") or "month"
+                price_id = price.get("id") or ""
+                monthly_cents = unit_amount * qty
+                if interval == "year":
+                    monthly_cents = monthly_cents / 12
+                elif interval == "week":
+                    monthly_cents = monthly_cents * 52 / 12
+                elif interval == "day":
+                    monthly_cents = monthly_cents * 365 / 12
+                monthly_eur = round(monthly_cents / 100.0, 2)
+
+                if price_id in _SEAT_PRICE_TO_PLAN:
+                    key = _SEAT_PRICE_TO_PLAN[price_id]
+                    seat_counts[key] = seat_counts.get(key, 0) + qty
+                    seat_mrr[key] = round(seat_mrr.get(key, 0.0) + monthly_eur, 2)
+                    seats_total_mrr += monthly_eur
+                else:
+                    key = _PRICE_TO_PLAN.get(price_id, "Other")
+                    plan_counts[key] = plan_counts.get(key, 0) + 1
+                    plan_mrr[key] = round(plan_mrr.get(key, 0.0) + monthly_eur, 2)
+                total_mrr += monthly_eur
+        if not page.has_more:
+            break
+        starting_after = page.data[-1].id
+
+    plan_breakdown = []
+    for key in list(PLAN_PRICE_IDS.keys()) + ["Other"]:
+        if key in plan_counts:
+            plan_breakdown.append({
+                "plan_key": key,
+                "label": PLAN_PRICE_IDS.get(key, {}).get("label", key),
+                "count": plan_counts[key],
+                "mrr_eur": plan_mrr.get(key, 0.0),
+            })
+
+    seat_breakdown = [
+        {"plan_key": k, "seats": v, "mrr_eur": seat_mrr.get(k, 0.0)}
+        for k, v in seat_counts.items()
+    ]
+
+    return {
+        "active_subs": active,
+        "mrr_eur": round(total_mrr, 2),
+        "arr_eur": round(total_mrr * 12, 2),
+        "seats_mrr_eur": round(seats_total_mrr, 2),
+        "plan_breakdown": plan_breakdown,
+        "seat_breakdown": seat_breakdown,
+        "currency": "eur",
+        "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }

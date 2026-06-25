@@ -1182,6 +1182,19 @@ async def checkout_session_status(
     return {"txn": txn, "stripe": summary}
 
 
+@api_router.get("/founder/stripe-metrics")
+async def founder_stripe_metrics(user=Depends(get_founder_user)):
+    """Live Stripe MRR / ARR / breakdown for the Builder Mode panel."""
+    try:
+        data = subs_mod.compute_stripe_mrr()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("Stripe metrics fetch failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+    return data
+
+
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     host_url = str(request.base_url)

@@ -1,0 +1,38 @@
+{
+  "summary": "Full backend + frontend verification of the new Builder-Mode Live Stripe MRR/ARR widget. Backend: 8/8 new tests PASS in test_stripe_metrics.py — (a) monthly Creator → mrr=699, (b) yearly Business @ €10,788/yr → mrr=899 (yearly/12), (c) Business + 5 seats @ €4.99 → mrr=923.95 and seats_mrr_eur=24.95, weekly interval → ×52/12, plan_breakdown ordering exactly Starter→Creator→Business→Agency→Enterprise Basic→Enterprise Plus→Enterprise Advanced→Other, and arr_eur == 12*mrr_eur in every case. API authz on GET /api/founder/stripe-metrics: anonymous→401, non-founder→403, founder→200 with full shape (active_subs, mrr_eur, arr_eur, seats_mrr_eur, plan_breakdown, seat_breakdown, currency='eur', fetched_at) returning empty pre-launch state in <8s. Regression: 84 passed, 1 skipped (76 prior + 8 new = 84) — no regressions. Frontend: founder login via TOTP works, /dashboard renders, switch-mode toggles Builder Mode, stripe-metrics-card appears beneath the four StatCards, shows 3 totals tiles (ACTIVE SUBS=0, MRR=€0, ARR=€0) with EUR formatting, renders stripe-metrics-empty state ('No active subscriptions yet. Numbers will populate as soon as your first customer completes checkout.'), no plan-breakdown table. Refresh button refetches and the 'updated HH:MM:SS' label changes (7:54:38→7:54:40). Non-founder regression confirmed: a freshly-signed-up non-founder user sees NO switch-mode, NO builder-panel, NO stripe-metrics-card on /dashboard, and direct fetch of /api/founder/stripe-metrics from that browser returns 403 {detail:'Founder only'}. Founder 2FA TOTP secret + billing_exempt + Enterprise Unlimited plan fully restored at end of test. Test users (TEST_metrics_*, test_nonf_*) cleaned up — 8 rows removed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "StripeMetricsCard refresh", "issues": ["Spinner inside refresh button is only visible if the API call is slow. Against the pre-launch Stripe account the response returns in <300ms so the spinner is almost imperceptible. Not a bug — purely a perception note. Consider adding a min-spin-duration of 400ms for nicer UX."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stripe_metrics.py",
+    "/app/test_reports/pytest/iter10_metrics.xml",
+    "/app/test_reports/pytest/iter10_full.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "stripe_subscriptions.compute_stripe_mrr — pagination loop uses page.has_more + starting_after correctly; expand=['data.items.data.price'] avoids per-sub price round-trips. Good.",
+    "Yearly→monthly division is plain float / 12 then round(.,2). This is fine for our €-cent precision but for a sub priced at e.g. €100/yr it produces 8.33 (=100/12 rounded); the ARR computation then does 12 * 8.33 = 99.96, drifting €0.04 from the real €100/yr. Not a blocker — at our actual price points (10,788/yr → 899.00 exact) there is no drift. If exact ARR matching matters later, track annual_mrr separately and compute ARR from raw annual.",
+    "server.py:1185 endpoint surfaces RuntimeError as 503 and other Stripe errors as 502 — correct error taxonomy.",
+    "StripeMetricsCard.jsx — useEffect deps array is [] so initial fetch is once; React.StrictMode in dev would double-fire, but axios call is idempotent (read-only). Acceptable.",
+    "StripeMetricsCard.jsx — formatEur drops decimals when n >= 1000, so e.g. €1234.50 displays as '1,235'. Fine for MRR/ARR but the plan-breakdown table reuses the same helper — a high-revenue plan row would also lose its cents. Minor UX nit; not a functional bug.",
+    "All interactive elements (stripe-metrics-card, stripe-metrics-totals, stripe-metrics-refresh, stripe-metrics-empty, stripe-metrics-breakdown, stripe-row-<plan>, stripe-metrics-seats) carry data-testid attributes — testability is excellent."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stripe_metrics.py (NEW — 8 new tests: 5 unit + 3 authz)"
+  ],
+  "success_rate": {
+    "backend": "8/8 new tests (100%) + 84 passed / 1 skipped total regression (100%)",
+    "frontend": "4/4 scenarios passed — founder card render, totals shape + EUR formatting, empty-state with no breakdown table, refresh-changes-timestamp, non-founder regression (no toggle, no card, API 403)"
+  },
+  "test_credentials": "Founder regie@myrootzz.com / Zynthoro2026! — TOTP secret 4FIFMTFPW3H2H7PFE6MPMXWDC2E53HQJ was preserved (read pre-test, restored post-test). 2FA temporarily toggled off then back on to TOTP with the same secret.",
+  "seed_data_creation": "1 transient non-founder user (test_nonf_521da320@example.com) created via /api/auth/signup with twofa_enabled=true + a fresh TOTP secret for the regression test. Plus ~7 short-lived TEST_metrics_* users from earlier API-authz iterations. All 8 deleted at end of run.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Builder-Mode Live Stripe widget is fully verified — endpoint + math + UI + non-founder regression. Founder state (twofa_enabled=true, twofa_method=totp, totp_secret=4FIFMTFPW3H2H7PFE6MPMXWDC2E53HQJ, billing_exempt=true, subscription_plan='Enterprise Unlimited', is_founder=true, is_unlimited=true) restored. Total backend test count is now 84+1skipped (was 76+1 before this iteration). Note: the request expected '55 passed, 1 skipped (no new file added)' — we DID add /app/backend/tests/test_stripe_metrics.py because the same review explicitly required a stubbed compute_stripe_mrr math test, so the regression baseline grew from 76→84 as a result (no existing tests regressed).",
+  "rca of the issue": "N/A — feature verification, no bug found."
+}

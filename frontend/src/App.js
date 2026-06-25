@@ -1,6 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Toaster } from "@/components/ui/sonner";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -39,11 +38,15 @@ function App() {
             <Route path="/2fa/verify" element={<TwoFactorVerify />} />
             <Route path="/subscribe/starter" element={<SubscribeStarter />} />
             <Route path="/subscribe/starter/return" element={<SubscribeStarterReturn />} />
-            <Route path="/legal/privacy" element={<PrivacyPolicy />} />
-            <Route path="/legal/terms" element={<TermsOfService />} />
-            <Route path="/legal/cookies" element={<CookiePolicy />} />
+            <Route path="/legal/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/legal/terms-of-service" element={<TermsOfService />} />
+            <Route path="/legal/cookie-policy" element={<CookiePolicy />} />
             <Route path="/legal/dpa" element={<DPA />} />
             <Route path="/legal/sla" element={<SLA />} />
+            {/* Backwards-compatible redirects for the earlier short URLs */}
+            <Route path="/legal/privacy" element={<Navigate to="/legal/privacy-policy" replace />} />
+            <Route path="/legal/terms" element={<Navigate to="/legal/terms-of-service" replace />} />
+            <Route path="/legal/cookies" element={<Navigate to="/legal/cookie-policy" replace />} />
             <Route
               path="/onboarding"
               element={

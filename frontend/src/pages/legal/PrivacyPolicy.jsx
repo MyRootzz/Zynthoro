@@ -6,22 +6,25 @@ export default function PrivacyPolicy() {
     <LegalLayout
       title="Privacy Policy"
       lastUpdated="February 5, 2026"
-      current="privacy"
+      current="privacy-policy"
     >
       <p className="text-[16px] text-black/80 mb-10 leading-[1.8]">
         Zynthoro is operated by <strong>Casa Haya International BV</strong>{" "}
-        ("Zynthoro", "we", "us"). This Privacy Policy explains what personal data
-        we collect when you use the Zynthoro platform (zynthoro.ai), how we use
-        it, and the rights you have under the EU General Data Protection
-        Regulation (GDPR) and the Dutch GDPR Implementation Act (UAVG).
+        (KvK 99196581, "Zynthoro", "we", "us"), a private limited company
+        registered in the Netherlands. This Privacy Policy explains what
+        personal data we collect when you use the Zynthoro platform
+        (zynthoro.ai), how we use it, and the rights you have under the EU
+        General Data Protection Regulation (GDPR) and the Dutch GDPR
+        Implementation Act (UAVG). All personal data is hosted on EU-based
+        infrastructure, primarily in the Republic of Ireland (eu-west).
       </p>
 
       <LegalSection id="controller" number="1" title="Data Controller">
         <p>
-          Casa Haya International BV is the data controller for personal data
-          processed through Zynthoro. You can reach us at{" "}
-          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:privacy@zynthoro.ai">
-            privacy@zynthoro.ai
+          Casa Haya International BV (KvK 99196581) is the data controller for
+          personal data processed through Zynthoro. You can reach us at{" "}
+          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:info@zynthoro.ai">
+            info@zynthoro.ai
           </a>
           .
         </p>
@@ -64,21 +67,27 @@ export default function PrivacyPolicy() {
         </p>
       </LegalSection>
 
-      <LegalSection id="sharing" number="5" title="Sub-processors">
-        <p>We share data only with the sub-processors needed to deliver the service:</p>
+      <LegalSection id="sharing" number="5" title="Sub-processors & EU hosting">
+        <p>
+          All Customer Data is hosted on EU-based infrastructure, primarily in
+          the Republic of Ireland (eu-west). We share data only with the
+          sub-processors needed to deliver the service:
+        </p>
         <LegalList
           items={[
-            "Stripe Payments Europe Ltd. (Ireland) — payments and invoicing.",
-            "Anthropic PBC (USA) — Claude AI inference, zero-retention.",
-            "Google LLC (USA) — Gemini AI inference, zero-retention.",
-            "Resend Inc. (USA) — transactional emails (account, 2FA, password resets).",
-            "MongoDB Atlas (EU-West) — primary database storage.",
-            "Cloudflare Inc. (USA) — DNS, CDN, DDoS protection.",
+            "Stripe Payments Europe Ltd. (Ireland, EU) — payments and invoicing.",
+            "Anthropic PBC (USA, SCCs + zero-retention) — Claude AI inference.",
+            "Google LLC (USA, SCCs + zero-retention) — Gemini AI inference.",
+            "Resend Inc. (USA, SCCs) — transactional emails (account, 2FA, password resets).",
+            "MongoDB Atlas (Ireland, eu-west region) — primary database storage.",
+            "Amazon Web Services EMEA SARL (Ireland, eu-west) — file/object storage and backups.",
+            "Cloudflare Inc. (USA, SCCs) — DNS, CDN, DDoS protection.",
           ]}
         />
         <p>
           A full, version-controlled list lives in our DPA. International
-          transfers use Standard Contractual Clauses (SCCs).
+          transfers use Standard Contractual Clauses (SCCs) plus supplementary
+          measures (end-to-end encryption, zero-retention AI contracts).
         </p>
       </LegalSection>
 
@@ -128,10 +137,10 @@ export default function PrivacyPolicy() {
 
       <LegalSection id="contact" number="10" title="Contact">
         <p>
-          Casa Haya International BV<br />
+          Casa Haya International BV (KvK 99196581)<br />
           Amsterdam, The Netherlands<br />
-          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:privacy@zynthoro.ai">
-            privacy@zynthoro.ai
+          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:info@zynthoro.ai">
+            info@zynthoro.ai
           </a>
         </p>
       </LegalSection>

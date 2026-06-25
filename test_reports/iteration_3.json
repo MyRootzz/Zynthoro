@@ -1,0 +1,45 @@
+{
+  "summary": "Phase 3 testing of streaming SSE AI, system-prompt fixes, Copy/Download-PDF action row, and legal pages. Backend: 9/9 streaming+prompt tests PASS; Phase-2 regression 24/25 PASS (1 skipped = email-2FA when Resend live, by design — brute-force lockout NOW PASSES, prior bug fixed). Frontend: streaming UI verified progressive (len 151->161->628->1114), Copy+PDF buttons present for both per-page assistants and floating assist bubble, PDF download triggers with file 'zyntha-2026-06-25.pdf'. All 5 canonical legal pages render with KvK 99196581, Casa Haya International BV, info@zynthoro.ai. Old legacy paths (/legal/privacy, /legal/terms, /legal/cookies) correctly client-redirect to canonical paths. Footer has all 5 data-testid'd links. ONE bug found: /legal/sla page is missing the required 'Ireland' string (Privacy and DPA both contain it correctly).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/ai/stream (response headers)", "issue": "X-Accel-Buffering: no header is set in backend code but stripped by the Kubernetes ingress edge proxy before reaching the client. Streaming still works correctly because chunks are flushed without nginx buffering anyway. Informational only — no action required."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "/legal/sla page (SLA.jsx)", "issue": "Required string 'Ireland' is missing from SLA page content. Spec requires Privacy, DPA, and SLA to mention Ireland (eu-west hosting). Privacy & DPA pass; SLA does not.", "selector": "page body text", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Assistant chat bubbles", "issues": ["Assistant replies render raw markdown asterisks (e.g. '**Target Niche Keywords**') instead of rendering bold. The Copy button correctly produces plain text (per stripMarkdown) and the PDF correctly strips them, but the in-bubble UX is suboptimal. Consider rendering markdown or stripping in-bubble."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_streaming_legal.py",
+    "/app/backend/tests/test_phase2_auth_dashboard_ai.py",
+    "/app/test_reports/pytest/streaming_results.xml",
+    "/app/test_reports/pytest/phase2_results.xml"
+  ],
+  "action_items": [
+    "Add 'Ireland' / 'eu-west' EU-hosting mention to /app/frontend/src/pages/legal/SLA.jsx (single-line addition — e.g. in the data-region or availability section).",
+    "(Optional) Render markdown (or strip asterisks/underscores/heading hashes) in the live chat bubble so users don't see raw '**bold**' tokens during/after streaming. Copy + PDF already strip correctly."
+  ],
+  "critical_code_review_comments": [
+    "server.py /api/ai/stream uses payload.pop in the inner async generator on each frame ({'type': 'meta', ...}); fine but confirm chat_stream never returns a frame without a 'type' field — defensive default 'delta' handles it.",
+    "ai_assistants.chat_stream must always flush an 'event: done' frame even on early errors so the client's onDone fires and the streaming caret can be removed; verified happy path; please verify the error-mid-stream path also yields done to avoid hung UI.",
+    "AssistantPage.jsx / AssistFloating.jsx: ensure that if the SSE response returns an HTTP error (e.g. 502 from upstream AI failure) the streaming-placeholder message is replaced or removed so the user sees a clear error toast rather than an empty bubble with a caret.",
+    "Legal SLA.jsx missing 'Ireland' — likely an oversight in the recent content rewrite. Privacy & DPA both contain it.",
+    "X-Accel-Buffering response header is set but stripped by the K8s ingress; consider also disabling response buffering at FastAPI level (already done via StreamingResponse) — current behaviour OK."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_streaming_legal.py (new — SSE shape, long-form max_tokens, history persistence, Thoro/Zyona prompt fixes, /ai/chat regression)"
+  ],
+  "success_rate": {"backend": "100% (9/9 new streaming tests + 24/25 phase-2 regression; 1 phase-2 test skipped as designed)", "frontend": "95% (legal: 4/5 pages fully OK, SLA missing Ireland; streaming UI, Copy/PDF, redirects, footer links all OK)"},
+  "test_credentials": "Founder regie@myrootzz.com / Zynthoro2026! used; TOTP 2FA reset via mongosh+pyotp during run. Test DB collection: test_database.",
+  "seed_data_creation": "Several ai_messages + ai_logs rows for session 'founder:zyntha:*' created during streaming verification. Founder TOTP secret is currently set from the test run — main agent should reset twofa_enabled=false for next manual session if needed.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run BOTH `pytest /app/backend/tests/test_streaming_legal.py` and `pytest /app/backend/tests/test_phase2_auth_dashboard_ai.py`. Streaming tests need ~90s due to real LLM calls. For UI: founder TOTP may already be active — clear it first via mongosh `db.users.updateOne({email:'regie@myrootzz.com'},{$set:{twofa_enabled:false,twofa_method:null},$unset:{totp_secret:'',totp_secret_pending:''}})`. After main agent fixes SLA Ireland mention, the only re-test needed is `page.goto('/legal/sla')` and assert text contains 'Ireland'.",
+  "rca of the issue": "SLA page missing Ireland: The legal-page rewrite added Casa Haya International BV / KvK 99196581 / info@zynthoro.ai uniformly across all 5 pages, and added 'Ireland eu-west' to Privacy and DPA, but the SLA page only got the Casa Haya update — the EU-hosting / availability section was not updated to reference Ireland/eu-west even though the spec explicitly requires it. Reproduction: grep -c -i ireland /app/frontend/src/pages/legal/SLA.jsx returns 0. Mitigation: add a sentence in the SLA's infrastructure/availability section: 'Zynthoro is hosted in the European Union (Ireland, eu-west region) for GDPR-compliant data residency.'"
+}

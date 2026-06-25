@@ -33,9 +33,9 @@ const cols = [
   {
     title: "Legal",
     links: [
-      { label: "Privacy Policy", href: "/legal/privacy" },
-      { label: "Terms of Service", href: "/legal/terms" },
-      { label: "Cookie Policy", href: "/legal/cookies" },
+      { label: "Privacy Policy", href: "/legal/privacy-policy" },
+      { label: "Terms of Service", href: "/legal/terms-of-service" },
+      { label: "Cookie Policy", href: "/legal/cookie-policy" },
       { label: "DPA", href: "/legal/dpa" },
       { label: "SLA", href: "/legal/sla" },
     ],

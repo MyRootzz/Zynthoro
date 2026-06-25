@@ -4,6 +4,8 @@ import { Sparkles, X, Send, Loader2 } from "lucide-react";
 import { ZyLogo } from "@/components/ZyLogo";
 import { API, formatApiError } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import AssistantActions from "@/components/dashboard/AssistantActions";
+import { streamAssistantChat } from "@/lib/aiStream";
 
 export default function AssistFloating() {
   const [open, setOpen] = useState(false);
@@ -35,7 +37,7 @@ export default function AssistFloating() {
             setMessages(msgs);
           }
         }
-      } catch {}
+      } catch { /* ignored */ }
     })();
     return () => { cancelled = true; };
   }, [open, sessionId]);
@@ -49,26 +51,65 @@ export default function AssistFloating() {
     const text = input.trim();
     if (!text || busy) return;
     setInput("");
-    setMessages((m) => [...m, { role: "user", content: text }]);
+    setMessages((m) => [
+      ...m,
+      { role: "user", content: text },
+      { role: "assistant", content: "", streaming: true },
+    ]);
     setBusy(true);
-    try {
-      const { data } = await axios.post(`${API}/ai/chat`, {
-        assistant: "zynthoro_assist",
-        session_id: sessionId || undefined,
-        message: text,
-      });
-      if (!sessionId) setSessionId(data.session_id);
-      if (data.badge) setPoweredBy({ badge: data.badge, provider: data.provider });
-      setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
-    } catch (err) {
-      toast.error(formatApiError(err?.response?.data?.detail) || "Assistant is unavailable.");
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: "I had trouble responding. Please try again shortly." },
-      ]);
-    } finally {
-      setBusy(false);
-    }
+
+    let localSession = sessionId;
+    let hadError = false;
+
+    await streamAssistantChat({
+      assistant: "zynthoro_assist",
+      session_id: sessionId || undefined,
+      message: text,
+      onMeta: (meta) => {
+        if (meta?.session_id && !localSession) {
+          localSession = meta.session_id;
+          setSessionId(meta.session_id);
+        }
+        if (meta?.badge) setPoweredBy({ badge: meta.badge, provider: meta.provider });
+      },
+      onDelta: (d) => {
+        const chunk = d?.content || "";
+        if (!chunk) return;
+        setMessages((m) => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant") {
+            next[next.length - 1] = { ...last, content: (last.content || "") + chunk, streaming: true };
+          }
+          return next;
+        });
+      },
+      onError: (err) => {
+        hadError = true;
+        toast.error(formatApiError(err?.message) || "Assistant is unavailable.");
+        setMessages((m) => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant" && !last.content) {
+            next[next.length - 1] = { role: "assistant", content: "I had trouble responding. Please try again shortly." };
+          }
+          return next;
+        });
+      },
+      onDone: () => {
+        setMessages((m) => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant") {
+            next[next.length - 1] = { ...last, streaming: false };
+          }
+          return next;
+        });
+      },
+    });
+
+    setBusy(false);
+    if (hadError && !localSession) setSessionId(null);
   };
 
   return (
@@ -121,13 +162,29 @@ export default function AssistFloating() {
                 >
                   Z
                 </span>
-                <div className="text-[13.5px] leading-relaxed px-3.5 py-2.5 rounded-lg rounded-tl-sm bg-[#F4F6FB] whitespace-pre-wrap">
-                  {m.content}
+                <div className="flex flex-col min-w-0">
+                  <div className="text-[13.5px] leading-relaxed px-3.5 py-2.5 rounded-lg rounded-tl-sm bg-[#F4F6FB] whitespace-pre-wrap">
+                    {m.content}
+                    {m.streaming && (
+                      <span
+                        className="inline-block w-[6px] h-[12px] ml-0.5 align-middle animate-pulse"
+                        style={{ background: "#1A4FFF" }}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </div>
+                  {!m.streaming && m.content && m.content.length > 10 && (
+                    <AssistantActions
+                      content={m.content}
+                      assistantName="Zynthoro Assist"
+                      testIdPrefix={`assist-msg-${i}`}
+                    />
+                  )}
                 </div>
               </div>
             )
           ))}
-          {busy && (
+          {busy && !(messages.length > 0 && messages[messages.length - 1].role === "assistant" && messages[messages.length - 1].streaming) && (
             <div className="flex items-center gap-2">
               <span
                 className="w-7 h-7 rounded-full inline-flex items-center justify-center text-[10px] font-extrabold opacity-80"

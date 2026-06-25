@@ -87,8 +87,8 @@ export default function SLA() {
         <p className="mt-4">
           Credits are the Customer's sole and exclusive remedy for any SLA
           breach. To claim, email{" "}
-          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:support@zynthoro.ai">
-            support@zynthoro.ai
+          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:info@zynthoro.ai">
+            info@zynthoro.ai
           </a>{" "}
           within 30 days of the affected month with the affected dates and
           times.
@@ -118,14 +118,10 @@ export default function SLA() {
 
       <LegalSection id="contact" number="7" title="Contact">
         <p>
-          Operational incidents:{" "}
-          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:support@zynthoro.ai">
-            support@zynthoro.ai
-          </a>
-          <br />
+          Casa Haya International BV (KvK 99196581) — Operational incidents and
           Enterprise escalations:{" "}
-          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:enterprise@zynthoro.ai">
-            enterprise@zynthoro.ai
+          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:info@zynthoro.ai">
+            info@zynthoro.ai
           </a>
         </p>
       </LegalSection>

@@ -6,14 +6,14 @@ export default function TermsOfService() {
     <LegalLayout
       title="Terms of Service"
       lastUpdated="February 5, 2026"
-      current="terms"
+      current="terms-of-service"
     >
       <p className="text-[16px] text-black/80 mb-10 leading-[1.8]">
         These Terms of Service ("Terms") govern your access to and use of the
         Zynthoro platform operated by{" "}
-        <strong>Casa Haya International BV</strong>, registered in the
-        Netherlands (KvK pending). By creating an account, you accept these
-        Terms in full.
+        <strong>Casa Haya International BV</strong> (KvK 99196581), a private
+        limited company registered in the Netherlands. By creating an account,
+        you accept these Terms in full.
       </p>
 
       <LegalSection id="service" number="1" title="The service">
@@ -131,9 +131,9 @@ export default function TermsOfService() {
 
       <LegalSection id="contact" number="12" title="Contact">
         <p>
-          For legal notices:{" "}
-          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:legal@zynthoro.ai">
-            legal@zynthoro.ai
+          For legal notices, send to Casa Haya International BV (KvK 99196581):{" "}
+          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:info@zynthoro.ai">
+            info@zynthoro.ai
           </a>
         </p>
       </LegalSection>

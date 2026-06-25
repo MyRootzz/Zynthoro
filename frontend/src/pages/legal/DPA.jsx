@@ -11,8 +11,11 @@ export default function DPA() {
       <p className="text-[16px] text-black/80 mb-10 leading-[1.8]">
         This Data Processing Agreement ("DPA") forms part of the Zynthoro Terms
         of Service between you ("Controller") and{" "}
-        <strong>Casa Haya International BV</strong> ("Processor", "Zynthoro").
-        It reflects the parties' obligations under Article 28 GDPR.
+        <strong>Casa Haya International BV</strong> (KvK 99196581, "Processor",
+        "Zynthoro"), a private limited company registered in the Netherlands.
+        It reflects the parties' obligations under Article 28 GDPR. All
+        Customer Data is hosted on EU-based infrastructure, primarily in the
+        Republic of Ireland (eu-west).
       </p>
 
       <LegalSection id="subject" number="1" title="Subject matter & duration">
@@ -58,17 +61,21 @@ export default function DPA() {
         />
       </LegalSection>
 
-      <LegalSection id="subprocessors" number="5" title="Sub-processors">
-        <p>Zynthoro uses the following sub-processors (versioned list available on request):</p>
+      <LegalSection id="subprocessors" number="5" title="Sub-processors (EU hosting)">
+        <p>
+          All Customer Data is hosted on EU-based infrastructure, primarily in
+          the Republic of Ireland (eu-west). Zynthoro uses the following
+          sub-processors (versioned list available on request):
+        </p>
         <LegalList
           items={[
-            "Stripe Payments Europe Ltd. (Ireland) — payments.",
-            "Anthropic PBC (USA, SCCs) — Claude AI inference.",
-            "Google LLC (USA, SCCs) — Gemini AI inference.",
+            "Stripe Payments Europe Ltd. (Ireland, EU) — payments.",
+            "Anthropic PBC (USA, SCCs + zero-retention) — Claude AI inference.",
+            "Google LLC (USA, SCCs + zero-retention) — Gemini AI inference.",
             "Resend Inc. (USA, SCCs) — transactional email.",
-            "MongoDB Atlas (EU-West) — primary database.",
+            "MongoDB Atlas (Ireland, eu-west region) — primary database.",
+            "Amazon Web Services EMEA SARL (Ireland, eu-west) — file/object storage and backups.",
             "Cloudflare Inc. (USA, SCCs) — DNS / CDN / WAF.",
-            "Amazon Web Services EMEA (Ireland) — file/object storage.",
           ]}
         />
         <p>
@@ -121,9 +128,9 @@ export default function DPA() {
 
       <LegalSection id="contact" number="10" title="Contact">
         <p>
-          DPO contact:{" "}
-          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:dpo@zynthoro.ai">
-            dpo@zynthoro.ai
+          Casa Haya International BV (KvK 99196581) — Data Protection contact:{" "}
+          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:info@zynthoro.ai">
+            info@zynthoro.ai
           </a>
         </p>
       </LegalSection>

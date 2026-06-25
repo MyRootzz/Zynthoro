@@ -6,7 +6,7 @@ export default function CookiePolicy() {
     <LegalLayout
       title="Cookie Policy"
       lastUpdated="February 5, 2026"
-      current="cookies"
+      current="cookie-policy"
     >
       <p className="text-[16px] text-black/80 mb-10 leading-[1.8]">
         This Cookie Policy explains how Zynthoro uses cookies and similar
@@ -76,9 +76,9 @@ export default function CookiePolicy() {
 
       <LegalSection id="contact" number="5" title="Questions">
         <p>
-          Reach us at{" "}
-          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:privacy@zynthoro.ai">
-            privacy@zynthoro.ai
+          Reach Casa Haya International BV (KvK 99196581) at{" "}
+          <a className="text-[var(--zy-blue)] font-semibold" href="mailto:info@zynthoro.ai">
+            info@zynthoro.ai
           </a>
           .
         </p>

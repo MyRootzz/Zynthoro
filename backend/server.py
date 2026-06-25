@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
+from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -602,6 +603,46 @@ async def ai_chat(payload: AssistChatIn, user=Depends(get_current_user_full)):
         "model": result["model"],
         "badge": result["badge"],
     }
+
+
+@api_router.post("/ai/stream")
+async def ai_stream(payload: AssistChatIn, user=Depends(get_current_user_full)):
+    """Server-Sent Events stream of AI assistant tokens.
+
+    Frames:
+      event: meta  -> {provider, model, badge, session_id, assistant}
+      event: delta -> {content}
+      event: error -> {message}
+      event: done  -> {latency_ms, chars}
+    """
+    import json as _json
+
+    session_id = payload.session_id or f"{user['id']}:{payload.assistant}:{uuid.uuid4()}"
+    plan = user.get("subscription_plan")
+
+    async def event_generator():
+        try:
+            async for frame in ai_assistants.chat_stream(
+                db, payload.assistant, session_id, user["id"], payload.message,
+                subscription_plan=plan,
+            ):
+                ev = frame.pop("type", "delta")
+                yield f"event: {ev}\ndata: {_json.dumps(frame)}\n\n"
+        except ValueError as e:
+            yield f"event: error\ndata: {_json.dumps({'message': str(e)})}\n\n"
+        except Exception:  # noqa: BLE001
+            logger.exception("ai_stream failure")
+            yield f"event: error\ndata: {_json.dumps({'message': 'AI service error.'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @api_router.get("/ai/history")

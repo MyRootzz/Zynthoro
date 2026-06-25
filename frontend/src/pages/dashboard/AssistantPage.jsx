@@ -3,6 +3,8 @@ import axios from "axios";
 import { Send, Loader2, Sparkles, BrainCircuit, TrendingUp } from "lucide-react";
 import { API, formatApiError } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import AssistantActions from "@/components/dashboard/AssistantActions";
+import { streamAssistantChat } from "@/lib/aiStream";
 
 const CONFIGS = {
   zyntha: {
@@ -76,7 +78,7 @@ export default function AssistantPage({ assistantKey }) {
             resumed = true;
           }
         }
-      } catch {}
+      } catch { /* ignored */ }
       if (!resumed && !cancelled) {
         setMessages([{
           role: "assistant",
@@ -97,23 +99,65 @@ export default function AssistantPage({ assistantKey }) {
     const value = (text ?? input).trim();
     if (!value || busy) return;
     if (!text) setInput("");
-    setMessages((m) => [...m, { role: "user", content: value }]);
+
+    // Append the user message, then an empty assistant message we will fill via stream
+    setMessages((m) => [...m, { role: "user", content: value }, { role: "assistant", content: "", streaming: true }]);
     setBusy(true);
-    try {
-      const { data } = await axios.post(`${API}/ai/chat`, {
-        assistant: assistantKey,
-        session_id: sessionId || undefined,
-        message: value,
-      });
-      if (!sessionId) setSessionId(data.session_id);
-      if (data.badge) setPoweredBy({ badge: data.badge, provider: data.provider, model: data.model });
-      setMessages((m) => [...m, { role: "assistant", content: data.reply }]);
-    } catch (e) {
-      toast.error(formatApiError(e?.response?.data?.detail) || `${cfg.name} is unavailable.`);
-      setMessages((m) => [...m, { role: "assistant", content: "I had trouble responding. Please try again shortly." }]);
-    } finally {
-      setBusy(false);
-    }
+
+    let localSession = sessionId;
+    let hadError = false;
+
+    await streamAssistantChat({
+      assistant: assistantKey,
+      session_id: sessionId || undefined,
+      message: value,
+      onMeta: (meta) => {
+        if (meta?.session_id && !localSession) {
+          localSession = meta.session_id;
+          setSessionId(meta.session_id);
+        }
+        if (meta?.badge) {
+          setPoweredBy({ badge: meta.badge, provider: meta.provider, model: meta.model });
+        }
+      },
+      onDelta: (d) => {
+        const chunk = d?.content || "";
+        if (!chunk) return;
+        setMessages((m) => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant") {
+            next[next.length - 1] = { ...last, content: (last.content || "") + chunk, streaming: true };
+          }
+          return next;
+        });
+      },
+      onError: (err) => {
+        hadError = true;
+        toast.error(formatApiError(err?.message) || `${cfg.name} is unavailable.`);
+        setMessages((m) => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant" && !last.content) {
+            next[next.length - 1] = { role: "assistant", content: "I had trouble responding. Please try again shortly." };
+          }
+          return next;
+        });
+      },
+      onDone: () => {
+        setMessages((m) => {
+          const next = [...m];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant") {
+            next[next.length - 1] = { ...last, streaming: false };
+          }
+          return next;
+        });
+      },
+    });
+
+    setBusy(false);
+    if (hadError && !localSession) setSessionId(null);
   };
 
   return (
@@ -168,13 +212,29 @@ export default function AssistantPage({ assistantKey }) {
                   style={{ border: `2px solid ${cfg.color}`, objectPosition: "center top" }}
                   data-testid={`${assistantKey}-msg-avatar`}
                 />
-                <div className="text-[14px] leading-relaxed px-4 py-2.5 rounded-lg rounded-tl-sm bg-[#F4F6FB] whitespace-pre-wrap">
-                  {m.content}
+                <div className="flex flex-col min-w-0">
+                  <div className="text-[14px] leading-relaxed px-4 py-2.5 rounded-lg rounded-tl-sm bg-[#F4F6FB] whitespace-pre-wrap">
+                    {m.content}
+                    {m.streaming && (
+                      <span
+                        className="inline-block w-[7px] h-[14px] ml-0.5 align-middle animate-pulse"
+                        style={{ background: cfg.color }}
+                        aria-hidden="true"
+                      />
+                    )}
+                  </div>
+                  {!m.streaming && m.content && m.content.length > 10 && (
+                    <AssistantActions
+                      content={m.content}
+                      assistantName={cfg.name}
+                      testIdPrefix={`${assistantKey}-msg-${i}`}
+                    />
+                  )}
                 </div>
               </div>
             )
           ))}
-          {busy && (
+          {busy && !(messages.length > 0 && messages[messages.length - 1].role === "assistant" && messages[messages.length - 1].streaming) && (
             <div className="flex items-center gap-2.5">
               <img
                 src={cfg.avatar}

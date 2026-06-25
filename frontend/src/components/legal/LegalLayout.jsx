@@ -5,9 +5,9 @@ import Footer from "@/components/layout/Footer";
 import { PresaleDialogProvider } from "@/components/sections/PresaleDialog";
 
 const LEGAL_PAGES = [
-  { to: "/legal/privacy", label: "Privacy Policy" },
-  { to: "/legal/terms", label: "Terms of Service" },
-  { to: "/legal/cookies", label: "Cookie Policy" },
+  { to: "/legal/privacy-policy", label: "Privacy Policy" },
+  { to: "/legal/terms-of-service", label: "Terms of Service" },
+  { to: "/legal/cookie-policy", label: "Cookie Policy" },
   { to: "/legal/dpa", label: "Data Processing Agreement" },
   { to: "/legal/sla", label: "Service Level Agreement" },
 ];
@@ -76,10 +76,10 @@ export default function LegalLayout({ title, lastUpdated, current, children }) {
             <div className="mt-8 p-4 rounded-md border border-black/10 text-[13px] text-black/70 leading-relaxed">
               Questions about this document?{" "}
               <a
-                href="mailto:legal@zynthoro.ai"
+                href="mailto:info@zynthoro.ai"
                 className="text-[var(--zy-blue)] font-semibold"
               >
-                legal@zynthoro.ai
+                info@zynthoro.ai
               </a>
             </div>
           </aside>

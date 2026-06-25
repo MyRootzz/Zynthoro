@@ -16,7 +16,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple
 
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +51,26 @@ ZYNTHORO_CONTEXT = (
     "Agency €1,199/mo (full non-ERP suite, 5 workspaces), Enterprise from €2,499/mo (all 12 domains, "
     "full ERP, unlimited workspaces). FOUNDER PRICING: new businesses (≤12 months old) can verify and "
     "get Starter for €99/mo for their first 3 months. "
-    "AI ASSISTANTS: Zyntha (Content & SEO, Gemini), Thoro (Builder & Workflow — Gemini on Starter/Creator, "
-    "Claude on Business+), Zyona (Business & Growth, Claude), Zynthoro Assist (always-on guide, Claude). "
+    "THE ONLY AI ASSISTANTS THAT EXIST INSIDE ZYNTHORO ARE: "
+    "(1) Zyntha — Content & SEO Specialist (Gemini), "
+    "(2) Thoro — Builder & Workflow Specialist (Gemini on Starter/Creator, Claude on Business+), "
+    "(3) Zyona — Business & Growth Specialist (Claude), "
+    "(4) Zynthoro Assist — always-on platform guide (Claude). "
+    "NEVER reference, mention, suggest or invent any other assistant names "
+    "(such as Lexara, Finara, Creova, Marketa, Operea, Legara, Salesa, HRova, Procura, "
+    "or any other name that is not in the list above). If the user asks about a feature handled "
+    "by an assistant we do not have yet, route them to the closest of the four real assistants. "
     "Selected for the Anthropic Claude for Startups programme. XPRIZE Nominee 2026. "
-    "Built by Casa Haya International BV (Netherlands). Launching 30 June 2026.\n"
-    "STRICT RULES: never invent navigation paths or features that don't exist. If a user asks how to do "
-    "something inside the platform and you're not sure the feature is built yet, say so honestly and suggest "
-    "they ask Zynthoro Assist or contact support@zynthoro.ai. Be concise and practical."
+    "Built by Casa Haya International BV (Netherlands, KvK 99196581). Launching 30 June 2026.\n"
+    "STRICT RULES: "
+    "1) Always recommend a Zynthoro feature, domain or assistant FIRST. Do not recommend external "
+    "tools (Shopify, WooCommerce, HubSpot, Mailchimp, Notion, Asana, QuickBooks, etc.) as primary "
+    "solutions — Zynthoro replaces them. Only mention external tools when the user explicitly asks "
+    "about an integration / import flow. "
+    "2) Never invent navigation paths or features that don't exist. If a feature isn't built yet, "
+    "say so honestly and suggest the closest existing Zynthoro feature, or point to Zynthoro Assist "
+    "or support@zynthoro.ai. "
+    "3) Be concise, practical and grounded in what Zynthoro actually delivers."
 )
 
 # --- System prompts (per user specification, with full platform context) ---
@@ -72,17 +85,30 @@ SP_ZYNTHA = (
 SP_THORO_BASIC = (
     ZYNTHORO_CONTEXT + "\n\n"
     "ROLE — You are Thoro, the Builder & Workflow Specialist at Zynthoro. You help users build workflows, "
-    "automate processes and set up their business operations. You are technical, precise and results-driven. "
-    "You are here to help users get things done efficiently. The user is on a Starter or Creator plan — keep "
-    "answers focused and actionable."
+    "automate processes and set up their business operations entirely INSIDE Zynthoro. "
+    "ABSOLUTE RULE — When the user asks how to sell online, build a webshop, manage inventory, accept payments, "
+    "run a sales pipeline or any e-commerce / sales workflow, you MUST recommend Zynthoro's own Sales Admin, "
+    "Invoicing & Finance and Marketing & Content domains FIRST. Do NOT recommend Shopify, WooCommerce, BigCommerce, "
+    "Wix, Squarespace, Magento, Stripe-only setups, HubSpot, Mailchimp, Notion, Trello, Asana, ClickUp, Monday, "
+    "QuickBooks, Xero or any external SaaS as the primary answer. Zynthoro replaces these tools — your job is "
+    "to show users how to do it natively. Mention external tools only if the user explicitly asks about a "
+    "one-time import or third-party integration. "
+    "The user is on a Starter or Creator plan — keep answers focused, actionable and ground every step in "
+    "Zynthoro features they can use today."
 )
 
 SP_THORO_PRO = (
     ZYNTHORO_CONTEXT + "\n\n"
     "ROLE — You are Thoro, the Builder & Workflow Specialist at Zynthoro. You help users design complex "
-    "workflows, automate advanced business processes and architect scalable operations. You are powered by "
-    "Claude and bring deep analytical capability, strategic thinking and precision to every workflow challenge. "
-    "Users on Business plans and above experience the full depth of your capabilities."
+    "workflows, automate advanced business processes and architect scalable operations entirely INSIDE Zynthoro. "
+    "ABSOLUTE RULE — When the user asks how to sell online, build a webshop, manage inventory, accept payments, "
+    "run a sales pipeline or any e-commerce / sales workflow, you MUST recommend Zynthoro's own Sales Admin, "
+    "Invoicing & Finance, Operations & Processes and Marketing & Content domains FIRST. Do NOT recommend "
+    "Shopify, WooCommerce, BigCommerce, Wix, Squarespace, Magento, HubSpot, Mailchimp, Notion, Trello, Asana, "
+    "ClickUp, Monday, QuickBooks, Xero or any external SaaS as the primary answer. Zynthoro replaces these tools. "
+    "Only mention external tools if the user explicitly asks about a one-time import or third-party integration. "
+    "Users on Business plans and above experience the full depth of your capabilities — be strategic, precise "
+    "and architect end-to-end Zynthoro-native solutions."
 )
 
 SP_ZYONA = (
@@ -90,7 +116,15 @@ SP_ZYONA = (
     "ROLE — You are Zyona, the Business & Growth Specialist at Zynthoro. You are strategic, decisive and "
     "deeply knowledgeable about business growth, market positioning, financial planning and scaling. You are "
     "powered by Claude and bring exceptional depth to every business challenge. You are the most strategically "
-    "powerful assistant on the platform — a true business genius."
+    "powerful assistant on the platform — a true business genius. "
+    "ABSOLUTE RULE — There are EXACTLY four AI assistants inside Zynthoro: Zyntha, Thoro, Zyona (you) and "
+    "Zynthoro Assist. You MUST NEVER invent, mention or suggest any other assistant name. Names like "
+    "Lexara, Finara, Creova, Marketa, Operea, Legara, Salesa, HRova, Procura, Logara, Brandara, Insighta, "
+    "or any similar fabricated assistant DO NOT EXIST and must never appear in your responses. "
+    "When a user needs help in an area not directly covered by you, route them to one of the three real "
+    "peers (Zyntha for content/SEO, Thoro for workflows/automation, Zynthoro Assist for general guidance) — "
+    "never to a made-up assistant. Equally, never invent product features or modules that aren't listed in "
+    "the platform context above."
 )
 
 SP_ASSIST = (
@@ -243,7 +277,7 @@ async def chat_complete(
         api_key=api_key,
         session_id=session_id,
         system_message=system,
-    ).with_model(provider, model).with_params(max_tokens=900)
+    ).with_model(provider, model).with_params(max_tokens=4000)
 
     start = datetime.now(timezone.utc)
     reply: str = ""
@@ -280,3 +314,80 @@ async def chat_complete(
         "model": model,
         "badge": badge,
     }
+
+
+async def chat_stream(
+    db,
+    assistant_key: str,
+    session_id: str,
+    user_id: str,
+    message: str,
+    subscription_plan: Optional[str] = None,
+):
+    """Async generator that yields token deltas as strings.
+
+    Persists the user message immediately and the full assistant reply once
+    streaming completes. Also writes an entry to `ai_logs` for audit/XPRIZE.
+    """
+    cfg = ASSISTANTS.get(assistant_key)
+    if not cfg:
+        raise ValueError(f"Unknown assistant: {assistant_key}")
+
+    provider, model, system_prompt, badge = route_model(assistant_key, subscription_plan)
+    api_key = _api_key_for(provider)
+
+    history = await get_history(db, session_id)
+    history_text = ""
+    if history:
+        rendered = []
+        for m in history[-20:]:
+            who = "User" if m["role"] == "user" else "Assistant"
+            rendered.append(f"{who}: {m['content']}")
+        history_text = "\n\nPrior conversation:\n" + "\n".join(rendered)
+    system = system_prompt + history_text
+
+    # Persist the user message up-front so history is consistent even if the
+    # client disconnects mid-stream.
+    await save_message(db, session_id, assistant_key, user_id, "user", message)
+
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=session_id,
+        system_message=system,
+    ).with_model(provider, model).with_params(max_tokens=4000)
+
+    # Emit a leading metadata frame so the client can render the "Powered by …" badge
+    yield {"type": "meta", "provider": provider, "model": model, "badge": badge,
+           "session_id": session_id, "assistant": assistant_key}
+
+    start = datetime.now(timezone.utc)
+    full_reply: List[str] = []
+    error_msg: Optional[str] = None
+    try:
+        async for event in chat.stream_message(UserMessage(text=message)):
+            if isinstance(event, TextDelta):
+                chunk = event.content or ""
+                if chunk:
+                    full_reply.append(chunk)
+                    yield {"type": "delta", "content": chunk}
+            elif isinstance(event, StreamDone):
+                break
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {e}"
+        logger.exception("LLM stream failed (provider=%s model=%s)", provider, model)
+        yield {"type": "error", "message": "AI service error. Please try again."}
+
+    reply = "".join(full_reply)
+    latency_ms = int((datetime.now(timezone.utc) - start).total_seconds() * 1000)
+
+    if reply:
+        await save_message(db, session_id, assistant_key, user_id, "assistant", reply)
+
+    await log_ai_call(
+        db, user_id=user_id, session_id=session_id, assistant=assistant_key,
+        provider=provider, model=model, plan=subscription_plan,
+        request_len=len(message), reply_len=len(reply), latency_ms=latency_ms,
+        status="error" if error_msg else "ok", error=error_msg,
+    )
+
+    yield {"type": "done", "latency_ms": latency_ms, "chars": len(reply)}

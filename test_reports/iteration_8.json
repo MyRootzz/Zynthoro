@@ -1,0 +1,35 @@
+{
+  "summary": "Retest of iteration_7 JSON-truncation bug fix. All 4 previously-failing caption platforms (instagram, facebook, linkedin, youtube) now return clean human-readable captions. Caption pytest: 11/11 PASS (was 7/11). Full backend regression: 55 passed, 1 skipped — matches expected target exactly. Additional probe with the exact longer payload from the review request ('Just launched our new sustainable coffee blend made from rescued beans.') across all 6 platforms also returns clean captions with 9-10 lower-case hashtags and no leading '{\"caption' or code fences. Fix is verified: max_tokens 600→1500 and the partial-JSON regex recovery path in _coerce_caption_json work together to eliminate the raw-JSON-as-caption failure mode.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_marketing_caption.py",
+    "/app/test_reports/pytest/iter8_caption.xml",
+    "/app/test_reports/pytest/iter8_full.xml",
+    "/app/test_reports/iter8_payload_probe.py"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ai_assistants.py:443 — the guard `caption.lstrip().startswith('{\"caption\"')` on the happy json.loads path is a belt-and-braces second line of defence; nice. With max_tokens=1500 the happy path will almost always succeed; the regex recovery (lines 450-461) is only exercised in pathological cases now.",
+    "ai_assistants.py:458-461 — the truncated-tail trim (`if tail_cut > 40`) is a sensible heuristic; consider lowering the 40-char threshold to 20 for very short tiktok/x captions, but not blocking.",
+    "Test file uses the iteration_7 idea 'Just launched our new sustainable coffee blend' (shorter than review-request payload). I added a separate /app/test_reports/iter8_payload_probe.py that uses the longer review-request payload across all 6 platforms — also clean. No further test changes needed."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "55/55 = 100% (1 skipped is pre-existing email-2FA test, requires SMTP)",
+    "frontend": "not retested per request (skip frontend)"
+  },
+  "test_credentials": "Founder regie@myrootzz.com / Zynthoro2026! with TOTP secret BKRO2AVFCA7WBNIC6ASHR63K4ZWDLB7P — handled automatically by pyotp in the fixture.",
+  "seed_data_creation": "No new users. ~17 new ai_logs rows from caption tests (normal audit trail).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "JSON-truncation bug is fully closed. Both fixes are doing their job: (1) max_tokens=1500 makes Gemini almost always return complete JSON, (2) the regex partial-JSON extractor in _coerce_caption_json + the guard against captions starting with '{\"caption\"' ensure that even if truncation happens, the user never sees raw JSON. Full suite at 55/55 + 1 skip. Safe to move on to next feature.",
+  "rca of the issue": "Previously, Gemini sometimes returned >600 tokens (especially for LinkedIn/YouTube) causing mid-string truncation; json.loads failed and the except-branch returned the raw truncated JSON as the caption. E1 fixed this with: (a) max_tokens 600→1500 (eliminates the trigger in 99% of cases) and (b) a regex-based partial-JSON recovery path that extracts the caption value even from a partial JSON string, plus a guard that rejects any caption starting with '{\"caption' from the happy path. Verified against both the shorter iteration_7 idea and the longer review-request idea across all 6 platforms — all clean."
+}

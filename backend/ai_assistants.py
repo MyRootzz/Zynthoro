@@ -410,10 +410,11 @@ CAPTION_SYSTEM_PROMPT = (
 def _coerce_caption_json(raw: str) -> Dict:
     """Extract {caption, hashtags[]} from Zyntha's reply.
 
-    Handles three formats safely:
+    Robust against:
       1. Pure JSON object
       2. JSON wrapped in ```json fences
-      3. Free text — falls back to first paragraph as caption, no hashtags
+      3. Truncated/partial JSON (Gemini sometimes clips mid-string at max_tokens)
+      4. Free text — final fallback uses the cleaned reply minus any JSON noise
     """
     import json
     import re
@@ -430,19 +431,53 @@ def _coerce_caption_json(raw: str) -> Dict:
         if first != -1 and last != -1 and last > first:
             s = s[first:last + 1]
 
+    # 1) Try full JSON parse first
     try:
         data = json.loads(s)
-        caption = str(data.get("caption", "")).strip()
-        tags = data.get("hashtags") or []
-        if not isinstance(tags, list):
-            tags = []
-        tags = [str(t).lstrip("#").strip().lower() for t in tags if str(t).strip()]
-        return {"caption": caption, "hashtags": tags[:10]}
+        if isinstance(data, dict):
+            caption = str(data.get("caption", "")).strip()
+            tags = data.get("hashtags") or []
+            if not isinstance(tags, list):
+                tags = []
+            tags = [str(t).lstrip("#").strip().lower() for t in tags if str(t).strip()]
+            if caption and not caption.lstrip().startswith('{"caption"'):
+                return {"caption": caption, "hashtags": tags[:10]}
     except Exception:
-        # Final fallback: strip any code fences and return the rest as caption
-        cleaned = re.sub(r"```[a-zA-Z]*\n?|```", "", raw or "").strip()
-        first_paragraph = cleaned.split("\n\n")[0].strip()
-        return {"caption": first_paragraph, "hashtags": []}
+        pass
+
+    # 2) Partial-JSON recovery — pull the caption value via regex even if the
+    #    closing quote / brace is missing.
+    cap_match = re.search(r'"caption"\s*:\s*"((?:[^"\\]|\\.)*)', raw or "", re.DOTALL)
+    caption = ""
+    if cap_match:
+        try:
+            caption = bytes(cap_match.group(1), "utf-8").decode("unicode_escape")
+        except Exception:
+            caption = cap_match.group(1).replace("\\n", "\n").replace('\\"', '"')
+        # Drop a possibly-truncated tail mid-word (keep last completed sentence)
+        if not caption.rstrip().endswith((".", "!", "?", "…", '"')):
+            tail_cut = max(caption.rfind("."), caption.rfind("!"), caption.rfind("?"))
+            if tail_cut > 40:
+                caption = caption[:tail_cut + 1]
+
+    # 3) Hashtags — try a separate regex; works on both complete and partial JSON
+    tags: List[str] = []
+    tags_block = re.search(r'"hashtags"\s*:\s*\[([^\]]*)\]', raw or "", re.DOTALL)
+    if tags_block:
+        for t in re.findall(r'"([^"]+)"', tags_block.group(1)):
+            cleaned_t = t.lstrip("#").strip().lower()
+            if cleaned_t:
+                tags.append(cleaned_t)
+    tags = tags[:10]
+
+    if caption:
+        return {"caption": caption.strip(), "hashtags": tags}
+
+    # 4) Last-ditch fallback — strip code fences and any leading JSON noise
+    cleaned = re.sub(r"```[a-zA-Z]*\n?|```", "", raw or "").strip()
+    cleaned = re.sub(r'^\s*\{\s*"caption"\s*:\s*"', "", cleaned)
+    cleaned = re.sub(r'",?\s*"hashtags".*$', "", cleaned, flags=re.DOTALL)
+    return {"caption": cleaned.strip(), "hashtags": tags}
 
 
 async def generate_caption(
@@ -470,7 +505,7 @@ async def generate_caption(
         api_key=api_key,
         session_id=session_id,
         system_message=system,
-    ).with_model("gemini", GEMINI_MODEL).with_params(max_tokens=600)
+    ).with_model("gemini", GEMINI_MODEL).with_params(max_tokens=1500)
 
     start = datetime.now(timezone.utc)
     user_msg = f"Post idea: {idea.strip()}"

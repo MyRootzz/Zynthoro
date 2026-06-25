@@ -43,6 +43,20 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **Logo**: full gold `ZYNTHORO` everywhere (homepage navbar/footer, auth pages on dark chip, dashboard sidebar).
 - **Tests**: 25/25 backend tests passing (`/app/backend/tests/test_phase2_auth_dashboard_ai.py`).
 
+## What's Implemented (Builder-Mode Live Stripe Widget — done 2026-02-05)
+
+**Live MRR + ARR widget for founders**
+- New backend module function `stripe_subscriptions.compute_stripe_mrr()` paginates `stripe.Subscription.list(status='active')`, normalises yearly → monthly, splits add-on seat revenue from plan revenue.
+- New endpoint `GET /api/founder/stripe-metrics` (founder-only) — returns `{active_subs, mrr_eur, arr_eur, seats_mrr_eur, plan_breakdown[], seat_breakdown[], currency, fetched_at}`.
+- New frontend `StripeMetricsCard.jsx` mounted in `BuilderModePanel` below the four StatCards: 3 totals tiles (Active subs · MRR · ARR), plan-breakdown table with % of MRR, seat add-on summary row, refresh button.
+- Currently shows the pre-launch empty state (0 subs) — will fill itself the moment your first customer completes Stripe checkout.
+
+**Test results — iteration 10:**
+- 8/8 new tests PASS (5 math unit tests + 3 authz)
+- 84/84 backend regression PASS, 1 skipped by design
+- Frontend founder login → builder toggle → metrics card render → empty state → refresh → all verified
+- Non-founder regression: no toggle, no card, /api/founder/stripe-metrics returns 403
+
 ## What's Implemented (Real Stripe Checkout — Fix 8 + Fix 9 wired LIVE — done 2026-02-05)
 
 **Plan upgrades (Fix 8)**

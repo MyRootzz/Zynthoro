@@ -318,3 +318,11 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 ### 2026-02-26 — Voice tryout leads inline in Builder Mode
 - Added `VoiceLeadsPanel` to `BuilderModePanel.jsx`: header shows "Voice tryout leads · N (M anonymous tryouts not shown)", table renders the last 10 with-email leads (email · transcript snippet · language · timestamp). Backend already exposed via `GET /api/founder/voice-tryouts` (tested 8/8 GREEN in iteration_15).
 - UI smoke-tested: panel rendered 3 lead rows with transcripts (`"test"`, `"I want to try the voice flow"`, `"Schedule a sourdough batch"`) at the expected positions. Deployment readiness PASS.
+
+
+### 2026-02-26 — CSV export on Builder Mode lead panels
+- New `/app/frontend/src/lib/csvExport.js` — tiny RFC-4180-safe CSV exporter (escapes quotes/commas/newlines, prefixes UTF-8 BOM so Excel/Numbers auto-detect encoding).
+- "Export CSV" buttons added to both **Presale signups** and **Voice tryout leads** panels. Filenames stamped with today's date (e.g. `zynthoro_voice_leads_20260226.csv`).
+- Voice export includes full set of fields: email, transcript, language, user_agent, ip, created_at — ready for CRM import or sheet pivot.
+- Buttons auto-disable when the list is empty.
+- E2E verified via Playwright: Voice CSV downloaded (407B) with correct header, 3 rows, BOM, RFC-4180-quoted transcript. Deployment readiness PASS.

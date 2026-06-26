@@ -791,6 +791,7 @@ async def ai_chat(payload: AssistChatIn, user=Depends(get_current_user_full)):
             user["id"],
             payload.message,
             subscription_plan=user.get("subscription_plan"),
+            user_context=user,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
@@ -824,6 +825,7 @@ async def ai_stream(payload: AssistChatIn, user=Depends(get_current_user_full)):
             async for frame in ai_assistants.chat_stream(
                 db, payload.assistant, session_id, user["id"], payload.message,
                 subscription_plan=plan,
+                user_context=user,
             ):
                 ev = frame.pop("type", "delta")
                 yield f"event: {ev}\ndata: {_json.dumps(frame)}\n\n"
@@ -857,6 +859,7 @@ async def marketing_caption(payload: CaptionIn, user=Depends(get_current_user_fu
             idea=payload.idea,
             platform=payload.platform,
             tone=payload.tone,
+            user_context=user,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))

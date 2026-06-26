@@ -249,6 +249,48 @@ async def log_ai_call(
     })
 
 
+def _build_user_context(user: Optional[Dict]) -> str:
+    """Render a short, factual company-context block to prepend to the system
+    prompt. Returns an empty string if nothing meaningful is known.
+
+    This is invisible to the end user but ensures every assistant knows which
+    company it is helping from the very first turn.
+    """
+    if not user:
+        return ""
+    company = (user.get("company") or "").strip()
+    industry = (user.get("company_industry") or user.get("industry") or "").strip()
+    country = (user.get("company_country") or "").strip()
+    employees = (user.get("company_employees") or "").strip()
+    website = (user.get("company_website") or "").strip()
+    name = (user.get("name") or "").strip()
+    plan = (user.get("subscription_plan") or "").strip()
+
+    parts = []
+    if company:
+        parts.append(f"Company: {company}")
+    if industry:
+        parts.append(f"Industry: {industry}")
+    if country:
+        parts.append(f"Country: {country}")
+    if employees:
+        parts.append(f"Headcount: {employees}")
+    if website:
+        parts.append(f"Website: {website}")
+    if name:
+        parts.append(f"Primary user: {name}")
+    if plan:
+        parts.append(f"Plan: {plan}")
+
+    if not parts:
+        return ""
+    return (
+        "\n\n## Company context (auto-injected from profile — do not repeat verbatim to the user)\n"
+        + "\n".join(parts)
+        + "\nTailor every answer to this company's industry, size and country when relevant.\n"
+    )
+
+
 async def chat_complete(
     db,
     assistant_key: str,
@@ -256,6 +298,7 @@ async def chat_complete(
     user_id: str,
     message: str,
     subscription_plan: Optional[str] = None,
+    user_context: Optional[Dict] = None,
 ) -> Dict:
     cfg = ASSISTANTS.get(assistant_key)
     if not cfg:
@@ -272,7 +315,7 @@ async def chat_complete(
             who = "User" if m["role"] == "user" else "Assistant"
             rendered.append(f"{who}: {m['content']}")
         history_text = "\n\nPrior conversation:\n" + "\n".join(rendered)
-    system = system_prompt + history_text
+    system = system_prompt + _build_user_context(user_context) + history_text
 
     chat = LlmChat(
         api_key=api_key,
@@ -324,6 +367,7 @@ async def chat_stream(
     user_id: str,
     message: str,
     subscription_plan: Optional[str] = None,
+    user_context: Optional[Dict] = None,
 ):
     """Async generator that yields token deltas as strings.
 
@@ -345,7 +389,7 @@ async def chat_stream(
             who = "User" if m["role"] == "user" else "Assistant"
             rendered.append(f"{who}: {m['content']}")
         history_text = "\n\nPrior conversation:\n" + "\n".join(rendered)
-    system = system_prompt + history_text
+    system = system_prompt + _build_user_context(user_context) + history_text
 
     # Persist the user message up-front so history is consistent even if the
     # client disconnects mid-stream.
@@ -486,6 +530,7 @@ async def generate_caption(
     idea: str,
     platform: str = "instagram",
     tone: Optional[str] = None,
+    user_context: Optional[Dict] = None,
 ) -> Dict:
     """One-shot caption generation via Zyntha (Gemini).
 
@@ -497,6 +542,7 @@ async def generate_caption(
 
     system = (
         CAPTION_SYSTEM_PROMPT
+        + _build_user_context(user_context)
         + f"\n\nTarget platform: {platform}."
         + (f"\nRequested tone: {tone}." if tone else "")
     )

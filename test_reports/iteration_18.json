@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 18 — Auto-injected company context for AI assistants. New regression suite test_ai_company_context.py: 6/6 GREEN. Verified that POST /api/ai/chat, POST /api/ai/stream and POST /api/marketing/caption all silently inject the user's company + industry + country + headcount + website + plan into the system prompt without the user ever sending it. The jury demo (Zynthoro Demo Workspace, AI/SaaS·ERP, Netherlands, 10-50, Enterprise Advanced) is now demonstrably 'known' by Zyntha, Thoro, Zyona and Zynthoro Assist from turn 1. Empty-profile users still receive a clean reply (no 500).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_ai_company_context.py",
+    "/app/test_reports/pytest/iter18_ai_context.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ai_assistants.py:_build_user_context() — clean implementation: short-circuits on missing user, individually skips empty fields, only emits the '## Company context' block if at least one field is set. No leakage into user-visible output observed.",
+    "server.py:784,809,850 — all three endpoints now pass user_context=user consistently (the full user doc, not a slimmed-down DTO). Acceptable for now, but consider passing a whitelisted dict (only company*, subscription_plan, name) instead of the entire user record — currently the helper is robust because it only reads known keys, but a future regression that adds e.g. 'password_hash' lookups would be unsafe.",
+    "ai_assistants.py:318 — system prompt is now system_prompt + user_context + history_text. The order is correct (platform rules first, company context middle, conversation last). Note: history_text can include past turns, but the company context block is re-injected fresh every call, which means even hot-reloaded long sessions stay anchored.",
+    "ai_assistants.py:_build_user_context() — line break at the start ('\\n\\n## Company context …') is good; suggestion: also append a trailing newline before history_text so the two blocks don't visually merge for providers that print system prompts in debug logs.",
+    "Carryover (non-blocking, from iter17): daily_digest.send_digest_now persists system_state on force=true sends, blocking the 07:00 UTC scheduler that day; render_html injects user-supplied fields without html.escape()."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_ai_company_context.py (new — 6 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "N/A (backend-only)"},
+  "test_credentials": "Used jury@zynthoro.ai / ZynthoroDemo2026! (Enterprise Advanced, is_demo=true) for all positive context-injection tests. Created and force-cleaned a fresh signup (test_ctx_empty_*@example.com) for the empty-profile graceful path; granted is_demo=true in DB to bypass 2FA setup gate.",
+  "seed_data_creation": "Each chat/stream test creates a unique ai_messages session (session_id=TEST_ctx_*). Streaming + caption logs land in ai_logs. No production data modified; one disposable fresh user created and left in DB (cleanup ran, 3 stale rows from prior runs purged).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_ai_company_context.py is the authoritative regression suite for the company-context auto-injection feature. Run with: pytest /app/backend/tests/test_ai_company_context.py -v. AI replies are non-deterministic — every check uses lower-cased substring matching plus up to 2 retries; if you see a flaky failure on TestChatCompanyInjection or TestStreamCompanyInjection, re-run once before flagging. The SSE consumer in TestStreamCompanyInjection reads event:meta + event:delta + event:done frames and accumulates content — reusable for any future SSE assertions. Empty-profile graceful test uses is_demo=true on a disposable user to bypass the 2FA setup gate; do not point this at a real user.",
+  "rca of the issue": "N/A — this is a feature-verification iteration, not a bug fix. The new _build_user_context() helper and the user_context=user wiring at the three call-sites (server.py:794, 828, 862) all behaved exactly as described in the review request."
+}

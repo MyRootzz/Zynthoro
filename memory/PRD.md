@@ -334,3 +334,15 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - Server.py call sites updated: `POST /api/ai/chat`, `POST /api/ai/stream`, `POST /api/marketing/caption` now all pass `user_context=user`.
 - Jury demo enriched: `company_industry='AI / SaaS · ERP for SMEs'`, `company_country='Netherlands'`, `company_employees='10-50'`, `company_website='https://zynthoro.ai'`.
 - Validated by testing_agent (iteration_18: **6/6 GREEN**, new regression suite `test_ai_company_context.py`). End-to-end smoke: Zyntha now answers "You are working at Zynthoro Demo Workspace, an AI-native ERP platform for SMEs" without that info being in the user message.
+
+
+### 2026-02-26 — AI sees indicator + Beta Founding Member program
+- New `AISeesIndicator.jsx` — subtle 12px line (`AI sees: [company] · [industry]`) reading from `useAuth().user`. Renders nothing when both fields are empty. Mounted on `AssistantPage` (Zyntha, Thoro, Zyona) and the floating `AssistFloating` bubble.
+- New beta program in `stripe_subscriptions.py`:
+  - `ensure_beta_price()` idempotently creates a Stripe Product+Price (LIVE) the first time it's called; subsequent calls reuse the existing IDs. Uses `Product.search(metadata['kind']:'beta_founder')` for reliable lookup.
+  - `beta_status()` returns `{price_id, product_id, amount_eur, spots_total: 100, spots_filled, spots_remaining, capped}`.
+  - `create_beta_session()` opens a Stripe Checkout in subscription mode with `metadata.kind='beta_founder'` and `subscription_data.metadata.locked_price='1'`.
+- Public endpoints: `GET /api/beta/status`, `POST /api/beta/checkout` (returns 410 Gone when cap is hit).
+- New page `SubscribeBeta.jsx` at `/subscribe/beta` — gold/blue hero with live counter ("100 of 100 spots remaining"), progress bar, perks list, €4.99/month card with optional email + "Claim my Founding Member spot" CTA. Auto-redirects to `/#pricing` when capped.
+- **Stripe LIVE created**: `product_id=prod_Um9oU3QSQPlZWt`, `price_id=price_1TmbUx5sy2phCvUrUL20uyof` (€4.99 EUR/month recurring).
+- Validated by testing_agent (iteration_19: 7/7 GREEN). Deployment readiness PASS.

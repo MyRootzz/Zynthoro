@@ -1364,6 +1364,30 @@ async def beta_status():
         raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
 
 
+@api_router.get("/pricing/catalog")
+async def pricing_catalog():
+    """Public catalog of plans with their Stripe Payment Links.
+
+    Used by the marketing site to wire CTAs directly to Stripe without a
+    backend round-trip.
+    """
+    return {
+        "plans": [
+            {
+                "plan_key": key,
+                "label": cfg.get("label", key),
+                "amount_eur": cfg.get("amount_eur"),
+                "payment_link": cfg.get("payment_link"),
+            }
+            for key, cfg in subs_mod.PLAN_CATALOG.items()
+        ],
+        "beta": {
+            "amount_eur": "4.99",
+            "payment_link": subs_mod.BETA_PAYMENT_LINK,
+        },
+    }
+
+
 @api_router.post("/beta/checkout")
 async def beta_checkout(payload: BetaCheckoutIn):
     """Create a Stripe Checkout session for the beta program.

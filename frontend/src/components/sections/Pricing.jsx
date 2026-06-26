@@ -1,12 +1,17 @@
 import { Check, ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 import { HOME } from "@/constants/testIds";
 import { usePresaleDialog } from "@/components/sections/PresaleDialog";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const plans = [
   {
     name: "Starter",
-    price: "€499",
+    plan_key: "Starter",
+    price: "€99",
     suffix: "/mo",
     desc: "Basic modules for solo founders just getting started.",
     features: [
@@ -16,10 +21,11 @@ const plans = [
       "1 user · 1 email · 3 aliases",
       "No ERP",
     ],
-    cta: "Claim Presale Spot",
+    cta: "Subscribe to Starter",
   },
   {
     name: "Creator",
+    plan_key: "Creator",
     price: "€699",
     suffix: "/mo",
     desc: "Everything in Starter, plus the full AI creative suite.",
@@ -31,10 +37,11 @@ const plans = [
       "3 users · 3 emails · unlimited aliases",
       "No ERP",
     ],
-    cta: "Claim Presale Spot",
+    cta: "Subscribe to Creator",
   },
   {
     name: "Business",
+    plan_key: "Business",
     price: "€899",
     suffix: "/mo",
     desc: "More modules for growing SMEs and entrepreneurs.",
@@ -46,11 +53,12 @@ const plans = [
       "10 users · unlimited emails",
       "No ERP",
     ],
-    cta: "Claim Presale Spot",
+    cta: "Subscribe to Business",
     popular: true,
   },
   {
     name: "Agency",
+    plan_key: "Agency",
     price: "€1,199",
     suffix: "/mo",
     desc: "Full non-ERP suite for agencies and multi-client teams.",
@@ -62,10 +70,11 @@ const plans = [
       "25 users · team structures",
       "No ERP",
     ],
-    cta: "Claim Presale Spot",
+    cta: "Subscribe to Agency",
   },
   {
     name: "Enterprise",
+    plan_key: "Enterprise Basic",
     price: "from €2,499",
     suffix: "/mo",
     desc: "All 12 domains, full ERP, unlimited companies.",
@@ -84,13 +93,36 @@ const plans = [
 export default function Pricing() {
   const { openDialog } = usePresaleDialog();
   const navigate = useNavigate();
+  const [catalog, setCatalog] = useState({});
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API}/pricing/catalog`);
+        if (!active) return;
+        const map = {};
+        (data?.plans || []).forEach((p) => { map[p.plan_key] = p.payment_link; });
+        setCatalog(map);
+      } catch {
+        /* graceful: keep CTA as presale */
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const onCta = (plan) => {
-    if (plan.name === "Starter") {
-      navigate("/subscribe/starter");
-    } else {
-      openDialog();
+    const link = catalog[plan.plan_key];
+    if (plan.enterprise) {
+      navigate("/#enterprise");
+      return;
     }
+    if (link) {
+      window.location.href = link;
+      return;
+    }
+    // Fallback while catalog is loading
+    openDialog();
   };
 
   return (

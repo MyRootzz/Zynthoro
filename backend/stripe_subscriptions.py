@@ -15,22 +15,40 @@ import stripe
 logger = logging.getLogger(__name__)
 
 
-# Public Stripe Price IDs (recurring subscriptions). Provided by user 2026-02-05.
-PLAN_PRICE_IDS: Dict[str, Dict[str, str]] = {
-    "Starter":              {"price_id": "price_1TlraS5sy2phCvUr6aZERuEe", "amount_eur": "499",   "label": "Starter"},
-    "Creator":              {"price_id": "price_1TlraR5sy2phCvUrGAqE2Dru", "amount_eur": "699",   "label": "Creator"},
-    "Business":             {"price_id": "price_1TlraS5sy2phCvUrBrpiSV08", "amount_eur": "899",   "label": "Business"},
-    "Agency":               {"price_id": "price_1TlraR5sy2phCvUr2ACgbOuI", "amount_eur": "1199",  "label": "Agency"},
-    "Enterprise Basic":     {"price_id": "price_1TlraR5sy2phCvUrCSp2VpB0", "amount_eur": "2499",  "label": "Enterprise Basic"},
-    "Enterprise Plus":      {"price_id": "price_1TlraR5sy2phCvUrDKnlJD3n", "amount_eur": "3999",  "label": "Enterprise Plus"},
-    "Enterprise Advanced":  {"price_id": "price_1TlraS5sy2phCvUrKkdnPSDO", "amount_eur": "5999",  "label": "Enterprise Advanced"},
+# =====================================================================
+#  Live Stripe catalog (2026-02-26 — new account)
+# =====================================================================
+# Each plan exposes:
+#   - product_id   : Stripe product (stable across price changes)
+#   - payment_link : pre-built Stripe Payment Link (https://buy.stripe.com/…)
+#                    used by the public pricing page → no backend round-trip
+#   - amount_eur   : monthly price in EUR (display only)
+#   - label        : human-readable label
+#
+# For the in-app upgrade/downgrade flow we still create Stripe Checkout
+# Sessions server-side. We resolve the *active* recurring price for each
+# product lazily via Stripe's API and cache it in memory.
+PLAN_CATALOG: Dict[str, Dict[str, str]] = {
+    "Starter":             {"product_id": "prod_UmAR0H01lNwXqW", "payment_link": "https://buy.stripe.com/6oUeVcgYw0mlbR3fcy4Ni07", "amount_eur": "99",    "label": "Starter"},
+    "Creator":             {"product_id": "prod_UmAS6hf1gSEPrY", "payment_link": "https://buy.stripe.com/4gM5kC5fO7ON2gt0hE4Ni06", "amount_eur": "699",   "label": "Creator"},
+    "Business":            {"product_id": "prod_UmAUa7Hg41OB3z", "payment_link": "https://buy.stripe.com/14A9AS4bK2utbR3aWi4Ni05", "amount_eur": "899",   "label": "Business"},
+    "Agency":              {"product_id": "prod_UmAVqO1W9DBkVq", "payment_link": "https://buy.stripe.com/dRmfZg5fO3yxcV7ggC4Ni04", "amount_eur": "1199",  "label": "Agency"},
+    "Enterprise Basic":    {"product_id": "prod_UmAWmouNUB5YWz", "payment_link": "https://buy.stripe.com/3cI5kC37Gfhf2gt4xU4Ni03", "amount_eur": "2499",  "label": "Enterprise Basic"},
+    "Enterprise Plus":     {"product_id": "prod_UmAXphGXtJGWml", "payment_link": "https://buy.stripe.com/fZu00i4bKc53g7j9Se4Ni02", "amount_eur": "3999",  "label": "Enterprise Plus"},
+    "Enterprise Advanced": {"product_id": "prod_UmAYIa6bLkc0sG", "payment_link": "https://buy.stripe.com/eVq3cu7nWc533kxd4q4Ni01", "amount_eur": "5999",  "label": "Enterprise Advanced"},
 }
 
-# Extra-seat add-on Price IDs (recurring, per-seat).
-SEAT_PRICE_IDS: Dict[str, Dict[str, str]] = {
-    "Business": {"price_id": "price_1Tm6t95sy2phCvUrcwMghidR", "amount_eur": "4.99"},
-    "Agency":   {"price_id": "price_1Tm6tx5sy2phCvUraLldzOr2", "amount_eur": "3.99"},
-}
+# Backwards-compat: a few callers (and tests) still import PLAN_PRICE_IDS.
+# Price IDs are resolved lazily — see _price_id_for_product().
+PLAN_PRICE_IDS = PLAN_CATALOG  # alias (price_id key populated by _resolve_price_id)
+
+# Extra-seat add-on Price IDs (recurring, per-seat). Pending re-creation on the
+# new account — kept for backwards-compat but disabled until refreshed.
+SEAT_PRICE_IDS: Dict[str, Dict[str, str]] = {}
+
+
+# Cache: product_id -> active recurring EUR price_id
+_PRICE_CACHE: Dict[str, str] = {}
 
 
 def _api_key() -> str:
@@ -44,6 +62,18 @@ def _configure() -> None:
     stripe.api_key = _api_key()
 
 
+def _price_id_for_product(product_id: str) -> str:
+    """Return the active recurring EUR price_id for a product. Cached."""
+    if product_id in _PRICE_CACHE:
+        return _PRICE_CACHE[product_id]
+    _configure()
+    for pr in stripe.Price.list(product=product_id, active=True, limit=100).data:
+        if pr.get("recurring") and pr.get("currency") == "eur":
+            _PRICE_CACHE[product_id] = pr["id"]
+            return pr["id"]
+    raise RuntimeError(f"No active recurring EUR price found on product {product_id}")
+
+
 def create_subscription_session(
     plan_key: str,
     origin_url: str,
@@ -54,10 +84,11 @@ def create_subscription_session(
 
     Returns: {session_id, url, plan_key, amount_eur}
     """
-    if plan_key not in PLAN_PRICE_IDS:
+    if plan_key not in PLAN_CATALOG:
         raise ValueError(f"Unknown plan_key: {plan_key}")
     _configure()
-    cfg = PLAN_PRICE_IDS[plan_key]
+    cfg = PLAN_CATALOG[plan_key]
+    price_id = _price_id_for_product(cfg["product_id"])
 
     success_url = (
         f"{origin_url.rstrip('/')}/dashboard/settings"
@@ -67,7 +98,7 @@ def create_subscription_session(
 
     session = stripe.checkout.Session.create(
         mode="subscription",
-        line_items=[{"price": cfg["price_id"], "quantity": 1}],
+        line_items=[{"price": price_id, "quantity": 1}],
         customer_email=user_email,
         success_url=success_url,
         cancel_url=cancel_url,
@@ -97,66 +128,15 @@ def create_subscription_session(
     }
 
 
-def create_seats_session(
-    current_plan: str,
-    quantity: int,
-    origin_url: str,
-    user_id: str,
-    user_email: str,
-) -> Dict:
-    """Create a Stripe Checkout Session for extra team-seat add-ons.
-
-    Only Business and Agency plans support seat add-ons. Enterprise has unlimited.
-    Returns: {session_id, url, quantity, unit_amount_eur, plan_key}
+def create_seats_session(*_args, **_kwargs) -> Dict:
+    """Extra-seat add-ons are temporarily unavailable while we refresh price IDs
+    on the new Stripe account (2026-02-26). Re-enable once SEAT_PRICE_IDS is
+    populated again.
     """
-    if quantity < 1 or quantity > 100:
-        raise ValueError("Seat quantity must be between 1 and 100.")
-    norm = current_plan
-    if norm not in SEAT_PRICE_IDS:
-        raise ValueError(
-            f"Extra-seat add-ons are not available on the {current_plan} plan. "
-            "Upgrade to Business (€4.99/seat) or Agency (€3.99/seat) first."
-        )
-    _configure()
-    cfg = SEAT_PRICE_IDS[norm]
-
-    success_url = (
-        f"{origin_url.rstrip('/')}/dashboard/team"
-        "?checkout=success&session_id={CHECKOUT_SESSION_ID}"
+    raise ValueError(
+        "Extra-seat add-ons are temporarily unavailable while billing is being "
+        "migrated. Please contact info@zynthoro.ai if you need additional seats."
     )
-    cancel_url = f"{origin_url.rstrip('/')}/dashboard/team?checkout=cancelled"
-
-    session = stripe.checkout.Session.create(
-        mode="subscription",
-        line_items=[{"price": cfg["price_id"], "quantity": quantity}],
-        customer_email=user_email,
-        success_url=success_url,
-        cancel_url=cancel_url,
-        billing_address_collection="required",
-        client_reference_id=user_id,
-        metadata={
-            "user_id": user_id,
-            "user_email": user_email,
-            "plan_key": norm,
-            "seat_quantity": str(quantity),
-            "kind": "seat_addon",
-        },
-        subscription_data={
-            "metadata": {
-                "user_id": user_id,
-                "seat_quantity": str(quantity),
-                "kind": "seat_addon",
-            },
-        },
-    )
-    logger.info("Created seats session %s qty=%s for user=%s plan=%s", session.id, quantity, user_id, norm)
-    return {
-        "session_id": session.id,
-        "url": session.url,
-        "quantity": quantity,
-        "unit_amount_eur": cfg["amount_eur"],
-        "plan_key": norm,
-    }
 
 
 def get_session_summary(session_id: str) -> Dict:
@@ -176,7 +156,7 @@ def get_session_summary(session_id: str) -> Dict:
 
 
 def normalised_plan_label(plan_key: str) -> Optional[str]:
-    cfg = PLAN_PRICE_IDS.get(plan_key)
+    cfg = PLAN_CATALOG.get(plan_key)
     return cfg["label"] if cfg else None
 
 
@@ -184,9 +164,10 @@ def normalised_plan_label(plan_key: str) -> Optional[str]:
 # Builder-Mode metrics — live Stripe MRR / ARR / breakdown
 # ===============================================================
 
-# Reverse map: price_id -> plan_key (built from PLAN_PRICE_IDS)
-_PRICE_TO_PLAN = {cfg["price_id"]: key for key, cfg in PLAN_PRICE_IDS.items()}
-_SEAT_PRICE_TO_PLAN = {cfg["price_id"]: key for key, cfg in SEAT_PRICE_IDS.items()}
+# Reverse maps for MRR aggregation. We key on product_id (not price_id) so the
+# breakdown survives Stripe price refreshes / multiple prices per product.
+_PRODUCT_TO_PLAN = {cfg["product_id"]: key for key, cfg in PLAN_CATALOG.items()}
+_SEAT_PRICE_TO_PLAN = {cfg["price_id"]: key for key, cfg in SEAT_PRICE_IDS.items() if "price_id" in cfg}
 
 
 def compute_stripe_mrr() -> Dict:
@@ -234,7 +215,8 @@ def compute_stripe_mrr() -> Dict:
                     seat_mrr[key] = round(seat_mrr.get(key, 0.0) + monthly_eur, 2)
                     seats_total_mrr += monthly_eur
                 else:
-                    key = _PRICE_TO_PLAN.get(price_id, "Other")
+                    product_id = (price.get("product") or "")
+                    key = _PRODUCT_TO_PLAN.get(product_id, "Other")
                     plan_counts[key] = plan_counts.get(key, 0) + 1
                     plan_mrr[key] = round(plan_mrr.get(key, 0.0) + monthly_eur, 2)
                 total_mrr += monthly_eur
@@ -243,11 +225,11 @@ def compute_stripe_mrr() -> Dict:
         starting_after = page.data[-1].id
 
     plan_breakdown = []
-    for key in list(PLAN_PRICE_IDS.keys()) + ["Other"]:
+    for key in list(PLAN_CATALOG.keys()) + ["Other"]:
         if key in plan_counts:
             plan_breakdown.append({
                 "plan_key": key,
-                "label": PLAN_PRICE_IDS.get(key, {}).get("label", key),
+                "label": PLAN_CATALOG.get(key, {}).get("label", key),
                 "count": plan_counts[key],
                 "mrr_eur": plan_mrr.get(key, 0.0),
             })
@@ -276,6 +258,8 @@ def compute_stripe_mrr() -> Dict:
 # ===============================================================
 
 BETA_CAP = 100
+BETA_PRODUCT_ID = "prod_UmAQUfqoR63MYR"
+BETA_PAYMENT_LINK = "https://buy.stripe.com/4gM4gy23C8SR5sF5BY4Ni09"
 BETA_PRODUCT_NAME = "Zynthoro Beta — Founding Member"
 BETA_PRODUCT_DESC = (
     "First 100 founders special pricing. Full Starter plan access. "
@@ -286,79 +270,88 @@ BETA_CURRENCY = "eur"
 
 
 def ensure_beta_price() -> Dict[str, str]:
-    """Idempotently create the Stripe Product + Price for the beta program.
+    """Return the live Stripe Product + Price for the beta program.
 
-    Looks up an existing product named ``BETA_PRODUCT_NAME`` first. If found,
-    reuses its existing monthly recurring EUR price. Otherwise creates both.
-    Returns ``{product_id, price_id, amount_eur}``.
+    Accepts any active EUR price on ``BETA_PRODUCT_ID`` (recurring or one-time)
+    — the user configures the subscription semantics in their Stripe Payment
+    Link, which we use directly for checkout.
     """
     _configure()
+    product = stripe.Product.retrieve(BETA_PRODUCT_ID)
 
-    # 1) Try to find an existing product by metadata kind (most reliable across runs).
-    product = None
-    for p in stripe.Product.search(query="metadata['kind']:'beta_founder'").data:
-        product = p
-        break
-
-    if product is None:
-        product = stripe.Product.create(
-            name=BETA_PRODUCT_NAME,
-            description=BETA_PRODUCT_DESC,
-            metadata={"kind": "beta_founder", "spot_cap": str(BETA_CAP)},
-        )
-        logger.info("Created Stripe beta product %s", product.id)
-
-    # 2) Find existing recurring monthly EUR price on that product, else create one.
     price = None
     for pr in stripe.Price.list(product=product.id, active=True, limit=100).data:
-        rec = (pr.get("recurring") or {})
-        if (
-            pr.get("unit_amount") == BETA_AMOUNT_CENTS
-            and pr.get("currency") == BETA_CURRENCY
-            and rec.get("interval") == "month"
-        ):
+        if pr.get("currency") == BETA_CURRENCY:
             price = pr
             break
 
     if price is None:
-        price = stripe.Price.create(
-            product=product.id,
-            unit_amount=BETA_AMOUNT_CENTS,
-            currency=BETA_CURRENCY,
-            recurring={"interval": "month"},
-            metadata={"kind": "beta_founder", "locked_price": "1"},
+        raise RuntimeError(
+            f"No active EUR price found on beta product {BETA_PRODUCT_ID}."
         )
-        logger.info("Created Stripe beta price %s on product %s", price.id, product.id)
 
     return {
         "product_id": product.id,
         "price_id": price.id,
         "amount_eur": "4.99",
+        "payment_link": BETA_PAYMENT_LINK,
     }
 
 
 def count_beta_filled() -> int:
-    """Count active or trialing subscriptions on the beta price.
+    """Count completed Stripe Checkout sessions for the beta product.
 
-    Cancelled / refunded subscriptions are not counted — they free up a spot.
+    Stripe Payment Links create Checkout Sessions under the hood — we count
+    those with ``payment_status == 'paid'`` (one-time) or active subscriptions
+    (recurring) referencing the beta price.
     """
     _configure()
     info = ensure_beta_price()
     price_id = info["price_id"]
-    count = 0
-    starting_after: Optional[str] = None
+
+    # Subscriptions path (only meaningful if the price is recurring)
+    sub_count = 0
+    try:
+        starting_after: Optional[str] = None
+        while True:
+            kwargs = {"price": price_id, "limit": 100, "status": "all"}
+            if starting_after:
+                kwargs["starting_after"] = starting_after
+            page = stripe.Subscription.list(**kwargs)
+            for sub in page.data:
+                if sub.status in ("active", "trialing", "past_due", "incomplete"):
+                    sub_count += 1
+            if not page.has_more:
+                break
+            starting_after = page.data[-1].id
+    except Exception:
+        # Stripe will refuse `list(price=X)` if the price isn't recurring.
+        sub_count = 0
+
+    if sub_count:
+        return sub_count
+
+    # Fallback: count paid Checkout sessions for the beta product.
+    paid = 0
+    starting_after = None
     while True:
-        kwargs = {"price": price_id, "limit": 100, "status": "all"}
+        kwargs = {"limit": 100, "expand": ["data.line_items"]}
         if starting_after:
             kwargs["starting_after"] = starting_after
-        page = stripe.Subscription.list(**kwargs)
-        for sub in page.data:
-            if sub.status in ("active", "trialing", "past_due", "incomplete"):
-                count += 1
+        page = stripe.checkout.Session.list(**kwargs)
+        for s in page.data:
+            if s.payment_status != "paid":
+                continue
+            items = (s.get("line_items") or {}).get("data") or []
+            for it in items:
+                p = (it.get("price") or {})
+                if p.get("product") == BETA_PRODUCT_ID or p.get("id") == price_id:
+                    paid += 1
+                    break
         if not page.has_more:
             break
         starting_after = page.data[-1].id
-    return count
+    return paid
 
 
 def beta_status() -> Dict:
@@ -369,6 +362,7 @@ def beta_status() -> Dict:
         "price_id": info["price_id"],
         "product_id": info["product_id"],
         "amount_eur": info["amount_eur"],
+        "payment_link": info["payment_link"],
         "spots_total": BETA_CAP,
         "spots_filled": filled,
         "spots_remaining": max(BETA_CAP - filled, 0),
@@ -377,43 +371,26 @@ def beta_status() -> Dict:
 
 
 def create_beta_session(origin_url: str, email: Optional[str] = None) -> Dict:
-    """Create a public Stripe Checkout session for the beta program.
+    """Return the Stripe Payment Link for the beta program.
 
-    Caller MUST verify the cap is not yet reached before calling.
+    The link is pre-configured in the user's Stripe dashboard (subscription
+    semantics, billing address, currency, etc.) so we just forward the visitor.
     """
     info = ensure_beta_price()
-    success_url = (
-        f"{origin_url.rstrip('/')}/subscribe/beta"
-        "?checkout=success&session_id={CHECKOUT_SESSION_ID}"
-    )
-    cancel_url = f"{origin_url.rstrip('/')}/subscribe/beta?checkout=cancelled"
-
-    kwargs = {
-        "mode": "subscription",
-        "line_items": [{"price": info["price_id"], "quantity": 1}],
-        "success_url": success_url,
-        "cancel_url": cancel_url,
-        "billing_address_collection": "required",
-        "allow_promotion_codes": False,
-        "metadata": {
-            "kind": "beta_founder",
-            "amount_eur": info["amount_eur"],
-        },
-        "subscription_data": {
-            "metadata": {
-                "kind": "beta_founder",
-                "locked_price": "1",
-                "tier": "Beta Founding Member",
-            },
-        },
-    }
+    # Pre-fill email + add a return URL so we can detect completion on /subscribe/beta.
+    url = info["payment_link"]
+    extra = []
     if email:
-        kwargs["customer_email"] = email
-
-    session = stripe.checkout.Session.create(**kwargs)
-    logger.info("Created beta session %s email=%s", session.id, email)
+        extra.append(f"prefilled_email={email}")
+    if origin_url:
+        success = f"{origin_url.rstrip('/')}/subscribe/beta?checkout=success"
+        extra.append(f"checkout%5Bsuccess_url%5D={success}")
+    if extra:
+        sep = "&" if "?" in url else "?"
+        url = f"{url}{sep}" + "&".join(extra)
     return {
-        "session_id": session.id,
-        "url": session.url,
+        "session_id": None,
+        "url": url,
         "amount_eur": info["amount_eur"],
+        "payment_link": info["payment_link"],
     }

@@ -64,18 +64,30 @@ export default function SubscribeBeta() {
   const checkout = async () => {
     setCheckingOut(true);
     try {
-      const { data } = await axios.post(`${API}/beta/checkout`, {
-        origin_url: window.location.origin,
-        email: email.trim() || null,
-      });
-      window.location.href = data.url;
-    } catch (e) {
-      if (e?.response?.status === 410) {
+      // Optional anonymous email capture (best-effort, doesn't block checkout)
+      const trimmed = email.trim();
+      if (trimmed) {
+        axios.post(`${API}/voice-tryout`, { email: trimmed, transcript: "beta_signup_intent" })
+          .catch(() => { /* best-effort */ });
+      }
+      // Refresh status to make sure we have the latest payment link + spot count
+      const { data } = await axios.get(`${API}/beta/status`);
+      if (data?.capped) {
         toast.error("All 100 spots have just been claimed. Redirecting to standard pricing.");
         setTimeout(() => navigate("/#pricing", { replace: true }), 2000);
-      } else {
-        toast.error(e?.response?.data?.detail || "Couldn't start checkout. Please try again.");
+        return;
       }
+      const link = data?.payment_link;
+      if (!link) {
+        toast.error("Couldn't reach Stripe right now. Please try again in a moment.");
+        return;
+      }
+      // Add email prefill so Stripe Checkout starts with it filled in
+      const sep = link.includes("?") ? "&" : "?";
+      const finalUrl = trimmed ? `${link}${sep}prefilled_email=${encodeURIComponent(trimmed)}` : link;
+      window.location.href = finalUrl;
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Couldn't start checkout. Please try again.");
     } finally {
       setCheckingOut(false);
     }

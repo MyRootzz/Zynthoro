@@ -1,0 +1,36 @@
+{
+  "summary": "Full backend + frontend verification of the Stripe account migration (new sk_live_51TlqBi...). All 7 plans + Beta wired to the new payment links; jury login + /auth/me regression intact; live Stripe API calls succeed against the new product/price IDs; Pricing CTAs and SubscribeBeta CTA navigate to the correct buy.stripe.com URLs.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pricing_catalog_migration.py",
+    "/app/backend/tests/test_stripe_metrics.py",
+    "/app/test_reports/pytest/iter20_stripe_metrics.xml",
+    "/app/test_reports/pytest/iter20_pricing_migration.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "stripe_subscriptions.py: _PRICE_CACHE is process-wide and never invalidated; if a Stripe price is rotated, callers must restart the backend. Acceptable for now (low churn) but worth a TTL or explicit bust endpoint long-term.",
+    "stripe_subscriptions.py: count_beta_filled() uses status='all' for Subscription.list — this counts even canceled subs against the cap. Consider tightening to ('active','trialing','past_due','incomplete') only.",
+    "stripe_subscriptions.py: create_beta_session() appends `checkout%5Bsuccess_url%5D=` as a query string on a Stripe Payment Link URL, but Stripe Payment Links don't honor success_url via query — that override only works on dashboard config or via the Sessions API. Harmless (Stripe ignores), but the parameter is dead weight; consider removing.",
+    "SEAT_PRICE_IDS is now an empty dict — create_seats_session() correctly raises a friendly error, but the corresponding seat-add-on UI buttons (if any still exist in the frontend) should be hidden or disabled until prices are repopulated.",
+    "PLAN_PRICE_IDS = PLAN_CATALOG aliasing means callers expecting a `price_id` key on each entry get None until _price_id_for_product() runs. Any older code paths that read cfg['price_id'] eagerly will KeyError — quickly audit if any remain."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pricing_catalog_migration.py (new — 4 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100% (11/11 executed, 1 intentionally skipped seat test)", "frontend": "100% (Pricing + SubscribeBeta flows)"},
+  "test_credentials": "Jury: jury@zynthoro.ai / ZynthoroDemo2026!  — Founder: regie@myrootzz.com / Zynthoro2026! (TOTP secret in /app/memory/test_credentials.md)",
+  "seed_data_creation": "None — used existing seeded users and live Stripe (LIVE mode, no real cards submitted).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Stripe migration verified end-to-end. /api/pricing/catalog returns 7 plans (Starter/Creator/Business/Agency/Enterprise Basic/Plus/Advanced) in canonical order with new EUR amounts (99/699/899/1199/2499/3999/5999) and buy.stripe.com payment links. /api/beta/status returns prod_UmAQUfqoR63MYR + payment_link 4gM4gy23C8SR5sF5BY4Ni09 + 100/100 spots. /api/beta/checkout returns the payment link URL with prefilled_email when supplied. Frontend Pricing CTA 'Subscribe to Starter' → https://buy.stripe.com/6oUeVcgYw0mlbR3fcy4Ni07 (verified by intercepting page.url after click). /subscribe/beta counter loads from /api/beta/status, email input writable, Claim button → https://buy.stripe.com/4gM4gy23C8SR5sF5BY4Ni09?prefilled_email=… (Stripe page renders 'Zynthoro Beta — Founding Member · €4.99'). pytest tests/test_stripe_metrics.py: 7 passed, 1 skipped (as expected — seats test disabled). New regression file: /app/backend/tests/test_pricing_catalog_migration.py — 4/4 passing. Note: 'Claim Presale Spot' label still appears in Navbar and EnterpriseSection — these are Beta promo CTAs that route to /subscribe/beta, NOT pricing card CTAs, so they're correct and not a regression.",
+  "rca of the issue": "N/A — no failures."
+}

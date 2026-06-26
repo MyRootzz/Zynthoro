@@ -301,3 +301,10 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - New `GET /api/founder/voice-tryouts` — founder-only, returns `{leads, count, with_email_count, anonymous_count, test_count}` with test rows filtered out.
 - `VoiceAISection.jsx` now fires anonymous POST on first transcript and reveals an email-capture form ("Liked that? Drop your email…") — successful submit shows a green confirmation card.
 - Validated by testing_agent (iteration_15.json: 8/8 backend pass + full frontend lead flow). Deployment readiness PASS.
+
+
+### 2026-02-26 — Daily founder digest email
+- New `daily_digest.py` module: aggregates last-24h presale signups + voice-tryout leads (test rows filtered), renders branded HTML, sends via Resend to `info@zynthoro.ai`.
+- Background asyncio scheduler (`start_scheduler`) wakes hourly and fires once when UTC hour matches `DIGEST_HOUR_UTC` (default 07 UTC = 08:00 CET / 09:00 CEST). Dedupe persists via `db.system_state`.
+- Manual founder endpoints: `POST /api/founder/digest/send` (default dedupes today; `?force=true` re-sends) + `GET /api/founder/digest/preview` (returns rendered HTML + counts without sending).
+- Validated by testing_agent (iteration_17: 10/10 GREEN). Deployment readiness PASS.

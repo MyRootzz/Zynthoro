@@ -11,17 +11,20 @@ export default function BuilderModePanel() {
   const [stats, setStats] = useState(null);
   const [flags, setFlags] = useState(null);
   const [signups, setSignups] = useState([]);
+  const [voice, setVoice] = useState(null);
 
   const loadAll = async () => {
     try {
-      const [a, b, c] = await Promise.all([
+      const [a, b, c, d] = await Promise.all([
         axios.get(`${API}/founder/stats`),
         axios.get(`${API}/founder/feature-flags`),
         axios.get(`${API}/founder/presale-signups`),
+        axios.get(`${API}/founder/voice-tryouts`),
       ]);
       setStats(a.data);
       setFlags(b.data);
       setSignups(c.data.signups || []);
+      setVoice(d.data);
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || "Could not load builder data.");
     }
@@ -110,6 +113,55 @@ export default function BuilderModePanel() {
           </div>
         )}
       </div>
+
+      <VoiceLeadsPanel voice={voice} />
+    </div>
+  );
+}
+
+function VoiceLeadsPanel({ voice }) {
+  if (!voice) return null;
+  const leads = voice.leads || [];
+  const named = leads.filter((l) => l.email).slice(0, 10);
+  return (
+    <div className="bg-white rounded-lg border border-[#eee] p-4 mt-6" data-testid="voice-leads-panel">
+      <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
+        <h3 className="text-[13.5px] font-semibold">
+          Voice tryout leads · {voice.with_email_count}
+          <span className="ml-2 text-[11.5px] text-[#888] font-normal">
+            ({voice.anonymous_count} anonymous tryouts not shown)
+          </span>
+        </h3>
+        <p className="text-[11.5px] text-[#888]">Last 10 with email · golden product-research signal</p>
+      </div>
+      {named.length === 0 ? (
+        <p className="text-[12.5px] text-[#999]">No voice tryout leads with email yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12.5px]">
+            <thead className="text-[#666]">
+              <tr>
+                <th className="text-left py-1.5 pr-4 w-[28%]">Email</th>
+                <th className="text-left py-1.5 pr-4">Transcript</th>
+                <th className="text-left py-1.5 pr-4 w-[10%]">Lang</th>
+                <th className="text-left py-1.5 w-[18%]">When</th>
+              </tr>
+            </thead>
+            <tbody>
+              {named.map((l) => (
+                <tr key={l.id} className="border-t border-[#f2f2f2] align-top">
+                  <td className="py-1.5 pr-4 font-medium text-black">{l.email}</td>
+                  <td className="py-1.5 pr-4 text-[#555] italic">
+                    “{(l.transcript || "").slice(0, 140) || "(no transcript)"}{(l.transcript || "").length > 140 ? "…" : ""}”
+                  </td>
+                  <td className="py-1.5 pr-4 text-[#888] uppercase text-[11px]">{l.language || "—"}</td>
+                  <td className="py-1.5 text-[#888]">{new Date(l.created_at).toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

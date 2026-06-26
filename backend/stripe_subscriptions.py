@@ -259,6 +259,7 @@ def compute_stripe_mrr() -> Dict:
 
 BETA_CAP = 100
 BETA_PRODUCT_ID = "prod_UmAQUfqoR63MYR"
+BETA_PRICE_ID = "price_1TmeCCCLVRJtO07SRJz12MMs"  # €4.99/mo recurring (locked)
 BETA_PAYMENT_LINK = "https://buy.stripe.com/4gM4gy23C8SR5sF5BY4Ni09"
 BETA_PRODUCT_NAME = "Zynthoro Beta — Founding Member"
 BETA_PRODUCT_DESC = (
@@ -272,18 +273,28 @@ BETA_CURRENCY = "eur"
 def ensure_beta_price() -> Dict[str, str]:
     """Return the live Stripe Product + Price for the beta program.
 
-    Accepts any active EUR price on ``BETA_PRODUCT_ID`` (recurring or one-time)
-    — the user configures the subscription semantics in their Stripe Payment
-    Link, which we use directly for checkout.
+    Pins the canonical recurring price ``BETA_PRICE_ID`` (€4.99/mo, locked
+    for life) so the count + checkout always target the right one even if
+    other prices are attached to the product over time.
     """
     _configure()
     product = stripe.Product.retrieve(BETA_PRODUCT_ID)
 
     price = None
-    for pr in stripe.Price.list(product=product.id, active=True, limit=100).data:
-        if pr.get("currency") == BETA_CURRENCY:
-            price = pr
-            break
+    try:
+        candidate = stripe.Price.retrieve(BETA_PRICE_ID)
+        if candidate.get("active") and candidate.get("currency") == BETA_CURRENCY \
+                and candidate.get("product") == BETA_PRODUCT_ID:
+            price = candidate
+    except Exception:
+        price = None
+
+    if price is None:
+        # Fallback: any active EUR price on the product (legacy / DR safety net).
+        for pr in stripe.Price.list(product=product.id, active=True, limit=100).data:
+            if pr.get("currency") == BETA_CURRENCY:
+                price = pr
+                break
 
     if price is None:
         raise RuntimeError(

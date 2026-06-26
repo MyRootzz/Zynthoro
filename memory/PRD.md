@@ -274,3 +274,16 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - Replaced every `<ComingSoon>` card in `MarketingContent.jsx` (campaigns, analytics, multi-client, calendar) with `<FeatureReady>` "Included in your workspace" cards.
 - Plan gating for demo / `is_unlimited` / Enterprise-tier users now grants full access across Marketing tabs (`fullAccess` flag short-circuits all `canStarter/canCreator/canBusiness/canAgency` checks).
 - New `JuryTour.jsx` 5-step (6 incl. welcome) tour overlay mounted in `DashboardLayout`. Auto-opens once for `is_demo` users, persists via `localStorage`, with a re-openable "Jury tour" pill at bottom-left of the dashboard.
+
+
+### 2026-02-26 — Operations & Production module + Voice AI input
+- New `operations_module.py` router exposing `/api/operations/*` for recipes, BOMs, production orders, work orders, quality inspections, lots and cost summary.
+- Plan gating via `_require_plan()`: Business+ → recipes/orders/work orders/costs · Agency+ → BOMs/QC · Enterprise+ → traceability. Demo/`is_unlimited`/`billing_exempt` bypass everything.
+- Auto cost roll-up on recipes (material + labour + overhead → total → per-unit). Auto lot/order number generation (PO-YYYYMMDD-XXXXX, LOT-YYMMDD-XXXXXX). Multi-level BOM with max_level + total cost calc.
+- Lot traceability endpoint returns full graph (lot + production order + upstream raw lots). Recall flips status.
+- Jury demo seed populates 3 recipes (sourdough, juice, lip balm), 3 production orders (planned/in_progress/completed), 2 QC inspections (1 pass, 1 fail), 3 lots (2 active, 1 recalled).
+- New `useVoiceInput.js` hook + `VoiceButton.jsx` component using browser-native Web Speech API. Mic button wired into all 4 assistants (Zyntha, Thoro, Zyona, Zynthoro Assist floating). Live interim transcription → final text auto-sends. Graceful fallback (disabled MicOff) on unsupported browsers.
+- New `OperationsModule.jsx` frontend with 7 tabs and full CRUD: Recipes & Formulas, Bill of Materials, Production Orders, Work Orders, Quality Control, Lot Traceability, Production Costs.
+- New homepage sections: `ProductionSection.jsx` ("Replace SAP & Oracle for €899/month" + 6 features + industry tags) and `VoiceAISection.jsx` ("Speak your mind. Zynthoro listens." dark hero with gold mic).
+- `Comparison.jsx` rebuilt: now shows Zynthoro vs SAP, Oracle NetSuite, AFAS, Design tools — including new "Voice input on AI" and "Recipes, BOM, traceability" rows.
+- Validated: 17/17 backend tests pass, frontend smoke tests pass, deployment readiness PASS.

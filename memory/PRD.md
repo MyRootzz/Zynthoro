@@ -308,3 +308,8 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - Background asyncio scheduler (`start_scheduler`) wakes hourly and fires once when UTC hour matches `DIGEST_HOUR_UTC` (default 07 UTC = 08:00 CET / 09:00 CEST). Dedupe persists via `db.system_state`.
 - Manual founder endpoints: `POST /api/founder/digest/send` (default dedupes today; `?force=true` re-sends) + `GET /api/founder/digest/preview` (returns rendered HTML + counts without sending).
 - Validated by testing_agent (iteration_17: 10/10 GREEN). Deployment readiness PASS.
+
+
+### 2026-02-26 — Builder Mode digest card
+- Added `DigestCard` to `BuilderModePanel.jsx`: shows last-24h KPI tiles (presale, voice leads, anonymous tryouts), schedule note ("Auto-sent to info@zynthoro.ai every day at 07:00 UTC"), and a prominent blue "Send test now" button. After a successful send, inline green confirmation with the timestamp appears.
+- UI smoke-tested end-to-end (founder login → Builder mode → click Send test now → success toast + inline confirmation). Backend already 10/10 green in iteration_17. Deployment readiness PASS.

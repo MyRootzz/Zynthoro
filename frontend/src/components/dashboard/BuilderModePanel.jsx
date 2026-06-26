@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { API, formatApiError } from "@/contexts/AuthContext";
-import { Flag, Users, MessageCircle, Database, Beaker } from "lucide-react";
+import { Flag, Users, MessageCircle, Database, Beaker, Mail, Send, Loader2, CheckCircle2 } from "lucide-react";
 import StripeMetricsCard from "@/components/dashboard/StripeMetricsCard";
 
 export default function BuilderModePanel() {
@@ -57,6 +57,8 @@ export default function BuilderModePanel() {
       </div>
 
       <StripeMetricsCard />
+
+      <DigestCard />
 
       {flags && (
         <div className="bg-white rounded-lg border border-[#eee] p-4 mb-6">
@@ -120,6 +122,92 @@ function StatCard({ icon: Icon, label, value }) {
         <span className="text-[11px] uppercase tracking-wider font-semibold">{label}</span>
       </div>
       <p className="mt-1.5 text-[20px] font-bold">{value ?? "—"}</p>
+    </div>
+  );
+}
+
+function DigestCard() {
+  const [preview, setPreview] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [lastSent, setLastSent] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data } = await axios.get(`${API}/founder/digest/preview`);
+        setPreview(data);
+      } catch (e) {
+        toast.error(formatApiError(e?.response?.data?.detail) || "Couldn't load digest preview.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const send = async () => {
+    setSending(true);
+    try {
+      const { data } = await axios.post(`${API}/founder/digest/send?force=true`);
+      if (data?.sent) {
+        setLastSent(new Date());
+        toast.success(`Digest sent to ${data.to}.`);
+      } else {
+        toast.info("Digest already sent today (forced override).");
+      }
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || "Couldn't send digest.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-lg border border-[#eee] p-4 mb-6" data-testid="digest-card">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <span className="inline-flex items-center justify-center w-9 h-9 rounded-md shrink-0" style={{ background: "rgba(212,175,55,0.16)" }}>
+            <Mail size={15} style={{ color: "#8a6e1d" }} />
+          </span>
+          <div>
+            <h3 className="text-[13.5px] font-semibold">Daily pipeline digest</h3>
+            <p className="text-[12px] text-[#666] mt-0.5 max-w-md">
+              Auto-sent to <span className="font-medium text-black">info@zynthoro.ai</span> every day at 07:00 UTC. Use the button to fire a test send right now.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={send}
+          disabled={sending}
+          data-testid="digest-send-now"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[12.5px] font-semibold text-white disabled:opacity-60"
+          style={{ background: "#1A4FFF" }}
+        >
+          {sending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+          {sending ? "Sending…" : "Send test now"}
+        </button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
+        <Tile label="Presale (24h)" value={loading ? "—" : preview?.presale_count ?? 0} />
+        <Tile label="Voice leads (24h)" value={loading ? "—" : preview?.voice_lead_count ?? 0} />
+        <Tile label="Anon. tryouts (24h)" value={loading ? "—" : preview?.voice_anonymous_count ?? 0} />
+      </div>
+
+      {lastSent && (
+        <p className="mt-3 text-[12px] text-green-700 flex items-center gap-1.5" data-testid="digest-last-sent">
+          <CheckCircle2 size={13} /> Test digest sent at {lastSent.toLocaleTimeString()}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Tile({ label, value }) {
+  return (
+    <div className="rounded-md p-2.5" style={{ background: "#FAFAFB", border: "1px solid #eee" }}>
+      <p className="text-[10.5px] uppercase tracking-wider text-[#888] font-semibold">{label}</p>
+      <p className="text-[18px] font-bold mt-0.5" style={{ color: "#0A1628" }}>{value}</p>
     </div>
   );
 }

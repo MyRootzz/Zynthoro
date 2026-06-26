@@ -1,7 +1,11 @@
-import { useState } from "react";
-import { Mic, Hand, Smartphone, Factory, MicOff } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import axios from "axios";
+import { toast } from "sonner";
+import { Mic, Hand, Smartphone, Factory, MicOff, ArrowRight, Check, Loader2 } from "lucide-react";
 import { HOME } from "@/constants/testIds";
 import { useVoiceInput } from "@/lib/useVoiceInput";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function VoiceAISection() {
   return (
@@ -48,11 +52,65 @@ export default function VoiceAISection() {
 
 function VoiceTryout() {
   const [transcript, setTranscript] = useState("");
+  const [leadId, setLeadId] = useState(null);
+  const [email, setEmail] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const reportedRef = useRef(false);
+
   const { supported, listening, interim, error, toggle } = useVoiceInput({
     onFinal: (text) => setTranscript((prev) => (prev ? prev + " " : "") + text),
   });
 
+  // Fire-and-forget anonymous lead capture on first real transcript.
+  useEffect(() => {
+    if (!transcript || reportedRef.current) return;
+    reportedRef.current = true;
+    (async () => {
+      try {
+        const { data } = await axios.post(`${API}/voice-tryout`, {
+          transcript,
+          language: typeof navigator !== "undefined" ? navigator.language : null,
+        });
+        if (data?.id) setLeadId(data.id);
+      } catch {
+        // Silently ignore — anonymous logging is best-effort.
+      }
+    })();
+  }, [transcript]);
+
   const live = interim || transcript;
+
+  const submitEmail = async (e) => {
+    e.preventDefault();
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      toast.error("Please enter a valid email.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await axios.post(`${API}/voice-tryout`, {
+        transcript,
+        email: trimmed,
+        language: typeof navigator !== "undefined" ? navigator.language : null,
+      });
+      setEmailSent(true);
+      toast.success("Thanks — we'll be in touch for your demo.");
+    } catch {
+      toast.error("Couldn't send that. Try again in a moment.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const reset = () => {
+    setTranscript("");
+    setLeadId(null);
+    setEmail("");
+    setEmailSent(false);
+    reportedRef.current = false;
+  };
 
   return (
     <div
@@ -122,19 +180,71 @@ function VoiceTryout() {
         )}
       </div>
 
+      {/* Email capture appears after a successful transcript */}
+      {transcript && !emailSent && (
+        <form
+          onSubmit={submitEmail}
+          className="mt-4 rounded-xl p-3"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(212,175,55,0.22)" }}
+          data-testid="home-voice-lead-form"
+        >
+          <p className="text-[12.5px] text-white/80">
+            <span className="font-semibold" style={{ color: "#D4AF37" }}>Liked that?</span>{" "}
+            Drop your email — we&apos;ll show you what Zynthoro can do with your business in 15&nbsp;minutes.
+          </p>
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@company.com"
+              data-testid="home-voice-lead-email"
+              className="flex-1 text-[13px] px-3 py-2 rounded-md outline-none text-white placeholder-white/40"
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
+            />
+            <button
+              type="submit"
+              disabled={submitting}
+              data-testid="home-voice-lead-submit"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[13px] font-semibold text-[#0A1628] disabled:opacity-60"
+              style={{ background: "#D4AF37" }}
+            >
+              {submitting ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+              {submitting ? "Sending…" : "Get demo"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {emailSent && (
+        <div
+          className="mt-4 rounded-xl p-3 flex items-start gap-2"
+          style={{ background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.32)" }}
+          data-testid="home-voice-lead-success"
+        >
+          <Check size={16} className="mt-0.5 text-green-400 shrink-0" />
+          <p className="text-[12.5px] text-white/85">
+            We received your request. Expect a calendar link from our team within 24&nbsp;hours.
+          </p>
+        </div>
+      )}
+
       {transcript && !listening && (
         <button
           type="button"
-          onClick={() => setTranscript("")}
+          onClick={reset}
           data-testid="home-voice-reset"
           className="mt-3 mx-auto block text-[11.5px] text-white/55 hover:text-white"
         >
-          Clear transcript
+          Clear transcript &amp; try again
         </button>
       )}
 
       <p className="text-center mt-3 text-[11.5px] text-white/45">
-        Works in Chrome, Edge and most Chromium browsers — desktop &amp; mobile.
+        {leadId
+          ? "Captured — anonymous unless you share your email."
+          : "Works in Chrome, Edge and most Chromium browsers — desktop & mobile."}
       </p>
     </div>
   );

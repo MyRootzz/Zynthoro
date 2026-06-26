@@ -277,6 +277,55 @@ async def get_presale_count():
     return {"count": count}
 
 
+# =====================================================================
+#  Voice Tour lead capture
+#  ----------------------
+#  Anonymous visitors who interact with the homepage voice tryout get
+#  logged here as warm leads (high-intent signal). Optional email turns
+#  them into a follow-up segment for sales.
+# =====================================================================
+class VoiceTryoutIn(BaseModel):
+    transcript: Optional[str] = Field(default=None, max_length=4000)
+    email: Optional[str] = Field(default=None, max_length=320)
+    language: Optional[str] = Field(default=None, max_length=16)
+
+
+@api_router.post("/voice-tryout", status_code=201)
+async def create_voice_tryout(payload: VoiceTryoutIn, request: Request):
+    email_norm = (payload.email or "").lower().strip() or None
+    is_test = _is_test_signup(email_norm or "", None, None) if email_norm else False
+    ua = (request.headers.get("user-agent") or "")[:500]
+    # Trust the first hop from the ingress for IP (best-effort).
+    ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() or (request.client.host if request.client else None)
+    doc = {
+        "id": str(uuid.uuid4()),
+        "transcript": (payload.transcript or "").strip()[:4000] or None,
+        "email": email_norm,
+        "language": payload.language,
+        "user_agent": ua,
+        "ip": ip,
+        "is_test": is_test,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.voice_tryout_leads.insert_one(doc)
+    doc.pop("_id", None)
+    return {"id": doc["id"], "captured": True}
+
+
+@api_router.get("/founder/voice-tryouts")
+async def founder_voice_tryouts(user=Depends(get_founder_user)):
+    rows = await db.voice_tryout_leads.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
+    real = [r for r in rows if not r.get("is_test")]
+    with_email = [r for r in real if r.get("email")]
+    return {
+        "leads": real,
+        "count": len(real),
+        "with_email_count": len(with_email),
+        "anonymous_count": len(real) - len(with_email),
+        "test_count": len(rows) - len(real),
+    }
+
+
 # ========================================================================
 #  Auth Routes
 # ========================================================================

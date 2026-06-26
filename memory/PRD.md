@@ -294,3 +294,10 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - Cleared stale lockout / `failed_login_count` / `locked_until` state on the `jury@zynthoro.ai` user doc.
 - Interactive Voice Tour: `VoiceAISection.jsx` now contains an unauthenticated try-the-mic widget (`home-voice-tryout`) with live transcription preview, "clear transcript" reset, and graceful fallback on non-Chromium browsers. Lets prospects experience the voice differentiator before signup.
 - Validated by testing_agent (iteration_14.json — 5/5 backend pass, frontend mounted correctly, non-demo accounts still hit 429). Deployment readiness PASS.
+
+
+### 2026-02-26 — Voice tryout lead capture
+- New `POST /api/voice-tryout` — public/anonymous endpoint that stores homepage voice tryout transcripts in `db.voice_tryout_leads` (transcript, email?, language, user_agent, ip, is_test auto-flagged via `_is_test_signup`).
+- New `GET /api/founder/voice-tryouts` — founder-only, returns `{leads, count, with_email_count, anonymous_count, test_count}` with test rows filtered out.
+- `VoiceAISection.jsx` now fires anonymous POST on first transcript and reveals an email-capture form ("Liked that? Drop your email…") — successful submit shows a green confirmation card.
+- Validated by testing_agent (iteration_15.json: 8/8 backend pass + full frontend lead flow). Deployment readiness PASS.

@@ -7,6 +7,7 @@ import {
   Users, Workflow, Megaphone, MessagesSquare, ShieldCheck, Plus, ArrowRight, Sparkles,
 } from "lucide-react";
 import { API, formatApiError, useAuth } from "@/contexts/AuthContext";
+import OperationsModule from "@/pages/dashboard/OperationsModule";
 
 const MODULES = {
   planning: {
@@ -189,6 +190,9 @@ export default function ModulePlaceholder() {
   // Demo accounts get real data on Projects and Finance routes
   if (user?.is_demo && slug === "projects") return <DemoProjects />;
   if (user?.is_demo && slug === "finance") return <DemoInvoices />;
+
+  // Operations & Production — full functional module for all users
+  if (slug === "operations") return <OperationsModule />;
 
   const Icon = cfg.icon;
   return (

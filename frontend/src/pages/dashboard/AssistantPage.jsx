@@ -4,6 +4,7 @@ import { Send, Loader2, Sparkles, BrainCircuit, TrendingUp } from "lucide-react"
 import { API, formatApiError } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import AssistantActions from "@/components/dashboard/AssistantActions";
+import VoiceButton from "@/components/dashboard/VoiceButton";
 import { streamAssistantChat } from "@/lib/aiStream";
 
 const CONFIGS = {
@@ -273,6 +274,11 @@ export default function AssistantPage({ assistantKey }) {
             placeholder={`Message ${cfg.name}…`}
             data-testid={`${assistantKey}-input`}
             className="flex-1 text-[14px] outline-none px-3 py-2.5 rounded-md border border-[#eee] focus:border-[#1A4FFF]"
+          />
+          <VoiceButton
+            testId={`${assistantKey}-voice-btn`}
+            onInterim={(t) => setInput(t)}
+            onFinal={(t) => { setInput(""); send(t); }}
           />
           <button type="submit" disabled={busy || !input.trim()} className="zy-btn-primary px-3.5 py-2.5 disabled:opacity-50" data-testid={`${assistantKey}-send`}>
             <Send size={15} />

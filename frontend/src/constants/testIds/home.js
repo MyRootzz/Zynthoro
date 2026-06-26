@@ -23,6 +23,8 @@ export const HOME = {
   pricing: "section-pricing",
   assist: "section-assist",
   comparison: "section-comparison",
+  production: "section-production",
+  voiceAI: "section-voice-ai",
   presaleCta: "section-presale-cta",
   presaleCtaButton: "presale-cta-button",
   footer: "footer",

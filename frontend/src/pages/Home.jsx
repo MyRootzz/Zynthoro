@@ -12,6 +12,8 @@ import Assist from "@/components/sections/Assist";
 import Assistants from "@/components/sections/Assistants";
 import Comparison from "@/components/sections/Comparison";
 import AnyDeviceSection from "@/components/sections/AnyDeviceSection";
+import ProductionSection from "@/components/sections/ProductionSection";
+import VoiceAISection from "@/components/sections/VoiceAISection";
 import PresaleCTA from "@/components/sections/PresaleCTA";
 import { PresaleDialogProvider } from "@/components/sections/PresaleDialog";
 
@@ -59,7 +61,9 @@ export default function Home() {
         <SocialProof />
         <WhyZynthoro />
         <Domains />
+        <ProductionSection />
         <Assistants />
+        <VoiceAISection />
         <Pricing />
         <PricingComparisonTables />
         <EnterpriseSection />

@@ -1752,6 +1752,110 @@ async def seed_jury_demo():
         ])
         logger.info("Seeded %d demo invoices for jury workspace", len(demo_invoices))
 
+    # ----- Operations & Production demo data -----
+    if await db.recipes.count_documents({"workspace_owner": workspace_owner}) == 0:
+        demo_recipes = [
+            {
+                "name": "Sourdough Loaf · House Recipe",
+                "code": "SD-001", "version": 1, "yield_qty": 12, "yield_unit": "loaves",
+                "ingredients": [
+                    {"name": "Organic flour", "quantity": 6000, "unit": "g", "cost_per_unit_eur": 0.0022},
+                    {"name": "Sea salt",      "quantity":  120, "unit": "g", "cost_per_unit_eur": 0.0015},
+                    {"name": "Sourdough starter", "quantity": 1200, "unit": "g", "cost_per_unit_eur": 0.0011},
+                    {"name": "Filtered water", "quantity": 4200, "unit": "ml", "cost_per_unit_eur": 0.0003},
+                ],
+                "allergens": ["gluten"],
+                "labour_cost_eur": 8.50, "overhead_eur": 4.20,
+                "material_cost_eur": 17.36, "cost_total_eur": 30.06, "cost_per_unit_eur": 2.51,
+            },
+            {
+                "name": "Cold-Press Apple Juice · 500ml",
+                "code": "JUI-002", "version": 2, "yield_qty": 24, "yield_unit": "bottles",
+                "ingredients": [
+                    {"name": "Organic apples", "quantity": 18000, "unit": "g", "cost_per_unit_eur": 0.0024},
+                    {"name": "Lemon juice",    "quantity":   240, "unit": "ml", "cost_per_unit_eur": 0.004},
+                ],
+                "allergens": [],
+                "labour_cost_eur": 12.00, "overhead_eur": 6.00,
+                "material_cost_eur": 44.16, "cost_total_eur": 62.16, "cost_per_unit_eur": 2.59,
+            },
+            {
+                "name": "Lip Balm · Lavender Honey",
+                "code": "CSM-104", "version": 3, "yield_qty": 200, "yield_unit": "tubes",
+                "ingredients": [
+                    {"name": "Beeswax",        "quantity": 800, "unit": "g", "cost_per_unit_eur": 0.018},
+                    {"name": "Shea butter",    "quantity": 600, "unit": "g", "cost_per_unit_eur": 0.022},
+                    {"name": "Coconut oil",    "quantity": 400, "unit": "g", "cost_per_unit_eur": 0.012},
+                    {"name": "Lavender oil",   "quantity":  40, "unit": "ml", "cost_per_unit_eur": 0.480},
+                    {"name": "Honey extract",  "quantity":  60, "unit": "ml", "cost_per_unit_eur": 0.220},
+                ],
+                "allergens": ["honey"],
+                "labour_cost_eur": 24.00, "overhead_eur": 18.00,
+                "material_cost_eur": 67.20, "cost_total_eur": 109.20, "cost_per_unit_eur": 0.55,
+            },
+        ]
+        await db.recipes.insert_many([
+            {**r, "id": str(uuid.uuid4()), "workspace_owner": workspace_owner,
+             "created_at": now_iso, "updated_at": now_iso, "is_demo": True}
+            for r in demo_recipes
+        ])
+
+    if await db.production_orders.count_documents({"workspace_owner": workspace_owner}) == 0:
+        demo_orders = [
+            {"order_no": "PO-20260201-A1B2C", "name": "Sourdough batch · Feb week 1",
+             "status": "completed", "quantity": 240, "unit": "loaves", "scheduled_for": "2026-02-03",
+             "location": "Bakery · Rotterdam", "cost_estimate_eur": 602.40, "cost_actual_eur": 615.10,
+             "actual_quantity": 238},
+            {"order_no": "PO-20260214-3F8K1", "name": "Cold-press juice run",
+             "status": "in_progress", "quantity": 480, "unit": "bottles", "scheduled_for": "2026-02-15",
+             "location": "Bottling line · Utrecht", "cost_estimate_eur": 1243.20, "cost_actual_eur": None,
+             "actual_quantity": None},
+            {"order_no": "PO-20260220-9C4D7", "name": "Lip balm production · Q1 batch",
+             "status": "planned", "quantity": 4000, "unit": "tubes", "scheduled_for": "2026-02-22",
+             "location": "Cosmetics lab · Amsterdam", "cost_estimate_eur": 2184.00, "cost_actual_eur": None,
+             "actual_quantity": None},
+        ]
+        await db.production_orders.insert_many([
+            {**o, "id": str(uuid.uuid4()), "workspace_owner": workspace_owner,
+             "created_at": now_iso, "updated_at": now_iso, "is_demo": True}
+            for o in demo_orders
+        ])
+
+    if await db.quality_inspections.count_documents({"workspace_owner": workspace_owner}) == 0:
+        demo_qc = [
+            {"production_order_id": "demo", "batch_lot": "LOT-260203-A1B2C9",
+             "checklist": ["Crust colour", "Crumb structure", "Internal temp ≥ 96°C", "Weight 480-520g"],
+             "results": ["pass", "pass", "pass", "pass"], "pass_count": 4, "fail_count": 0,
+             "overall": "pass", "notes": "All loaves passed visual + temp checks."},
+            {"production_order_id": "demo", "batch_lot": "LOT-260214-3F8K12",
+             "checklist": ["Brix reading", "pH 3.4-3.8", "Visual clarity", "Cap seal torque"],
+             "results": ["pass", "pass", "fail", "pass"], "pass_count": 3, "fail_count": 1,
+             "overall": "fail", "notes": "Cloudy batch — re-strain step required before sealing."},
+        ]
+        await db.quality_inspections.insert_many([
+            {**q, "id": str(uuid.uuid4()), "workspace_owner": workspace_owner,
+             "created_at": now_iso, "is_demo": True}
+            for q in demo_qc
+        ])
+
+    if await db.lots.count_documents({"workspace_owner": workspace_owner}) == 0:
+        demo_lots = [
+            {"lot_no": "LOT-260203-A1B2C9", "production_order_id": "demo",
+             "expiry_date": "2026-02-10", "raw_material_lots": ["FLOUR-260120", "STARTER-260201"],
+             "status": "active"},
+            {"lot_no": "LOT-260214-3F8K12", "production_order_id": "demo",
+             "expiry_date": "2026-04-14", "raw_material_lots": ["APPLE-260210", "LEMON-260212"],
+             "status": "active"},
+            {"lot_no": "LOT-260101-OLD45", "production_order_id": "demo",
+             "expiry_date": "2026-01-25", "raw_material_lots": [], "status": "recalled"},
+        ]
+        await db.lots.insert_many([
+            {**lot, "id": str(uuid.uuid4()), "workspace_owner": workspace_owner,
+             "created_at": now_iso, "is_demo": True}
+            for lot in demo_lots
+        ])
+        logger.info("Seeded operations demo data for jury workspace")
+
 
 @app.on_event("startup")
 async def startup():
@@ -1775,6 +1879,11 @@ async def shutdown():
 
 
 app.include_router(api_router)
+
+# Operations & Production module router
+import operations_module  # noqa: E402
+app.include_router(operations_module.build_router(db, get_current_user_full))
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

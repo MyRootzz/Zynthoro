@@ -5,6 +5,7 @@ import { ZyLogo } from "@/components/ZyLogo";
 import { API, formatApiError } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import AssistantActions from "@/components/dashboard/AssistantActions";
+import VoiceButton from "@/components/dashboard/VoiceButton";
 import { streamAssistantChat } from "@/lib/aiStream";
 
 export default function AssistFloating() {
@@ -46,9 +47,9 @@ export default function AssistFloating() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, open]);
 
-  const send = async (e) => {
-    e?.preventDefault();
-    const text = input.trim();
+  const send = async (e, override) => {
+    e?.preventDefault?.();
+    const text = (typeof override === "string" ? override : input).trim();
     if (!text || busy) return;
     setInput("");
     setMessages((m) => [
@@ -206,6 +207,12 @@ export default function AssistFloating() {
             placeholder="Ask Zynthoro anything…"
             data-testid="assist-input"
             className="flex-1 text-[13.5px] outline-none px-3 py-2 rounded-md border border-[#eee] focus:border-[#1A4FFF]"
+          />
+          <VoiceButton
+            testId="assist-voice-btn"
+            size={14}
+            onInterim={(t) => setInput(t)}
+            onFinal={(t) => { setInput(""); send(null, t); }}
           />
           <button type="submit" disabled={busy || !input.trim()} className="zy-btn-primary px-3 py-2 disabled:opacity-50" data-testid="assist-send">
             <Send size={15} />

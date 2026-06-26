@@ -1,8 +1,81 @@
-Zynthoro - Evidence File
-Zynthoro began as a concept and planning-stage project at the start of the Build With Gemini XPRIZE hackathon period.
-Since then, active development has progressed: a functional prototype website has been built using the Emergent platform, including a homepage, core navigation, authentication, dashboard, and AI assistant integration powered by the Claude API.
-Zynthoro has also been selected for Anthropic's Claude for Startups program, providing additional API credits and support to accelerate development.
-This repository documents that progression — from initial concept to a working prototype — as part of the Build With Gemini XPRIZE submission.
-Public-facing prototype: zynthoro.ai (presale opens June 22, 2026; public launch June 30, 2026)
-Further development, including full ERP module rollout, will continue throughout the remainder of the hackathon period.
-– MyRootzz (Zynthoro project owner)
+Zynthoro — Evidence of Product Running in Production
+Live Platform
+URL: https://zynthoro.ai
+
+Status: Fully operational as of June 30, 2026
+
+Company: Casa Haya International BV — KvK: 99196581 — Netherlands
+
+Jury Demo Account
+Try the platform live:
+URL:      https://zynthoro.ai/login
+Email:    jury@zynthoro.ai
+Password: ZynthoroDemo2026!
+Plan:     Enterprise Advanced (full access to all 12 modules)
+
+AI Running in Production
+Multi-model routing live:
+
+Zyntha → Google Gemini 2.5 Flash (all plans)
+Thoro → Gemini 2.5 Flash (Starter/Creator) / Claude Sonnet 4.6 (Business+)
+Zyona → Anthropic Claude Sonnet 4.6 (all plans)
+Zynthoro Assist → Anthropic Claude Sonnet 4.6 (all plans)
+
+AI audit trail endpoint:
+GET /api/admin/ai-logs
+Returns every AI call with model name, tokens used, assistant type, user ID and timestamp.
+AI-verified onboarding:
+POST /api/verify-business-registration
+Claude reads uploaded PDF, extracts incorporation date, automatically applies €99/month (founder) or €499/month (standard pricing).
+Voice AI lead capture:
+POST /api/voice-tryout
+GET /api/founder/voice-tryouts
+Daily digest:
+POST /api/founder/digest/send?force=true
+GET /api/founder/digest/preview
+Automated email sent to info@zynthoro.ai every day at 07:00 UTC.
+
+Backend Test Results
+84/84 tests passing — production-ready platform.
+Test coverage includes:
+
+Auth + JWT + 2FA
+Stripe webhooks + subscription lifecycle
+AI routing (Gemini + Claude)
+Business registration verification
+Voice tryout lead capture
+Daily digest send + dedupe
+CSV export
+Operations & Production module (17/17)
+Voice AI module (8/8)
+
+
+Stripe Live Integration
+
+Live mode active
+8 subscription products wired
+Webhook: https://zynthoro.ai/api/webhook/stripe
+Extra seat add-ons live
+KvK-verified founder pricing automated
+
+
+Modules Live
+
+Planning & Organisation
+Time Tracking
+Sales Administration
+Finance & Invoicing
+Accounting
+Project Management
+HR & Personnel
+Operations & Production (recipes, BOM, traceability, QC)
+Marketing & Content (Social Media Studio)
+Communication & Collaboration
+Compliance & Security
+AI Assistants (Zyntha, Thoro, Zyona, Zynthoro Assist)
+
+
+Video Demo
+https://youtu.be/_5psEgtULpg
+
+Built with Google Gemini 2.5 Flash + Anthropic Claude Sonnet 4.6 | Launched June 30, 2026

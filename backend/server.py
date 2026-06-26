@@ -327,8 +327,12 @@ async def founder_voice_tryouts(user=Depends(get_founder_user)):
 
 
 @api_router.post("/founder/digest/send")
-async def founder_send_digest(user=Depends(get_founder_user), force: bool = True):
-    """Manually trigger the daily pipeline digest email."""
+async def founder_send_digest(user=Depends(get_founder_user), force: bool = False):
+    """Manually trigger the daily pipeline digest email.
+
+    By default, dedupes once per UTC day (matching the scheduler). Pass
+    ``?force=true`` to re-send even if today's digest already went out.
+    """
     import daily_digest  # noqa: WPS433
     return await daily_digest.send_digest_now(db, force=force)
 

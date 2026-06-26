@@ -1,0 +1,28 @@
+{
+  "summary": "RETEST iteration 17 — daily founder digest. The previously failing dedupe-by-default assertion now passes. server.py:330 confirmed `force: bool = False`. Full test_daily_digest.py suite: 10/10 GREEN. Spec compliance verified: POST /api/founder/digest/send (no params) returns {sent: false, reason: 'already_sent_today'} after today's slot is taken; POST /api/founder/digest/send?force=true bypasses dedupe and re-sends; all regression checks (preview HTML+counts, is_test exclusion, anonymous voice counting, jury 403, auth gating, scheduler startup log) still pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_daily_digest.py",
+    "/app/test_reports/pytest/iter17_daily_digest.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Carryover from iter16 (NOT blocking, still worth addressing eventually): (a) daily_digest.send_digest_now persists system_state on force=true sends too, which will block the 07:00 UTC scheduler run for that day; (b) render_html injects user-supplied presale/voice fields into HTML without html.escape() — low risk because email clients sandbox JS, but a `<script>` in a name renders raw; (c) start_scheduler has no idempotency guard against double-invocation on hot reload; (d) _collect uses ISO-string comparison on created_at — safe only as long as all writers continue to write ISO strings."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "N/A (backend-only)"},
+  "test_credentials": "Founder regie@myrootzz.com (TOTP secret DSU3VU4MKE46IVOLKP3CLILRA4K4HVS5) and jury@zynthoro.ai used as specified. Both logged in cleanly.",
+  "seed_data_creation": "Per-class fixture seeded 2 presale_signups (1 real + 1 is_test) and 3 voice_tryout_leads (1 real with email, 1 anonymous, 1 is_test) prefixed TEST_*_<8hex>. system_state.daily_digest wiped pre + post TestDigestSend. All cleanup ran successfully.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "test_daily_digest.py is the authoritative regression suite for the founder daily digest. Run with: pytest /app/backend/tests/test_daily_digest.py -v. TestDigestSend class wipes system_state.daily_digest in setup/teardown so it is repeatable. If the day rolls over between iterations the test still works because send_force_true_dispatches creates today's slot, then test_send_default_force_false_dedupes asserts the dedupe kicks in.",
+  "rca of the issue": "Previous iteration_16 root cause (server.py:330 default `force: bool = True`) has been corrected to `force: bool = False`. Confirmed by grep and by behavioural test: after a force=true send sets system_state.last_sent_date=today, a subsequent no-param POST returns sent:false / reason:already_sent_today (was returning sent:true before the fix)."
+}

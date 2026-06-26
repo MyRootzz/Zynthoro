@@ -287,3 +287,10 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - New homepage sections: `ProductionSection.jsx` ("Replace SAP & Oracle for €899/month" + 6 features + industry tags) and `VoiceAISection.jsx` ("Speak your mind. Zynthoro listens." dark hero with gold mic).
 - `Comparison.jsx` rebuilt: now shows Zynthoro vs SAP, Oracle NetSuite, AFAS, Design tools — including new "Voice input on AI" and "Recipes, BOM, traceability" rows.
 - Validated: 17/17 backend tests pass, frontend smoke tests pass, deployment readiness PASS.
+
+
+### 2026-02-26 — Jury lockout immunity + Homepage Voice Tour
+- BUG FIX: `auth_login` in `server.py` now looks up the user document first; if `is_demo=True`, `check_lockout` and `record_failed_login` are skipped entirely. Result: jury demo can NEVER be rate-limited. Non-demo accounts retain full brute-force protection.
+- Cleared stale lockout / `failed_login_count` / `locked_until` state on the `jury@zynthoro.ai` user doc.
+- Interactive Voice Tour: `VoiceAISection.jsx` now contains an unauthenticated try-the-mic widget (`home-voice-tryout`) with live transcription preview, "clear transcript" reset, and graceful fallback on non-Chromium browsers. Lets prospects experience the voice differentiator before signup.
+- Validated by testing_agent (iteration_14.json — 5/5 backend pass, frontend mounted correctly, non-demo accounts still hit 429). Deployment readiness PASS.

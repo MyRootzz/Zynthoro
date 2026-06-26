@@ -6,6 +6,7 @@ import { API, formatApiError } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import AssistantActions from "@/components/dashboard/AssistantActions";
 import VoiceButton from "@/components/dashboard/VoiceButton";
+import AISeesIndicator from "@/components/dashboard/AISeesIndicator";
 import { streamAssistantChat } from "@/lib/aiStream";
 
 export default function AssistFloating() {
@@ -141,6 +142,10 @@ export default function AssistFloating() {
           <button onClick={() => setOpen(false)} className="text-white/70 hover:text-white p-1" aria-label="Close" data-testid="assist-close">
             <X size={16} />
           </button>
+        </div>
+
+        <div className="px-4 py-1.5 border-b border-[#f1f1f3] bg-[#FAFAFB]">
+          <AISeesIndicator testId="assist-ai-sees" />
         </div>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3.5" data-testid="assist-messages">

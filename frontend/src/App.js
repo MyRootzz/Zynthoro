@@ -13,6 +13,7 @@ import TwoFactorVerify from "@/pages/TwoFactorVerify";
 import Onboarding from "@/pages/Onboarding";
 import SubscribeStarter from "@/pages/SubscribeStarter";
 import SubscribeStarterReturn from "@/pages/SubscribeStarterReturn";
+import SubscribeBeta from "@/pages/SubscribeBeta";
 import DashboardLayout from "@/pages/DashboardLayout";
 import DashboardHome from "@/pages/dashboard/DashboardHome";
 import ModulePlaceholder from "@/pages/dashboard/ModulePlaceholder";
@@ -41,6 +42,7 @@ function App() {
             <Route path="/2fa/verify" element={<TwoFactorVerify />} />
             <Route path="/subscribe/starter" element={<SubscribeStarter />} />
             <Route path="/subscribe/starter/return" element={<SubscribeStarterReturn />} />
+            <Route path="/subscribe/beta" element={<SubscribeBeta />} />
             <Route path="/legal/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/legal/terms-of-service" element={<TermsOfService />} />
             <Route path="/legal/cookie-policy" element={<CookiePolicy />} />

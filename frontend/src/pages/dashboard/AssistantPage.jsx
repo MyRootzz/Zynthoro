@@ -5,6 +5,7 @@ import { API, formatApiError } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import AssistantActions from "@/components/dashboard/AssistantActions";
 import VoiceButton from "@/components/dashboard/VoiceButton";
+import AISeesIndicator from "@/components/dashboard/AISeesIndicator";
 import { streamAssistantChat } from "@/lib/aiStream";
 
 const CONFIGS = {
@@ -190,6 +191,7 @@ export default function AssistantPage({ assistantKey }) {
             )}
           </div>
           <p className="text-[14.5px] text-[#555] mt-1">{cfg.description}</p>
+          <AISeesIndicator className="mt-1.5" testId={`${assistantKey}-ai-sees`} />
         </div>
       </div>
 

@@ -267,3 +267,153 @@ def compute_stripe_mrr() -> Dict:
         "currency": "eur",
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+
+# ===============================================================
+# Beta Founding Member program — first 100 founders at €4.99/mo
+# Price is created via Stripe API on first use and cached.
+# ===============================================================
+
+BETA_CAP = 100
+BETA_PRODUCT_NAME = "Zynthoro Beta — Founding Member"
+BETA_PRODUCT_DESC = (
+    "First 100 founders special pricing. Full Starter plan access. "
+    "Price locked for life."
+)
+BETA_AMOUNT_CENTS = 499  # €4.99
+BETA_CURRENCY = "eur"
+
+
+def ensure_beta_price() -> Dict[str, str]:
+    """Idempotently create the Stripe Product + Price for the beta program.
+
+    Looks up an existing product named ``BETA_PRODUCT_NAME`` first. If found,
+    reuses its existing monthly recurring EUR price. Otherwise creates both.
+    Returns ``{product_id, price_id, amount_eur}``.
+    """
+    _configure()
+
+    # 1) Try to find an existing product by metadata kind (most reliable across runs).
+    product = None
+    for p in stripe.Product.search(query="metadata['kind']:'beta_founder'").data:
+        product = p
+        break
+
+    if product is None:
+        product = stripe.Product.create(
+            name=BETA_PRODUCT_NAME,
+            description=BETA_PRODUCT_DESC,
+            metadata={"kind": "beta_founder", "spot_cap": str(BETA_CAP)},
+        )
+        logger.info("Created Stripe beta product %s", product.id)
+
+    # 2) Find existing recurring monthly EUR price on that product, else create one.
+    price = None
+    for pr in stripe.Price.list(product=product.id, active=True, limit=100).data:
+        rec = (pr.get("recurring") or {})
+        if (
+            pr.get("unit_amount") == BETA_AMOUNT_CENTS
+            and pr.get("currency") == BETA_CURRENCY
+            and rec.get("interval") == "month"
+        ):
+            price = pr
+            break
+
+    if price is None:
+        price = stripe.Price.create(
+            product=product.id,
+            unit_amount=BETA_AMOUNT_CENTS,
+            currency=BETA_CURRENCY,
+            recurring={"interval": "month"},
+            metadata={"kind": "beta_founder", "locked_price": "1"},
+        )
+        logger.info("Created Stripe beta price %s on product %s", price.id, product.id)
+
+    return {
+        "product_id": product.id,
+        "price_id": price.id,
+        "amount_eur": "4.99",
+    }
+
+
+def count_beta_filled() -> int:
+    """Count active or trialing subscriptions on the beta price.
+
+    Cancelled / refunded subscriptions are not counted — they free up a spot.
+    """
+    _configure()
+    info = ensure_beta_price()
+    price_id = info["price_id"]
+    count = 0
+    starting_after: Optional[str] = None
+    while True:
+        kwargs = {"price": price_id, "limit": 100, "status": "all"}
+        if starting_after:
+            kwargs["starting_after"] = starting_after
+        page = stripe.Subscription.list(**kwargs)
+        for sub in page.data:
+            if sub.status in ("active", "trialing", "past_due", "incomplete"):
+                count += 1
+        if not page.has_more:
+            break
+        starting_after = page.data[-1].id
+    return count
+
+
+def beta_status() -> Dict:
+    """Public-safe snapshot of the beta program."""
+    info = ensure_beta_price()
+    filled = count_beta_filled()
+    return {
+        "price_id": info["price_id"],
+        "product_id": info["product_id"],
+        "amount_eur": info["amount_eur"],
+        "spots_total": BETA_CAP,
+        "spots_filled": filled,
+        "spots_remaining": max(BETA_CAP - filled, 0),
+        "capped": filled >= BETA_CAP,
+    }
+
+
+def create_beta_session(origin_url: str, email: Optional[str] = None) -> Dict:
+    """Create a public Stripe Checkout session for the beta program.
+
+    Caller MUST verify the cap is not yet reached before calling.
+    """
+    info = ensure_beta_price()
+    success_url = (
+        f"{origin_url.rstrip('/')}/subscribe/beta"
+        "?checkout=success&session_id={CHECKOUT_SESSION_ID}"
+    )
+    cancel_url = f"{origin_url.rstrip('/')}/subscribe/beta?checkout=cancelled"
+
+    kwargs = {
+        "mode": "subscription",
+        "line_items": [{"price": info["price_id"], "quantity": 1}],
+        "success_url": success_url,
+        "cancel_url": cancel_url,
+        "billing_address_collection": "required",
+        "allow_promotion_codes": False,
+        "metadata": {
+            "kind": "beta_founder",
+            "amount_eur": info["amount_eur"],
+        },
+        "subscription_data": {
+            "metadata": {
+                "kind": "beta_founder",
+                "locked_price": "1",
+                "tier": "Beta Founding Member",
+            },
+        },
+    }
+    if email:
+        kwargs["customer_email"] = email
+
+    session = stripe.checkout.Session.create(**kwargs)
+    logger.info("Created beta session %s email=%s", session.id, email)
+    return {
+        "session_id": session.id,
+        "url": session.url,
+        "amount_eur": info["amount_eur"],
+    }

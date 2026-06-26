@@ -1344,6 +1344,56 @@ async def founder_stripe_metrics(user=Depends(get_founder_user)):
     return data
 
 
+# =====================================================================
+#  Beta Founding Member program — public endpoints
+# =====================================================================
+class BetaCheckoutIn(BaseModel):
+    origin_url: str = Field(min_length=8, max_length=500)
+    email: Optional[str] = Field(default=None, max_length=320)
+
+
+@api_router.get("/beta/status")
+async def beta_status():
+    """Public counter — how many beta spots remain."""
+    try:
+        return subs_mod.beta_status()
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("beta_status failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+
+
+@api_router.post("/beta/checkout")
+async def beta_checkout(payload: BetaCheckoutIn):
+    """Create a Stripe Checkout session for the beta program.
+
+    Returns 410 Gone if all 100 spots are filled.
+    """
+    try:
+        status = subs_mod.beta_status()
+    except Exception as e:
+        logger.exception("beta_checkout: status fetch failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+    if status["capped"]:
+        raise HTTPException(
+            status_code=410,
+            detail="All 100 beta founding member spots are taken. Visit /#pricing for our Starter plan.",
+        )
+    try:
+        session = subs_mod.create_beta_session(payload.origin_url, payload.email)
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("beta_checkout: session creation failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+    return {
+        **session,
+        "spots_remaining": status["spots_remaining"] - 1,
+    }
+
+
+
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     host_url = str(request.base_url)

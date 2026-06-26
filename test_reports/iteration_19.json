@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 19 — Beta Founding Member program + AI sees indicator. Backend: 7/7 GREEN (test_beta_founding.py) covering public GET /api/beta/status (no-auth, idempotent price_id), POST /api/beta/checkout (success+email+422 validation+no-auth). Stripe LIVE confirmed (price_1TmbUx5sy2phCvUrUL20uyof reused on every status call; sessions returned cs_live_*** URLs without following). Frontend: /subscribe/beta renders correctly (beta-h1='€4.99/mo. Locked for life.', beta-spots-remaining='100 of 100 spots remaining', beta-email accepts input, beta-checkout-btn enabled). AI sees indicator visible on /dashboard/zyntha, /dashboard/thoro, /dashboard/zyona AND inside the floating Assist panel after opening it (text 'AI sees: Zynthoro Demo Workspace · AI / SaaS · ERP for SMEs' on all four).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AssistFloating", "issue": "Spec asked for data-testid='assist-fab' on the bubble button. Implementation uses data-testid='assist-bubble' instead. Functionally correct — bubble exists, opens the panel, and assist-ai-sees renders inside — but the testid name diverges from the contract written into iteration_19's review_request. Recommend aligning by adding data-testid='assist-fab' as an alias OR updating the contract to assist-bubble.", "selector": "[data-testid='assist-bubble'] (expected 'assist-fab')", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/dashboard (post-login)", "issues": ["Cookie consent banner ('We respect your privacy') and 'XPRIZE Jury Tour' modal stack on first visit, both partially overlapping the assist-bubble in the bottom-right corner. Cookie banner z-index is higher than the assist-bubble, which means a brand-new visitor cannot reach the floating Assist until they dismiss the banner. Consider lowering the cookie banner z-index or repositioning the FAB."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_beta_founding.py",
+    "/app/test_reports/pytest/iter19_beta.xml"
+  ],
+  "action_items": [
+    "(Optional, LOW) Rename data-testid='assist-bubble' → 'assist-fab' in AssistFloating.jsx OR document that the canonical FAB testid is 'assist-bubble' so future contracts match.",
+    "(Optional) Cookie banner overlaps floating Assist on fresh sessions — verify z-index stacking."
+  ],
+  "critical_code_review_comments": [
+    "stripe_subscriptions.py:ensure_beta_price() — correctly idempotent: searches by metadata.kind='beta_founder' before creating, then reuses any matching active monthly EUR price on that product. Verified empirically: 3 consecutive GET /api/beta/status calls returned the same price_id, proving cache works.",
+    "stripe_subscriptions.py:count_beta_filled() — counts active/trialing/past_due/incomplete subs. Note: 'incomplete' counts unstarted checkouts that never paid — this is INTENTIONALLY conservative (a half-filled checkout temporarily reserves a spot) but could cause the counter to over-report if a high volume of users abandon Stripe checkout. Stripe abandons 'incomplete' subs after 23h, so the drift is bounded.",
+    "server.py:1378 — beta_checkout reads status, then creates session. There is a TOCTOU window: two simultaneous requests when only 1 spot remains can both pass the cap check and create two sessions. The CAP enforcement therefore relies on Stripe-side seat tracking for the 100th spot, not on app-level locking. Acceptable for a 100-seat program but worth documenting.",
+    "server.py:1392 — response computes spots_remaining as status['spots_remaining'] - 1, optimistically assuming the just-created session will be paid. The true count only updates once Stripe webhook fires. UI showing N-1 immediately is a UX choice, not a bug; but it can briefly drift below the real Stripe count if many users start checkout simultaneously.",
+    "SubscribeBeta.jsx — clean implementation. window.location.origin passed to backend (no hardcoded URL), email is optional and trimmed, 410 → soft redirect to /#pricing, success/cancel toasts from URL params. No critical issues.",
+    "AISeesIndicator.jsx — null-safe (renders nothing if both company and industry empty), uses both company_industry and industry as fallbacks. Good defensive coding.",
+    "Carryover from iter18 (still applicable): consider html.escape() in daily_digest render_html; daily_digest.send_digest_now persists system_state on force=true."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_beta_founding.py (new — 7 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% functional (4/4 AI-sees indicators visible, all /subscribe/beta testids present); 1 LOW testid-name mismatch (assist-bubble vs assist-fab)"},
+  "test_credentials": "Used jury@zynthoro.ai / ZynthoroDemo2026! (Enterprise Advanced) for the AI-sees indicator tests. /api/beta/status and /api/beta/checkout are public so no credentials needed for those.",
+  "seed_data_creation": "None. Did NOT complete any Stripe checkout (LIVE mode). Sessions cs_live_* were created and discarded; they will auto-expire in Stripe. Beta counter remains 100/100 spots open after testing.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest /app/backend/tests/test_beta_founding.py -v for regression of the Beta program. Stripe is in LIVE mode — never follow session.url, never complete the Stripe form. The price_id is cached server-side via Stripe Product.search(metadata.kind=beta_founder); if you ever see a NEW price_id appear between two status calls, that's a regression in ensure_beta_price(). For the AI-sees indicator, note that the floating Assist FAB selector is [data-testid='assist-bubble'] (the spec called it 'assist-fab' but the code uses 'assist-bubble'). Also note the first-visit Jury tour modal + cookie banner can block clicks on the FAB until dismissed — always Skip the tour and Reject cookies first.",
+  "rca of the issue": "N/A — this is a feature-verification iteration, no bugs to RCA. Single LOW issue: spec/code naming mismatch on assist-fab vs assist-bubble (cosmetic, no user impact)."
+}

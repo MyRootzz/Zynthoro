@@ -346,3 +346,16 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - New page `SubscribeBeta.jsx` at `/subscribe/beta` — gold/blue hero with live counter ("100 of 100 spots remaining"), progress bar, perks list, €4.99/month card with optional email + "Claim my Founding Member spot" CTA. Auto-redirects to `/#pricing` when capped.
 - **Stripe LIVE created**: `product_id=prod_Um9oU3QSQPlZWt`, `price_id=price_1TmbUx5sy2phCvUrUL20uyof` (€4.99 EUR/month recurring).
 - Validated by testing_agent (iteration_19: 7/7 GREEN). Deployment readiness PASS.
+
+
+### 2026-02-26 — Stripe live-account migration + payment-link wiring
+- `.env`: new `STRIPE_SECRET_KEY` (sk_live_51TlqBi…) and new `STRIPE_PUBLISHABLE_KEY`. Old keys retired.
+- `stripe_subscriptions.py`: replaced `PLAN_PRICE_IDS` with `PLAN_CATALOG` (per-plan `product_id` + `payment_link` + `amount_eur` + `label`). Lazy price-resolver `_price_id_for_product()` caches the active recurring EUR price for the in-app upgrade flow. Reverse map `_PRODUCT_TO_PLAN` buckets MRR by `price.product` instead of price_id.
+- New product IDs wired: Starter `prod_UmAR0H01lNwXqW` · Creator `prod_UmAS6hf1gSEPrY` · Business `prod_UmAUa7Hg41OB3z` · Agency `prod_UmAVqO1W9DBkVq` · Enterprise Basic `prod_UmAWmouNUB5YWz` · Plus `prod_UmAXphGXtJGWml` · Advanced `prod_UmAYIa6bLkc0sG` · Beta `prod_UmAQUfqoR63MYR`.
+- Beta refactor: `ensure_beta_price()` accepts any active EUR price (handles user's one-time price config); `count_beta_filled()` falls back to counting paid Checkout sessions when Stripe rejects `Subscription.list` for non-recurring prices; `create_beta_session()` returns the Stripe Payment Link directly (subscription semantics live in the user's Stripe dashboard).
+- Seats add-on temporarily disabled (`SEAT_PRICE_IDS = {}`, `create_seats_session` raises `ValueError`) until refreshed on the new account.
+- New public endpoint `GET /api/pricing/catalog` exposes the entire plan catalog with payment links.
+- `Pricing.jsx` rewired: CTAs now read from `/api/pricing/catalog` and redirect via `window.location.href` to the matching `buy.stripe.com/...` link (no backend round-trip). Prices updated: Starter €99 · Creator €699 · Business €899 · Agency €1,199 · Enterprise from €2,499. Enterprise → talks to sales.
+- `SubscribeBeta.jsx`: Claim CTA now refreshes status, then redirects directly to the Stripe Payment Link (with optional `prefilled_email`).
+- Test suite updated: `test_stripe_metrics.py` uses new `_plan_item()` helper that stamps `price.product` with real product IDs. Seats test marked skip. **7 passed, 1 skipped**.
+- Validated by testing_agent_v3_fork (iteration_20: all GREEN, no action items). Deployment readiness PASS.

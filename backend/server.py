@@ -326,6 +326,26 @@ async def founder_voice_tryouts(user=Depends(get_founder_user)):
     }
 
 
+@api_router.post("/founder/digest/send")
+async def founder_send_digest(user=Depends(get_founder_user), force: bool = True):
+    """Manually trigger the daily pipeline digest email."""
+    import daily_digest  # noqa: WPS433
+    return await daily_digest.send_digest_now(db, force=force)
+
+
+@api_router.get("/founder/digest/preview")
+async def founder_digest_preview(user=Depends(get_founder_user)):
+    """Return the rendered HTML + payload without sending — handy for QA."""
+    import daily_digest  # noqa: WPS433
+    data = await daily_digest._collect(db)
+    return {
+        "html": daily_digest.render_html(data),
+        "presale_count": len(data["presale"]),
+        "voice_lead_count": len(data["voice_leads"]),
+        "voice_anonymous_count": data["voice_anonymous_count"],
+    }
+
+
 # ========================================================================
 #  Auth Routes
 # ========================================================================
@@ -1927,6 +1947,9 @@ async def startup():
     await db.payment_transactions.create_index("session_id", unique=True)
     await seed_founder()
     await seed_jury_demo()
+    # Background scheduler: daily digest to info@zynthoro.ai at 07:00 UTC.
+    import daily_digest  # noqa: WPS433
+    app.state.digest_task = daily_digest.start_scheduler(db)
 
 
 @app.on_event("shutdown")

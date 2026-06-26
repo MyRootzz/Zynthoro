@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 16 — Daily founder digest backend testing. 9/10 pytest checks pass. Endpoints exist and most behaviour matches spec: auth gating, jury 403, /preview HTML branding + counts + is_test exclusion, anonymous voice tryouts excluded from the list but counted, force=true sends + persists system_state, scheduler startup log present, explicit force=false dedupes correctly. ONE SPEC-VIOLATING BUG: POST /api/founder/digest/send default `force` value is True in server.py — review spec says force=false must be the default and dedupe by default. Today calling /send without any query param bypasses dedupe and re-sends the email every time.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/founder/digest/send",
+        "issue": "Default value of `force` query parameter is True (server.py:330 `force: bool = True`). Review spec requires force=false as the default so back-to-back calls dedupe. Today the default call ALWAYS sends, persists system_state with today's date, and returns {sent: true}. Without `?force=false` explicitly set, dedupe never engages. Explicit `?force=false` works correctly (returns {sent: false, reason: 'already_sent_today'}); explicit `?force=true` correctly bypasses dedupe.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_daily_digest.py",
+    "/app/test_reports/pytest/iter16_daily_digest.xml"
+  ],
+  "action_items": [
+    "Change server.py line 330 from `force: bool = True` to `force: bool = False` so the manual trigger endpoint defaults to deduped behaviour (matching review spec). QA can still bypass with `?force=true`."
+  ],
+  "critical_code_review_comments": [
+    "daily_digest.send_digest_now persists system_state on EVERY send (including force=true). That means a single force=true call will block the regular 07:00 UTC scheduler send for that day, since the scheduler runs with force=False. Acceptable for QA but worth a comment in the docstring.",
+    "daily_digest._collect uses ISO-string comparison on `created_at` ($gte cutoff.isoformat()). That works because all writes also serialize to ISO. If any future code writes datetime objects directly into Mongo this filter will silently drop those rows.",
+    "scheduler_loop catches everything and sleeps until next hour — good. But there is no guard against running twice if start_scheduler is called twice during dev hot-reload; consider an idempotency flag on app.state.",
+    "render_html injects user-supplied fields (presale.name/company/plan_interest, voice transcript, email) directly into HTML with no escaping. A signup with `<script>` in the name would render as raw HTML in the digest email inbox. Not exploitable end-to-end (email clients sandbox JS), but worth html.escape() on user fields."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_daily_digest.py (new)"
+  ],
+  "success_rate": {"backend": "90% (9/10 tests passed; 1 failed exposing the force-default bug)", "frontend": "N/A (backend-only request)"},
+  "test_credentials": "Founder regie@myrootzz.com (TOTP) and jury@zynthoro.ai used as specified. Both logged in cleanly.",
+  "seed_data_creation": "Per-class seeded into presale_signups (1 real + 1 is_test) and voice_tryout_leads (1 real with email, 1 anonymous no email, 1 is_test) with IDs prefixed TEST_*_<8hex>. All cleaned up in fixture teardown. system_state.daily_digest is cleared at the start of TestDigestSend and torn down after; should not be left polluting state after the run.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Test file: /app/backend/tests/test_daily_digest.py. Founder TOTP works via pyotp with secret DSU3VU4MKE46IVOLKP3CLILRA4K4HVS5. Resend may return msg_id=None — daily_digest still considers the send successful and writes last_msg_id=None to system_state. After main agent flips the default to force=False, re-running this test file should give 10/10 green.",
+  "rca of the issue": "Root cause: server.py:330 — `async def founder_send_digest(user=Depends(get_founder_user), force: bool = True)`. The default value of `force` was set to True, presumably to make manual QA triggers fire immediately. However, the review spec explicitly requires `force=false` to be the default so two back-to-back manual calls dedupe. Reproduction: (1) DELETE db.system_state document _id='daily_digest' (or wait until tomorrow); (2) POST /api/founder/digest/send with no query string → returns {sent: true} and writes today's date to system_state; (3) POST /api/founder/digest/send again with no query string → STILL returns {sent: true} (BUG — should be {sent: false, reason: 'already_sent_today'}). Mitigation: change default to False in server.py. Confirmed via direct probes: explicit ?force=false dedupes correctly, explicit ?force=true bypasses correctly — only the implicit default is wrong."
+}

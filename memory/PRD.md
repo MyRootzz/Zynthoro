@@ -326,3 +326,11 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - Voice export includes full set of fields: email, transcript, language, user_agent, ip, created_at — ready for CRM import or sheet pivot.
 - Buttons auto-disable when the list is empty.
 - E2E verified via Playwright: Voice CSV downloaded (407B) with correct header, 3 rows, BOM, RFC-4180-quoted transcript. Deployment readiness PASS.
+
+
+### 2026-02-26 — Auto-injected company context for AI assistants
+- New `_build_user_context()` helper in `ai_assistants.py` renders a compact "## Company context" block (company, industry, country, headcount, website, primary user, plan) — only fields present on the user record are included. Returns empty string for blank profiles (no broken context).
+- `chat_complete`, `chat_stream` and `generate_caption` all accept `user_context: Optional[Dict]` and prepend the block to the system prompt. Invisible to the user — they never sent it as a message.
+- Server.py call sites updated: `POST /api/ai/chat`, `POST /api/ai/stream`, `POST /api/marketing/caption` now all pass `user_context=user`.
+- Jury demo enriched: `company_industry='AI / SaaS · ERP for SMEs'`, `company_country='Netherlands'`, `company_employees='10-50'`, `company_website='https://zynthoro.ai'`.
+- Validated by testing_agent (iteration_18: **6/6 GREEN**, new regression suite `test_ai_company_context.py`). End-to-end smoke: Zyntha now answers "You are working at Zynthoro Demo Workspace, an AI-native ERP platform for SMEs" without that info being in the user message.

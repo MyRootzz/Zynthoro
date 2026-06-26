@@ -1,0 +1,32 @@
+{
+  "summary": "Validated (1) jury demo lockout-immunity bug fix and (2) homepage Voice Tour tryout feature. All 5 backend tests pass (jury login success, 12x wrong-password barrage all 401 never 429, correct password works immediately after barrage, db.login_attempts non-blocking for jury, non-demo synthetic email still hits 429 — so the bypass is correctly is_demo-scoped, not a global removal of brute-force protection). Frontend: section-voice-ai, home-voice-tryout, home-voice-mic-btn, home-voice-transcript all render unauthenticated; placeholder contains 'Add a new production order for 500 cookies'; clicking mic in Chromium without mic permission does not crash the page — widget stays mounted.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_jury_lockout.py",
+    "/app/test_reports/pytest/iter14_jury_lockout.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "auth_login() now correctly looks up user FIRST, sets is_demo_account, and skips check_lockout/record_failed_login when is_demo_account=True. Logic is clean and the bypass remains scoped: any account without is_demo still passes through check_lockout → 429 after 5 fails within 15 min. Verified empirically.",
+    "is_demo is only set by seed_jury_demo() (not API-grantable) — secure.",
+    "VoiceTryout sub-component uses the shared useVoiceInput hook, gracefully handles unsupported browsers (Playwright Chromium without mic) without crashing — confirmed in browser test."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_jury_lockout.py (new)"
+  ],
+  "success_rate": {"backend": "100% (5/5)", "frontend": "100% (all data-testids found, click safe)"},
+  "test_credentials": "jury@zynthoro.ai / ZynthoroDemo2026! — confirmed lockout-immune",
+  "seed_data_creation": "None. Used existing seeded jury demo + a throwaway non-demo email (nodemo_test@zynthoro-test.com) whose login_attempts row was cleaned up in teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iter14 verified the jury lockout fix and homepage Voice Tour. Backend test file /app/backend/tests/test_jury_lockout.py is a regression suite — re-run on any future auth_login change. Did NOT re-run the full operations module suite per main-agent instruction (iter13 was clean). Voice tryout only verified element mounting + click-safe; actual Web Speech transcription cannot be exercised in headless Chromium.",
+  "rca of the issue": "Original lockout was stale data from earlier QA brute-force runs against jury@zynthoro.ai. Fix: in server.py auth_login(), look up user document BEFORE calling check_lockout; if user.is_demo is truthy, skip both check_lockout and record_failed_login entirely. Verified with 12 consecutive wrong-password POSTs — all 401, never 429 — and a non-demo synthetic email confirmed to still hit 429, proving the bypass is is_demo-scoped only."
+}

@@ -348,14 +348,21 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
     email = payload.email.lower().strip()
     # Key brute-force lockout by email only (client IP varies across k8s ingress pods).
     ident = f"email:{email}"
-    await check_lockout(db, ident)
 
+    # Lookup user first so we can bypass lockout for demo accounts (jury, XPRIZE).
     user = await db.users.find_one({"email": email})
+    is_demo_account = bool(user and user.get("is_demo"))
+
+    # Demo accounts NEVER get rate-limited — judges need single-click access.
+    if not is_demo_account:
+        await check_lockout(db, ident)
+
     if not user or not verify_password(payload.password, user["password_hash"]):
-        await record_failed_login(db, ident)
+        if not is_demo_account:
+            await record_failed_login(db, ident)
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    if not user.get("email_verified", False) and not user.get("is_founder"):
+    if not user.get("email_verified", False) and not user.get("is_founder") and not is_demo_account:
         raise HTTPException(status_code=403, detail="Please verify your email before logging in.")
 
     await clear_failed_logins(db, ident)

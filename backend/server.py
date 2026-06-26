@@ -229,6 +229,28 @@ async def get_status_checks():
     return rows
 
 
+def _is_test_signup(email: str, name: Optional[str] = None, company: Optional[str] = None) -> bool:
+    """Flag automated testing-agent / QA fixtures so they are excluded from
+    real signup reports. Public-facing counters still see every row (social
+    proof is preserved) — only founder dashboards filter on this flag.
+    """
+    e = (email or "").lower().strip()
+    n = (name or "").strip()
+    c = (company or "").strip()
+    if e.endswith("@zynthoro-test.com"):
+        return True
+    if e in {"test@zynthoro.com", "test@zynthoro.ai"}:
+        return True
+    local = e.split("@", 1)[0] if "@" in e else e
+    if local.startswith(("test_", "ui_test_", "dup_test_", "qa_", "qatest_")):
+        return True
+    if n.upper().startswith("TEST ") or n in {"UI Test User", "User One"}:
+        return True
+    if c == "TEST Co BV":
+        return True
+    return False
+
+
 @api_router.post("/presale/signup", response_model=PresaleSignup, status_code=201)
 async def create_presale_signup(payload: PresaleSignupCreate):
     email_norm = payload.email.lower().strip()
@@ -243,12 +265,14 @@ async def create_presale_signup(payload: PresaleSignupCreate):
     )
     doc = signup.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
+    doc['is_test'] = _is_test_signup(email_norm, signup.name, signup.company)
     await db.presale_signups.insert_one(doc)
     return signup
 
 
 @api_router.get("/presale/count")
 async def get_presale_count():
+    # Public counter — keeps social proof (includes legacy test rows).
     count = await db.presale_signups.count_documents({})
     return {"count": count}
 
@@ -813,13 +837,25 @@ async def ai_sessions(
 @api_router.get("/founder/presale-signups")
 async def founder_presale(user=Depends(get_founder_user)):
     rows = await db.presale_signups.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
-    return {"signups": rows, "count": len(rows)}
+    real = [r for r in rows if not r.get("is_test")]
+    test = [r for r in rows if r.get("is_test")]
+    return {
+        "signups": real,
+        "count": len(real),
+        "real_count": len(real),
+        "test_count": len(test),
+        "total_count": len(rows),
+    }
 
 
 @api_router.get("/founder/stats")
 async def founder_stats(user=Depends(get_founder_user)):
+    total_presale = await db.presale_signups.count_documents({})
+    real_presale = await db.presale_signups.count_documents({"is_test": {"$ne": True}})
     return {
-        "presale_count": await db.presale_signups.count_documents({}),
+        "presale_count": real_presale,
+        "presale_total_count": total_presale,
+        "presale_test_count": total_presale - real_presale,
         "user_count": await db.users.count_documents({}),
         "team_members": await db.team_members.count_documents({}),
         "ai_messages": await db.ai_messages.count_documents({}),

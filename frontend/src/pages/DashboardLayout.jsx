@@ -4,6 +4,7 @@ import Sidebar from "@/components/dashboard/Sidebar";
 import TopBar from "@/components/dashboard/TopBar";
 import AssistFloating from "@/components/dashboard/AssistFloating";
 import BuilderModePanel from "@/components/dashboard/BuilderModePanel";
+import JuryTour from "@/components/dashboard/JuryTour";
 import { useAuth } from "@/contexts/AuthContext";
 
 export default function DashboardLayout() {
@@ -27,6 +28,7 @@ export default function DashboardLayout() {
         </main>
       </div>
       <AssistFloating />
+      <JuryTour />
     </div>
   );
 }

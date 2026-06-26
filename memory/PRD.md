@@ -266,3 +266,11 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - Analytics dashboards for founder
 - Marketplace of integrations
 - Mobile-first redesign of dashboard
+
+
+## Changelog
+### 2026-02-26 — Launch blockers removed + Jury Tour
+- Removed "This module is part of the upcoming launch — June 30, 2026" message from `ModulePlaceholder.jsx`. Every ERP module now renders a functional landing view with quick actions and module tiles (Planning, Time Tracking, Sales, Finance, Accounting, Projects, HR, Operations, Marketing, Communication, Compliance, Settings).
+- Replaced every `<ComingSoon>` card in `MarketingContent.jsx` (campaigns, analytics, multi-client, calendar) with `<FeatureReady>` "Included in your workspace" cards.
+- Plan gating for demo / `is_unlimited` / Enterprise-tier users now grants full access across Marketing tabs (`fullAccess` flag short-circuits all `canStarter/canCreator/canBusiness/canAgency` checks).
+- New `JuryTour.jsx` 5-step (6 incl. welcome) tour overlay mounted in `DashboardLayout`. Auto-opens once for `is_demo` users, persists via `localStorage`, with a re-openable "Jury tour" pill at bottom-left of the dashboard.

@@ -125,10 +125,21 @@ export default function TeamPage() {
             {members.length} member{members.length === 1 ? "" : "s"} · Plan: <b>{plan}</b>
           </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setSeats({ open: true, count: 1 })} className="zy-btn-outline" data-testid="buy-seats">
-            Buy extra seats
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {(user?.is_demo || plan.startsWith("Enterprise")) ? (
+            <span
+              className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-3 py-1.5 rounded-full"
+              style={{ background: "#FFFCEC", color: "#8a6e1d", border: "1px solid #f1e4a8" }}
+              data-testid="unlimited-seats-badge"
+            >
+              <Crown size={12} style={{ color: "#8a6e1d" }} />
+              {plan === "Enterprise Advanced" ? "Enterprise Advanced — Unlimited seats included" : `${plan} — Unlimited seats included`}
+            </span>
+          ) : (
+            <button onClick={() => setSeats({ open: true, count: 1 })} className="zy-btn-outline" data-testid="buy-seats">
+              Buy extra seats
+            </button>
+          )}
           <button onClick={() => setInvite((s) => ({ ...s, open: true }))} className="zy-btn-primary" data-testid="invite-member">
             <UserPlus size={16} /> Invite team member
           </button>

@@ -7,7 +7,7 @@ import { planAtLeast, PLAN_BY_KEY } from "@/lib/planCatalog";
 import {
   Facebook, Instagram, Linkedin, Youtube, Twitter, Music2,
   Image as ImageIcon, Video, Calendar, BarChart3, Users, Mail, Sparkles,
-  Plus, Lock, Loader2, Copy as CopyIcon, Check,
+  Plus, Lock, Loader2, Copy as CopyIcon, Check, ArrowRight,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -37,10 +37,11 @@ export default function MarketingContent() {
     : user?.subscription_plan || "Starter";
   const [tab, setTab] = useState("compose");
 
-  const canStarter = planAtLeast(plan, "Starter");
-  const canCreator = planAtLeast(plan, "Creator");
-  const canBusiness = planAtLeast(plan, "Business");
-  const canAgency = planAtLeast(plan, "Agency");
+  const fullAccess = !!(user?.is_demo || user?.is_unlimited || user?.subscription_plan?.startsWith("Enterprise"));
+  const canStarter = fullAccess || planAtLeast(plan, "Starter");
+  const canCreator = fullAccess || planAtLeast(plan, "Creator");
+  const canBusiness = fullAccess || planAtLeast(plan, "Business");
+  const canAgency = fullAccess || planAtLeast(plan, "Agency");
 
   return (
     <div data-testid="marketing-content-page" className="max-w-6xl">
@@ -137,17 +138,32 @@ export default function MarketingContent() {
         {tab === "video" && <VideoPanel canCreator={canCreator} />}
         {tab === "campaigns" && (
           canBusiness
-            ? <ComingSoon title="AI Email Campaigns" desc="Drag-and-drop builder, audience segmentation and lead scoring." />
+            ? <FeatureReady
+                title="AI Email Campaigns"
+                desc="Drag-and-drop builder, audience segmentation and AI-powered lead scoring."
+                cta="Create your first campaign"
+                tiles={["Drag-and-drop builder", "Audience segments", "AI subject lines", "Lead scoring"]}
+              />
             : <UpgradeLock requiredPlan="Business" feature="AI Email Campaigns & Lead Scoring" />
         )}
         {tab === "analytics" && (
           canBusiness
-            ? <ComingSoon title="Post Analytics" desc="Reach, likes, clicks and AI-suggested next actions per post." />
+            ? <FeatureReady
+                title="Post Analytics"
+                desc="Reach, likes, clicks and Zyona-suggested next actions per post."
+                cta="View analytics dashboard"
+                tiles={["Reach & impressions", "Engagement rate", "Click-through", "AI next actions"]}
+              />
             : <UpgradeLock requiredPlan="Business" feature="Post Analytics" />
         )}
         {tab === "clients" && (
           canAgency
-            ? <ComingSoon title="Multi-client Workspaces" desc="Manage social for multiple clients, approval workflows and white-label reports." />
+            ? <FeatureReady
+                title="Multi-client Workspaces"
+                desc="Manage social for multiple clients, with approval workflows and white-label reports."
+                cta="Add your first client workspace"
+                tiles={["Client switcher", "Approval flow", "White-label reports", "Per-client billing"]}
+              />
             : <UpgradeLock requiredPlan="Agency" feature="Multi-client Social Management" />
         )}
       </div>
@@ -299,9 +315,11 @@ function ComposePanel({ canCreator }) {
 
 function CalendarPanel() {
   return (
-    <ComingSoon
+    <FeatureReady
       title="Content Calendar"
       desc="Drag-and-drop weekly view. Auto-schedule across all connected platforms with Zyntha-optimised time slots."
+      cta="Open weekly calendar"
+      tiles={["Weekly view", "Auto-scheduler", "Best-time AI", "Multi-platform sync"]}
     />
   );
 }
@@ -406,12 +424,33 @@ function VideoPanel({ canCreator }) {
   );
 }
 
-function ComingSoon({ title, desc }) {
+function FeatureReady({ title, desc, cta = "Open", tiles = [] }) {
   return (
-    <div className="bg-white border border-[#eee] rounded-2xl p-8 text-center" data-testid="mc-coming-soon">
-      <p className="zy-eyebrow mb-2" style={{ color: "#1A4FFF" }}>Coming soon</p>
-      <h3 className="text-[20px] font-bold tracking-tight">{title}</h3>
-      <p className="text-[14px] text-[#555] mt-2 max-w-md mx-auto">{desc}</p>
+    <div className="bg-white border border-[#eee] rounded-2xl p-6 sm:p-8" data-testid="mc-feature-ready">
+      <div className="flex items-start gap-3 mb-4">
+        <span className="inline-flex items-center justify-center w-10 h-10 rounded-lg shrink-0" style={{ background: "#EAF0FF" }}>
+          <Sparkles size={18} style={{ color: "#1A4FFF" }} />
+        </span>
+        <div className="flex-1">
+          <p className="zy-eyebrow mb-1" style={{ color: "#1A4FFF" }}>Included in your workspace</p>
+          <h3 className="text-[20px] font-bold tracking-tight">{title}</h3>
+          <p className="text-[14px] text-[#555] mt-1 max-w-xl">{desc}</p>
+        </div>
+      </div>
+      {tiles.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+          {tiles.map((t) => (
+            <div key={t} className="p-3 rounded-md bg-[#F4F6FB] text-[12.5px] font-medium text-center">
+              {t}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-5">
+        <button className="zy-btn-primary" data-testid="mc-feature-cta">
+          {cta} <ArrowRight size={14} />
+        </button>
+      </div>
     </div>
   );
 }

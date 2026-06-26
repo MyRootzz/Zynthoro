@@ -313,3 +313,8 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 ### 2026-02-26 — Builder Mode digest card
 - Added `DigestCard` to `BuilderModePanel.jsx`: shows last-24h KPI tiles (presale, voice leads, anonymous tryouts), schedule note ("Auto-sent to info@zynthoro.ai every day at 07:00 UTC"), and a prominent blue "Send test now" button. After a successful send, inline green confirmation with the timestamp appears.
 - UI smoke-tested end-to-end (founder login → Builder mode → click Send test now → success toast + inline confirmation). Backend already 10/10 green in iteration_17. Deployment readiness PASS.
+
+
+### 2026-02-26 — Voice tryout leads inline in Builder Mode
+- Added `VoiceLeadsPanel` to `BuilderModePanel.jsx`: header shows "Voice tryout leads · N (M anonymous tryouts not shown)", table renders the last 10 with-email leads (email · transcript snippet · language · timestamp). Backend already exposed via `GET /api/founder/voice-tryouts` (tested 8/8 GREEN in iteration_15).
+- UI smoke-tested: panel rendered 3 lead rows with transcripts (`"test"`, `"I want to try the voice flow"`, `"Schedule a sourdough batch"`) at the expected positions. Deployment readiness PASS.

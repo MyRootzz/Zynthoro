@@ -4,8 +4,9 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { API, formatApiError } from "@/contexts/AuthContext";
-import { Flag, Users, MessageCircle, Database, Beaker, Mail, Send, Loader2, CheckCircle2 } from "lucide-react";
+import { Flag, Users, MessageCircle, Database, Beaker, Mail, Send, Loader2, CheckCircle2, Download } from "lucide-react";
 import StripeMetricsCard from "@/components/dashboard/StripeMetricsCard";
+import { downloadCsv, todayStamp } from "@/lib/csvExport";
 
 export default function BuilderModePanel() {
   const [stats, setStats] = useState(null);
@@ -83,7 +84,27 @@ export default function BuilderModePanel() {
       )}
 
       <div className="bg-white rounded-lg border border-[#eee] p-4">
-        <h3 className="text-[13.5px] font-semibold mb-3">Presale signups · {signups.length}</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h3 className="text-[13.5px] font-semibold">Presale signups · {signups.length}</h3>
+          <button
+            onClick={() => downloadCsv(
+              `zynthoro_presale_${todayStamp()}.csv`,
+              signups,
+              [
+                { key: "name",          label: "Name" },
+                { key: "email",         label: "Email" },
+                { key: "company",       label: "Company", value: (r) => r.company || "" },
+                { key: "plan_interest", label: "Plan interest", value: (r) => r.plan_interest || "" },
+                { key: "created_at",    label: "Created at" },
+              ],
+            )}
+            disabled={signups.length === 0}
+            data-testid="presale-export-csv"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-[#eee] text-[12px] font-semibold text-[#555] hover:border-[#1A4FFF] hover:text-[#1A4FFF] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={12} /> Export CSV
+          </button>
+        </div>
         {signups.length === 0 ? (
           <p className="text-[12.5px] text-[#999]">No signups yet.</p>
         ) : (
@@ -123,6 +144,7 @@ function VoiceLeadsPanel({ voice }) {
   if (!voice) return null;
   const leads = voice.leads || [];
   const named = leads.filter((l) => l.email).slice(0, 10);
+  const allWithEmail = leads.filter((l) => l.email);
   return (
     <div className="bg-white rounded-lg border border-[#eee] p-4 mt-6" data-testid="voice-leads-panel">
       <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
@@ -132,7 +154,28 @@ function VoiceLeadsPanel({ voice }) {
             ({voice.anonymous_count} anonymous tryouts not shown)
           </span>
         </h3>
-        <p className="text-[11.5px] text-[#888]">Last 10 with email · golden product-research signal</p>
+        <div className="flex items-center gap-3">
+          <p className="text-[11.5px] text-[#888]">Last 10 with email · golden product-research signal</p>
+          <button
+            onClick={() => downloadCsv(
+              `zynthoro_voice_leads_${todayStamp()}.csv`,
+              allWithEmail,
+              [
+                { key: "email",      label: "Email" },
+                { key: "transcript", label: "Transcript", value: (r) => r.transcript || "" },
+                { key: "language",   label: "Language", value: (r) => r.language || "" },
+                { key: "user_agent", label: "User agent", value: (r) => r.user_agent || "" },
+                { key: "ip",         label: "IP", value: (r) => r.ip || "" },
+                { key: "created_at", label: "Created at" },
+              ],
+            )}
+            disabled={allWithEmail.length === 0}
+            data-testid="voice-leads-export-csv"
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-[#eee] text-[12px] font-semibold text-[#555] hover:border-[#1A4FFF] hover:text-[#1A4FFF] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download size={12} /> Export CSV
+          </button>
+        </div>
       </div>
       {named.length === 0 ? (
         <p className="text-[12.5px] text-[#999]">No voice tryout leads with email yet.</p>

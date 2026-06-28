@@ -359,3 +359,11 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - `SubscribeBeta.jsx`: Claim CTA now refreshes status, then redirects directly to the Stripe Payment Link (with optional `prefilled_email`).
 - Test suite updated: `test_stripe_metrics.py` uses new `_plan_item()` helper that stamps `price.product` with real product IDs. Seats test marked skip. **7 passed, 1 skipped**.
 - Validated by testing_agent_v3_fork (iteration_20: all GREEN, no action items). Deployment readiness PASS.
+
+
+### 2026-02-26 — Beta signup Slack/Discord webhook ping
+- New `webhook_notifier.py` module — auto-detects Slack (Block Kit), Discord (embeds), or generic JSON from the URL pattern. Fire-and-forget, never raises.
+- Feature flag `beta_webhook_url` added (string, default empty) to `db.feature_flags`. Configurable from Builder Mode > Feature flags via a new `BetaWebhookField` component (paste URL → Save → Send test).
+- New `POST /api/founder/beta-webhook/test` (founder-only) sends a sample "New Beta Founder (TEST)" ping. Returns `{sent, kind}` so the UI can show success/failure + the auto-detected platform.
+- Stripe webhook handler (`checkout.session.completed`, `mode=subscription`) now detects Beta purchases by matching the line-item product against `BETA_PRODUCT_ID` (handles Payment Link path which doesn't carry our metadata). On match: persists `db.beta_signups`, computes remaining spots, and fires the configured webhook in the background.
+- Validated by testing_agent (iteration_21: **19/19 backend + 12/12 frontend GREEN**). Deployment readiness PASS.

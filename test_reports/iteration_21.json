@@ -1,0 +1,34 @@
+{
+  "summary": "Full backend + frontend verification of the Beta-signup Slack/Discord webhook feature (iteration 21). All 19 backend pytest assertions pass: feature-flag GET/PATCH with beta_webhook_url, POST /api/founder/beta-webhook/test (400/200/403 paths, kind detection for slack/discord/generic, sent=false for fake URL), and webhook_notifier module unit tests (detect_kind, Slack Block Kit + Discord embeds + generic JSON payload shapes via patched httpx.AsyncClient, empty-URL skip without network call, non-2xx returns False, exception swallowed). All 12 frontend UI assertions pass on BuilderModePanel > BetaWebhookField (visibility, Save disabled/enabled rules, Send-test disabled-when-empty rule, kind badge, persistence, POST trigger to /api/founder/beta-webhook/test). Stripe checkout.session.completed → notifier hook reviewed by code (cannot e2e without real Stripe delivery, per main-agent note).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_beta_webhook.py",
+    "/app/test_reports/pytest/iter21_beta_webhook.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:1488-1522 — the Stripe checkout.session.completed handler does a synchronous `stripe_sdk.checkout.Session.retrieve(..., expand=['line_items.data.price'])` on every subscription-mode session just to detect Beta. This is a blocking IO call inside an async webhook handler; long Stripe latency will hold the request thread. Wrap in `await asyncio.to_thread(...)` (or use the async Stripe client) to keep the handler non-blocking.",
+    "webhook_notifier.py:84 — `httpx.AsyncClient()` is constructed without `follow_redirects=True`. Slack and Discord typically don't redirect, but generic 3xx responses will silently log as non-2xx. Consider following redirects (or at least documenting the assumption).",
+    "BuilderModePanel.jsx:380 — `disabled={!flags?.beta_webhook_url || testing}` reads the SAVED url (`flags.beta_webhook_url`), not the in-input `url`. Good — this matches the requirement ('disabled when URL is empty', meaning when no URL is configured). However the comment in the review request says 'disabled when URL is empty and triggers POST when set'; this is correctly the SAVED state. Worth a one-line code comment for clarity.",
+    "webhook_notifier.send timeout is 6.0s. Slack/Discord typically respond in <500ms; 6s is acceptable but consider 4s to keep the Stripe webhook fire-and-forget tight (the `asyncio.create_task` already detaches it, so this is non-blocking — fine as-is).",
+    "BetaWebhookField has no client-side URL validation (e.g., regex for http/https). A founder pasting a bad string is caught server-side via httpx error → toast; acceptable, but a quick `type='url'` check is already present so this is OK."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_beta_webhook.py (new — 19 tests, all passing)"
+  ],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% (12/12 UI checks)"},
+  "test_credentials": "Founder: regie@myrootzz.com / Zynthoro2026! (TOTP DSU3VU4MKE46IVOLKP3CLILRA4K4HVS5) · Jury: jury@zynthoro.ai / ZynthoroDemo2026!",
+  "seed_data_creation": "None — used existing seeded users. Tests snapshot+restore beta_webhook_url so flag state is preserved.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Beta-webhook notifier feature is fully wired and verified. The Stripe webhook → notifier path (server.py:1485-1522) was only code-reviewed — it requires a real Stripe checkout.session.completed delivery to e2e (acknowledged by main agent). Test file: /app/backend/tests/test_beta_webhook.py — 4 classes, 19 tests. UI selectors used: beta-webhook-field, beta-webhook-url, beta-webhook-save, beta-webhook-test, switch-mode (footer button to toggle Builder Mode — the BuilderModePanel is gated behind Mode:Builder, not visible in Mode:User). To repro UI flow: login as founder → /dashboard → click [data-testid='switch-mode'] (shows 'Mode: User' initially, becomes 'Mode: Builder') → scroll to Builder Mode card. No regressions expected vs iteration_20.",
+  "rca of the issue": "N/A — no failures."
+}

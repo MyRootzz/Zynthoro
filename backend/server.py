@@ -981,8 +981,10 @@ async def founder_flags(user=Depends(get_founder_user)):
             "presale_open": True,
             "beta_modules_enabled": False,
             "stripe_enabled": False,
+            "beta_webhook_url": "",
         }
         await db.feature_flags.insert_one(dict(row))
+    row.setdefault("beta_webhook_url", "")
     return row
 
 
@@ -991,6 +993,7 @@ class FeatureFlagsIn(BaseModel):
     presale_open: Optional[bool] = None
     beta_modules_enabled: Optional[bool] = None
     stripe_enabled: Optional[bool] = None
+    beta_webhook_url: Optional[str] = Field(default=None, max_length=500)
 
 
 @api_router.patch("/founder/feature-flags")
@@ -1001,6 +1004,23 @@ async def founder_flags_update(payload: FeatureFlagsIn, user=Depends(get_founder
             {"singleton": True}, {"$set": updates}, upsert=True
         )
     return await db.feature_flags.find_one({"singleton": True}, {"_id": 0})
+
+
+@api_router.post("/founder/beta-webhook/test")
+async def founder_test_beta_webhook(user=Depends(get_founder_user)):
+    """Send a sample 'New Beta Founder' ping to the configured webhook URL."""
+    import webhook_notifier  # noqa: WPS433
+    row = await db.feature_flags.find_one({"singleton": True}, {"_id": 0}) or {}
+    url = (row.get("beta_webhook_url") or "").strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="No webhook URL configured.")
+    ok = await webhook_notifier.send(
+        url,
+        title="🎉 New Beta Founding Member (TEST)",
+        body="This is a test ping from your Zynthoro Builder Mode.",
+        fields={"Plan": "Beta Founding Member", "Amount": "€4.99/mo (locked)", "Source": "Test trigger"},
+    )
+    return {"sent": ok, "kind": webhook_notifier._detect_kind(url)}
 
 
 # ========================================================================
@@ -1446,6 +1466,61 @@ async def stripe_webhook(request: Request):
             user_id = meta.get("user_id") or obj.get("client_reference_id")
             kind = meta.get("kind", "")
             now_iso = datetime.now(timezone.utc).isoformat()
+
+            # --- Beta Founding Member detection (Stripe Payment Link path) ---
+            # Payment-link sessions don't carry our metadata. Identify by
+            # the line-item product matching the beta product ID.
+            try:
+                expanded = stripe_sdk.checkout.Session.retrieve(
+                    session_id, expand=["line_items.data.price"]
+                )
+                items = (expanded.get("line_items") or {}).get("data") or []
+                beta_hit = any(
+                    ((it.get("price") or {}).get("product") == subs_mod.BETA_PRODUCT_ID)
+                    for it in items
+                )
+            except Exception:
+                beta_hit = False
+
+            if beta_hit or kind == "beta_founder":
+                email_addr = obj.get("customer_details", {}).get("email") or obj.get("customer_email")
+                country = (obj.get("customer_details", {}).get("address") or {}).get("country")
+                flags = await db.feature_flags.find_one({"singleton": True}, {"_id": 0}) or {}
+                webhook_url = (flags.get("beta_webhook_url") or "").strip()
+                # Persist for the founder digest + spot counting fallback
+                await db.beta_signups.update_one(
+                    {"session_id": session_id},
+                    {"$set": {
+                        "session_id": session_id,
+                        "email": email_addr,
+                        "country": country,
+                        "stripe_subscription_id": obj.get("subscription"),
+                        "stripe_customer_id": obj.get("customer"),
+                        "created_at": now_iso,
+                    }},
+                    upsert=True,
+                )
+                # Count remaining spots for the message
+                try:
+                    status = subs_mod.beta_status()
+                    remaining = status.get("spots_remaining")
+                except Exception:
+                    remaining = None
+                if webhook_url:
+                    import webhook_notifier  # noqa: WPS433
+                    asyncio.create_task(webhook_notifier.send(
+                        webhook_url,
+                        title="🎉 New Beta Founding Member",
+                        body=f"*{email_addr or 'A new founder'}* just claimed a Zynthoro Beta spot.",
+                        fields={
+                            "Plan":      "Beta Founding Member",
+                            "Amount":    "€4.99/mo (locked for life)",
+                            "Country":   country or "—",
+                            "Remaining": f"{remaining}/100" if remaining is not None else "—",
+                            "Session":   session_id,
+                        },
+                    ))
+                logger.info("Beta founder signup recorded: %s (remaining=%s)", email_addr, remaining)
 
             if user_id and kind == "subscription_change":
                 plan_key = meta.get("plan_key") or "Starter"

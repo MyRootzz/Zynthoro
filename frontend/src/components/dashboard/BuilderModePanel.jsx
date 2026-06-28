@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { API, formatApiError } from "@/contexts/AuthContext";
-import { Flag, Users, MessageCircle, Database, Beaker, Mail, Send, Loader2, CheckCircle2, Download } from "lucide-react";
+import { Flag, Users, MessageCircle, Database, Beaker, Mail, Send, Loader2, CheckCircle2, Download, Webhook, TestTube2 } from "lucide-react";
 import StripeMetricsCard from "@/components/dashboard/StripeMetricsCard";
 import { downloadCsv, todayStamp } from "@/lib/csvExport";
 
@@ -80,6 +80,8 @@ export default function BuilderModePanel() {
               </div>
             ))}
           </div>
+
+          <BetaWebhookField flags={flags} updateFlag={updateFlag} />
         </div>
       )}
 
@@ -303,6 +305,86 @@ function Tile({ label, value }) {
     <div className="rounded-md p-2.5" style={{ background: "#FAFAFB", border: "1px solid #eee" }}>
       <p className="text-[10.5px] uppercase tracking-wider text-[#888] font-semibold">{label}</p>
       <p className="text-[18px] font-bold mt-0.5" style={{ color: "#0A1628" }}>{value}</p>
+    </div>
+  );
+}
+
+function BetaWebhookField({ flags, updateFlag }) {
+  const [url, setUrl] = useState(flags?.beta_webhook_url || "");
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+
+  useEffect(() => { setUrl(flags?.beta_webhook_url || ""); }, [flags?.beta_webhook_url]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await updateFlag("beta_webhook_url", url.trim());
+      toast.success(url.trim() ? "Webhook URL saved." : "Webhook cleared.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const sendTest = async () => {
+    setTesting(true);
+    try {
+      const { data } = await axios.post(`${API}/founder/beta-webhook/test`);
+      if (data?.sent) {
+        toast.success(`Test ping sent to ${data.kind || "webhook"}.`);
+      } else {
+        toast.error("Webhook returned a non-2xx status. Check the URL.");
+      }
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || "Test failed.");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const dirty = (url.trim() || "") !== (flags?.beta_webhook_url || "").trim();
+  const kind = url.includes("hooks.slack.com")
+    ? "Slack"
+    : (url.includes("discord.com") || url.includes("discordapp.com"))
+      ? "Discord"
+      : url.trim() ? "Generic JSON" : null;
+
+  return (
+    <div className="mt-5 pt-5 border-t border-[#f0f0f0]" data-testid="beta-webhook-field">
+      <div className="flex items-center gap-2 mb-2">
+        <Webhook size={13} className="text-[#666]" />
+        <Label className="text-[13px] font-semibold">Beta signup notifier</Label>
+        {kind && <span className="text-[11px] px-1.5 py-0.5 rounded bg-[#EAF0FF] text-[#1A4FFF] font-semibold">{kind}</span>}
+      </div>
+      <p className="text-[11.5px] text-[#777] mb-2">Paste a Slack or Discord webhook URL. Every new Beta Founding Member triggers an instant ping.</p>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://hooks.slack.com/services/… or https://discord.com/api/webhooks/…"
+          data-testid="beta-webhook-url"
+          className="flex-1 text-[12.5px] px-2.5 py-2 rounded-md border border-[#eee] focus:outline-none focus:border-[#1A4FFF]"
+        />
+        <button
+          onClick={save}
+          disabled={!dirty || saving}
+          data-testid="beta-webhook-save"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[12.5px] font-semibold text-white bg-[#1A4FFF] disabled:opacity-50"
+        >
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+          Save
+        </button>
+        <button
+          onClick={sendTest}
+          disabled={!flags?.beta_webhook_url || testing}
+          data-testid="beta-webhook-test"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md text-[12.5px] font-semibold text-[#555] border border-[#eee] hover:border-[#1A4FFF] hover:text-[#1A4FFF] disabled:opacity-50"
+        >
+          {testing ? <Loader2 size={13} className="animate-spin" /> : <TestTube2 size={13} />}
+          Send test
+        </button>
+      </div>
     </div>
   );
 }

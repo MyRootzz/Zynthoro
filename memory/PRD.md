@@ -367,3 +367,13 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - New `POST /api/founder/beta-webhook/test` (founder-only) sends a sample "New Beta Founder (TEST)" ping. Returns `{sent, kind}` so the UI can show success/failure + the auto-detected platform.
 - Stripe webhook handler (`checkout.session.completed`, `mode=subscription`) now detects Beta purchases by matching the line-item product against `BETA_PRODUCT_ID` (handles Payment Link path which doesn't carry our metadata). On match: persists `db.beta_signups`, computes remaining spots, and fires the configured webhook in the background.
 - Validated by testing_agent (iteration_21: **19/19 backend + 12/12 frontend GREEN**). Deployment readiness PASS.
+
+
+### 2026-02-26 — Revenue-pulse webhook mirroring
+- Extended the Stripe webhook handler to send three additional Slack/Discord pings via the existing `beta_webhook_url` field:
+  1. **💎 Enterprise subscriptions** — fires when `checkout.session.completed` includes a line-item product matching any of Enterprise Basic / Plus / Advanced. Title shows the tier, amount in EUR, country, session id.
+  2. **⚠️ Payment failed** — fires on `invoice.payment_failed` alongside the existing email alert. Includes amount, attempt count, next attempt timestamp, subscription id.
+  3. **🔒 Beta SOLD OUT** — extra ping fires when the 100th Beta Founding Member subscribes and `spots_remaining` rolls to 0.
+- Single `items` expansion is now shared between Beta and Enterprise detection — one Stripe API call per event instead of two.
+- All three triggers gracefully skip when `beta_webhook_url` is empty; existing email alert flow is unaffected.
+- Validated by testing_agent (iteration_22: **15/15 new + 41/41 regression GREEN**). Deployment readiness PASS.

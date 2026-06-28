@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 22 — verified the three NEW webhook_notifier ping triggers added to the Stripe webhook handler: (a) Enterprise tier subscription '💎 New <Tier>!' ping for Enterprise Basic/Plus/Advanced, (b) invoice.payment_failed '⚠️ Payment failed' ping (with the original email_service.send_stripe_alert still firing — no regression), and (c) '🔒 Beta is SOLD OUT' bonus ping when the 100th spot is claimed. All 15 new pytest cases pass. Regression check: re-ran iteration_21 base webhook suite (19 tests) + iteration earlier alert wiring suite (7 tests) → all 41 tests PASS combined. The 'when beta_webhook_url is empty' disable path is confirmed for all three new triggers, and the email-alert flow on payment_failed continues to fire even when the Slack/Discord URL is blank.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stripe_webhook_iter22_pings.py",
+    "/app/test_reports/pytest/iter22_pings.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:1474-1480 — the synchronous `stripe_sdk.checkout.Session.retrieve(..., expand=['line_items.data.price'])` is still executed inline in the async webhook handler (already flagged in iteration_21). For Beta+Enterprise detection this Stripe API call now runs on EVERY subscription-mode checkout completion. Recommend wrapping in `await asyncio.to_thread(...)` to avoid blocking the FastAPI worker on Stripe latency.",
+    "server.py:1535-1550 — `hit_keys` is a list but only the first match (`hit_keys[0]`) is used. If a checkout somehow contains line-items for multiple Enterprise tiers (unlikely but possible with bundles), the others are silently dropped. Either assert single-tier or aggregate. Low priority.",
+    "server.py:1510 vs 1559 — the handler does `await db.feature_flags.find_one(...)` twice in the same request (once for the Beta branch, once for the Enterprise branch) when both could match. Negligible perf hit, but a single fetch above the branches would be cleaner.",
+    "server.py:1567 — Amount is rendered as `f'€{tier_amount}/mo'` using the catalog's amount_eur which is a string like '2499' (no thousands separator and no decimal). Slack shows '€2499/mo' instead of '€2,499/mo' as the PRD copy implies. Cosmetic, not functional.",
+    "server.py:1525 — the SOLD OUT trigger compares `remaining == 0` AFTER the new signup is upserted into db.beta_signups. The fallback `subs_mod.beta_status()` derives remaining from Stripe + db; ensure that fallback counts the just-inserted row, otherwise the 100th signup might still see remaining=1 in race conditions. Worth a code comment or an explicit decrement.",
+    "server.py:1684 — the payment_failed `email_service.send_stripe_alert` and the new `webhook_notifier.send` both run via `asyncio.create_task`, fire-and-forget — good. But if either raises synchronously before scheduling (e.g. import failure), the handler would 500. Consider wrapping `import webhook_notifier` outside the if-block as a module-level import to surface import errors at startup."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stripe_webhook_iter22_pings.py (NEW — 15 tests, all passing)"
+  ],
+  "success_rate": {
+    "backend": "100% (15/15 new + 41/41 combined with iter21 baseline)",
+    "frontend": "N/A (backend-only scope)"
+  },
+  "test_credentials": "Not used — webhook handler tested in-process with mocked stripe_sdk + db.feature_flags singleton patching. Founder creds (regie@myrootzz.com / Zynthoro2026!, TOTP DSU3VU4MKE46IVOLKP3CLILRA4K4HVS5) preserved in /app/memory/test_credentials.md and used in iteration_21 founder-route tests.",
+  "seed_data_creation": "One throwaway db.users row per regression test (id prefix TEST_iter22_*) — cleaned up in finally block. db.feature_flags.beta_webhook_url is snapshotted at fixture setup and restored on teardown so the production flag value is untouched. db.beta_signups may receive a few synthetic session_id rows from the Beta tests (no cleanup performed since they reuse upsert by session_id — recommend adding a TEST_ prefix in a future iteration).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 22 covers the three new pings on top of iteration_21's baseline notifier feature. Test file: /app/backend/tests/test_stripe_webhook_iter22_pings.py with 5 classes. Mocking pattern: (1) monkeypatch stripe_sdk.Webhook.construct_event → json.loads(body) to bypass signature, (2) monkeypatch stripe_sdk.checkout.Session.retrieve → return synthetic line_items, (3) monkeypatch webhook_notifier.send → spy AsyncMock (the handler does `import webhook_notifier` inline but it resolves to the already-loaded sys.modules entry, so module-attr patching works), (4) monkeypatch subs_mod.beta_status → return spots_remaining=0 for cap-hit, (5) snapshot+restore db.feature_flags.beta_webhook_url. To extend, follow the `_sub_session_event(...)` + `_line_item_for_product(...)` helpers. Live webhook still 403s w/o auth on /api/founder/beta-webhook/test (iteration_21 path). No frontend-visible changes in this iteration; UI selectors from iteration_21 (beta-webhook-field/url/save/test) remain valid.",
+  "rca of the issue": "N/A — no failures."
+}

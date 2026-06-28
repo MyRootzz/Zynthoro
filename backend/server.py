@@ -1470,17 +1470,18 @@ async def stripe_webhook(request: Request):
             # --- Beta Founding Member detection (Stripe Payment Link path) ---
             # Payment-link sessions don't carry our metadata. Identify by
             # the line-item product matching the beta product ID.
+            items = []
             try:
                 expanded = stripe_sdk.checkout.Session.retrieve(
                     session_id, expand=["line_items.data.price"]
                 )
                 items = (expanded.get("line_items") or {}).get("data") or []
-                beta_hit = any(
-                    ((it.get("price") or {}).get("product") == subs_mod.BETA_PRODUCT_ID)
-                    for it in items
-                )
             except Exception:
-                beta_hit = False
+                items = []
+            beta_hit = any(
+                ((it.get("price") or {}).get("product") == subs_mod.BETA_PRODUCT_ID)
+                for it in items
+            )
 
             if beta_hit or kind == "beta_founder":
                 email_addr = obj.get("customer_details", {}).get("email") or obj.get("customer_email")
@@ -1520,7 +1521,55 @@ async def stripe_webhook(request: Request):
                             "Session":   session_id,
                         },
                     ))
+                    # Bonus ping when we hit the cap
+                    if remaining == 0:
+                        asyncio.create_task(webhook_notifier.send(
+                            webhook_url,
+                            title="🔒 Beta is SOLD OUT — all 100 spots taken!",
+                            body="The Zynthoro Beta Founding Member program has just closed. New signups now route to standard pricing.",
+                            fields={"Milestone": "100 / 100", "Action": "Auto-redirect to /#pricing is live"},
+                        ))
                 logger.info("Beta founder signup recorded: %s (remaining=%s)", email_addr, remaining)
+
+            # --- Enterprise tier detection (€2,499+ /mo) ---
+            hit_keys = []
+            try:
+                ent_product_ids = {
+                    subs_mod.PLAN_CATALOG[k]["product_id"]
+                    for k in ("Enterprise Basic", "Enterprise Plus", "Enterprise Advanced")
+                }
+                for it in items:
+                    p = it.get("price") or {}
+                    pid = p.get("product")
+                    if pid in ent_product_ids:
+                        for plan_key, cfg in subs_mod.PLAN_CATALOG.items():
+                            if cfg["product_id"] == pid:
+                                hit_keys.append(plan_key)
+                                break
+            except Exception:
+                hit_keys = []
+
+            if hit_keys:
+                flags = await db.feature_flags.find_one({"singleton": True}, {"_id": 0}) or {}
+                webhook_url = (flags.get("beta_webhook_url") or "").strip()
+                email_addr = obj.get("customer_details", {}).get("email") or obj.get("customer_email")
+                country = (obj.get("customer_details", {}).get("address") or {}).get("country")
+                tier_label = hit_keys[0]
+                tier_amount = subs_mod.PLAN_CATALOG.get(tier_label, {}).get("amount_eur", "?")
+                if webhook_url:
+                    import webhook_notifier  # noqa: WPS433
+                    asyncio.create_task(webhook_notifier.send(
+                        webhook_url,
+                        title=f"💎 New {tier_label} subscription!",
+                        body=f"*{email_addr or 'A new enterprise customer'}* just signed up for {tier_label}.",
+                        fields={
+                            "Plan":    tier_label,
+                            "Amount":  f"€{tier_amount}/mo",
+                            "Country": country or "—",
+                            "Session": session_id,
+                        },
+                    ))
+                logger.info("Enterprise signup recorded: %s tier=%s", email_addr, tier_label)
 
             if user_id and kind == "subscription_change":
                 plan_key = meta.get("plan_key") or "Starter"
@@ -1624,14 +1673,31 @@ async def stripe_webhook(request: Request):
         # === Payment failed ===
         if event_type == "invoice.payment_failed":
             cust_email = obj.get("customer_email") or ""
+            amount_eur = (obj.get("amount_due") or 0) / 100 if obj.get("amount_due") else None
             asyncio.create_task(email_service.send_stripe_alert(
                 kind="payment_failed",
                 event_type=event_type,
                 user_email=cust_email or None,
-                amount_eur=(obj.get("amount_due") or 0) / 100 if obj.get("amount_due") else None,
+                amount_eur=amount_eur,
                 stripe_subscription_id=obj.get("subscription"),
                 extra={"Attempt": obj.get("attempt_count"), "Next attempt": obj.get("next_payment_attempt")},
             ))
+            # Slack/Discord ping for the founder team
+            flags = await db.feature_flags.find_one({"singleton": True}, {"_id": 0}) or {}
+            webhook_url = (flags.get("beta_webhook_url") or "").strip()
+            if webhook_url:
+                import webhook_notifier  # noqa: WPS433
+                asyncio.create_task(webhook_notifier.send(
+                    webhook_url,
+                    title="⚠️ Payment failed",
+                    body=f"Stripe could not collect a payment from *{cust_email or 'a customer'}*.",
+                    fields={
+                        "Amount":       f"€{amount_eur:.2f}" if amount_eur is not None else "—",
+                        "Attempt":      str(obj.get("attempt_count") or "—"),
+                        "Next attempt": str(obj.get("next_payment_attempt") or "—"),
+                        "Subscription": str(obj.get("subscription") or "—"),
+                    },
+                ))
             return {"received": True, "kind": "payment_failed"}
 
         # === Trial ending soon ===

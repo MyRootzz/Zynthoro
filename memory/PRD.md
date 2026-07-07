@@ -387,3 +387,10 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - Frontend: new "Canva Studio" tab in Marketing & Content (`CanvaPanel.jsx`) — connect card, designs grid with thumbnails, create-design buttons, open-in-Canva links, PDF export with polling, disconnect. `?canva=connected|error` query param auto-opens tab + toasts.
 - Full 12-module platform check performed same session: ALL modules load + backend regression GREEN.
 - Validated by testing_agent (iteration_23: **18/18 backend + 12/12 frontend GREEN**). Real Canva OAuth handshake pending user login (needs redirect URLs configured in Canva portal first).
+
+### 2026-06 — Stripe account migration #2 (new live account 51TlqbS)
+- `.env`: new STRIPE_SECRET_KEY / STRIPE_PUBLISHABLE_KEY (acct 51TlqbS…); new STRIPE_WEBHOOK_SECRET (endpoint we_* recreated via API for https://zynthoro.ai/api/webhook/stripe — old endpoint deleted since its secret was unrecoverable).
+- Old catalog product IDs (prod_UmA…) didn't exist in the new account → PLAN_CATALOG remapped: Starter→prod_UlNgemmdU55SYS (€99 "Starter Founder"), Creator→prod_UlNjuSTpfiqL4n, Business→prod_UlNlr39JAeUFPr, Agency→prod_UlNmUAq5RfJYsr, Ent Basic→prod_UlNmG6bbZQFEqh, Ent Plus→prod_UlNnUYsf9btulz, Ent Advanced→prod_UlO0nF9p11at94, Beta→prod_Um9oZGyOLXCPim (€4.99/mo).
+- 8 new Payment Links created via API and hardcoded in PLAN_CATALOG + BETA_PAYMENT_LINK.
+- NOTE: new account also has a €499/mo "Zynthoro Starter" (prod_UlNbqlkAoLv0nK) with a pre-existing payment link — NOT wired (pricing page advertises €99). Duplicate Beta product prod_Um9oU3QSQPlZWt unused.
+- Verified: /api/beta/status + /api/pricing/catalog live against new account; test_stripe_metrics 6 passed 2 skipped.

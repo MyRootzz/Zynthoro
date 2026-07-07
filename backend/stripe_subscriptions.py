@@ -29,13 +29,13 @@ logger = logging.getLogger(__name__)
 # Sessions server-side. We resolve the *active* recurring price for each
 # product lazily via Stripe's API and cache it in memory.
 PLAN_CATALOG: Dict[str, Dict[str, str]] = {
-    "Starter":             {"product_id": "prod_UmAR0H01lNwXqW", "payment_link": "https://buy.stripe.com/6oUeVcgYw0mlbR3fcy4Ni07", "amount_eur": "99",    "label": "Starter"},
-    "Creator":             {"product_id": "prod_UmAS6hf1gSEPrY", "payment_link": "https://buy.stripe.com/4gM5kC5fO7ON2gt0hE4Ni06", "amount_eur": "699",   "label": "Creator"},
-    "Business":            {"product_id": "prod_UmAUa7Hg41OB3z", "payment_link": "https://buy.stripe.com/14A9AS4bK2utbR3aWi4Ni05", "amount_eur": "899",   "label": "Business"},
-    "Agency":              {"product_id": "prod_UmAVqO1W9DBkVq", "payment_link": "https://buy.stripe.com/dRmfZg5fO3yxcV7ggC4Ni04", "amount_eur": "1199",  "label": "Agency"},
-    "Enterprise Basic":    {"product_id": "prod_UmAWmouNUB5YWz", "payment_link": "https://buy.stripe.com/3cI5kC37Gfhf2gt4xU4Ni03", "amount_eur": "2499",  "label": "Enterprise Basic"},
-    "Enterprise Plus":     {"product_id": "prod_UmAXphGXtJGWml", "payment_link": "https://buy.stripe.com/fZu00i4bKc53g7j9Se4Ni02", "amount_eur": "3999",  "label": "Enterprise Plus"},
-    "Enterprise Advanced": {"product_id": "prod_UmAYIa6bLkc0sG", "payment_link": "https://buy.stripe.com/eVq3cu7nWc533kxd4q4Ni01", "amount_eur": "5999",  "label": "Enterprise Advanced"},
+    "Starter":             {"product_id": "prod_UlNgemmdU55SYS", "payment_link": "https://buy.stripe.com/6oU6oAbn83FxeCB6aX6Ri01", "amount_eur": "99",    "label": "Starter"},
+    "Creator":             {"product_id": "prod_UlNjuSTpfiqL4n", "payment_link": "https://buy.stripe.com/8x26oA0Iu4JB9ih7f16Ri02", "amount_eur": "699",   "label": "Creator"},
+    "Business":            {"product_id": "prod_UlNlr39JAeUFPr", "payment_link": "https://buy.stripe.com/4gMdR2fDo2Bt2TT56T6Ri03", "amount_eur": "899",   "label": "Business"},
+    "Agency":              {"product_id": "prod_UlNmUAq5RfJYsr", "payment_link": "https://buy.stripe.com/bJe7sE4YK4JB0LLard6Ri04", "amount_eur": "1199",  "label": "Agency"},
+    "Enterprise Basic":    {"product_id": "prod_UlNmG6bbZQFEqh", "payment_link": "https://buy.stripe.com/8x200c0Iucc39ihdDp6Ri05", "amount_eur": "2499",  "label": "Enterprise Basic"},
+    "Enterprise Plus":     {"product_id": "prod_UlNnUYsf9btulz", "payment_link": "https://buy.stripe.com/9B614g3UGcc36652YL6Ri06", "amount_eur": "3999",  "label": "Enterprise Plus"},
+    "Enterprise Advanced": {"product_id": "prod_UlO0nF9p11at94", "payment_link": "https://buy.stripe.com/9B63coezk3Fxdyxard6Ri07", "amount_eur": "5999",  "label": "Enterprise Advanced"},
 }
 
 # Backwards-compat: a few callers (and tests) still import PLAN_PRICE_IDS.
@@ -258,9 +258,9 @@ def compute_stripe_mrr() -> Dict:
 # ===============================================================
 
 BETA_CAP = 100
-BETA_PRODUCT_ID = "prod_UmAQUfqoR63MYR"
+BETA_PRODUCT_ID = "prod_Um9oZGyOLXCPim"
 BETA_PRICE_ID = "price_1TmeCCCLVRJtO07SRJz12MMs"  # €4.99/mo recurring (locked)
-BETA_PAYMENT_LINK = "https://buy.stripe.com/4gM4gy23C8SR5sF5BY4Ni09"
+BETA_PAYMENT_LINK = "https://buy.stripe.com/4gM00cezkb7Z7a9dDp6Ri08"
 BETA_PRODUCT_NAME = "Zynthoro Beta — Founding Member"
 BETA_PRODUCT_DESC = (
     "First 100 founders special pricing. Full Starter plan access. "

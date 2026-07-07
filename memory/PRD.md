@@ -377,3 +377,13 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - Single `items` expansion is now shared between Beta and Enterprise detection — one Stripe API call per event instead of two.
 - All three triggers gracefully skip when `beta_webhook_url` is empty; existing email alert flow is unaffected.
 - Validated by testing_agent (iteration_22: **15/15 new + 41/41 regression GREEN**). Deployment readiness PASS.
+
+
+### 2026-06 — Canva Connect API integration (Marketing & Content)
+- New `backend/canva_module.py` — OAuth 2.0 + PKCE (S256) flow against Canva Connect API. Router prefix `/api/canva`: `/status`, `/connect` (returns authorize URL), `/callback` (public, 307 → /dashboard/marketing?canva=connected|error), `/disconnect`, `/designs` (GET list + POST create preset doc/whiteboard/presentation), `/designs/{id}/export` (PDF/PNG job), `/exports/{job_id}` (poll).
+- Tokens stored per-user in `db.canva_connections` (auto-refresh 5 min before expiry); PKCE states in `db.canva_oauth_states` (stale >15 min purged on each /connect).
+- Redirect URI derived from request host → works on preview AND production without code change. User must register BOTH callback URLs in Canva Developer Portal and enable scopes: design:content:read, design:content:write, design:meta:read, profile:read.
+- `.env`: CANVA_CLIENT_ID + CANVA_CLIENT_SECRET added.
+- Frontend: new "Canva Studio" tab in Marketing & Content (`CanvaPanel.jsx`) — connect card, designs grid with thumbnails, create-design buttons, open-in-Canva links, PDF export with polling, disconnect. `?canva=connected|error` query param auto-opens tab + toasts.
+- Full 12-module platform check performed same session: ALL modules load + backend regression GREEN.
+- Validated by testing_agent (iteration_23: **18/18 backend + 12/12 frontend GREEN**). Real Canva OAuth handshake pending user login (needs redirect URLs configured in Canva portal first).

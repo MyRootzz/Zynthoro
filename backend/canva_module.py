@@ -120,6 +120,7 @@ def build_router(db: AsyncIOMotorDatabase, get_current_user_full):
         ).decode().rstrip("=")
         state = secrets.token_urlsafe(24)
         redirect_uri = _redirect_uri(request)
+        await db.canva_oauth_states.delete_many({"created_at": {"$lt": time.time() - 900}})
         await db.canva_oauth_states.insert_one({
             "state": state,
             "user_id": user["id"],

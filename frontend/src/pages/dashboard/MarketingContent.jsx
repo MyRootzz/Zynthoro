@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "sonner";
+import { useSearchParams } from "react-router-dom";
 import { useAuth, API, formatApiError } from "@/contexts/AuthContext";
 import UpgradeLock from "@/components/dashboard/UpgradeLock";
+import CanvaPanel from "@/components/dashboard/CanvaPanel";
 import { planAtLeast, PLAN_BY_KEY } from "@/lib/planCatalog";
 import {
   Facebook, Instagram, Linkedin, Youtube, Twitter, Music2,
@@ -25,6 +27,7 @@ const TABS = [
   { id: "calendar", label: "Calendar" },
   { id: "photo", label: "Photo Studio" },
   { id: "video", label: "Video Studio" },
+  { id: "canva", label: "Canva Studio" },
   { id: "campaigns", label: "Email Campaigns" },
   { id: "analytics", label: "Analytics" },
   { id: "clients", label: "Multi-client" },
@@ -36,6 +39,12 @@ export default function MarketingContent() {
     ? "Enterprise"
     : user?.subscription_plan || "Starter";
   const [tab, setTab] = useState("compose");
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get("canva")) setTab("canva");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fullAccess = !!(user?.is_demo || user?.is_unlimited || user?.subscription_plan?.startsWith("Enterprise"));
   const canStarter = fullAccess || planAtLeast(plan, "Starter");
@@ -136,6 +145,7 @@ export default function MarketingContent() {
         )}
         {tab === "photo" && <PhotoPanel canCreator={canCreator} />}
         {tab === "video" && <VideoPanel canCreator={canCreator} />}
+        {tab === "canva" && <CanvaPanel />}
         {tab === "campaigns" && (
           canBusiness
             ? <FeatureReady

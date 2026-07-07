@@ -1,0 +1,25 @@
+{
+  "summary": "Iteration 23 — Full platform smoke + NEW Canva Connect integration. All 18 backend tests pass (5 auth-guard checks, canva connect URL PKCE/state validation, error+invalid-state callback redirects to /dashboard/marketing?canva=error, not-connected 400 on designs GET/POST, disconnect ok, status configured=true/connected=false, jury login+auth/me+dashboard/summary regression, operations backend endpoint, marketing caption LLM, AI chat smoke). All 10 module placeholder pages (planning, time-tracking, sales, finance, accounting, projects, hr, operations, communication, compliance) + marketing Compose + Canva Studio tab render for the jury account. Clicking data-testid='canva-connect-btn' correctly navigates to https://www.canva.com/api/oauth/authorize with all expected PKCE params (client_id=OC-AZ88a9rsDHGi, redirect_uri=/api/canva/callback, response_type=code, code_challenge_method=S256, state). Live Canva OAuth flow NOT completed (requires human login, per instructions). Stripe live-mode untouched.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_canva_and_modules.py",
+    "/app/test_reports/pytest/iter23_canva.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "canva_module.py:36-41 — _external_host() trusts the X-Forwarded-Host header without validating it. In an ingress/CDN setup this is normally fine, but if an attacker can inject the header on the /connect call the resulting redirect_uri on Canva's side will differ from the one recomputed on /callback (both derived the same way) so tokens still work — however the redirect_uri registered with Canva must match. Consider pinning to an env var (e.g. PUBLIC_HOST) for defense-in-depth.",
+    "canva_module.py:117-121 — code_verifier is built with urlsafe_b64encode on 48 random bytes producing a 64-char string, which is fine. Consider using secrets.token_urlsafe(64) for readability; behaviour unchanged.",
+    "canva_module.py:149-151 — oauth state documents in db.canva_oauth_states are never TTL-indexed. They will accumulate indefinitely (only successful callbacks delete them; error/timeout paths leak). Add a TTL index on created_at (expireAfterSeconds ~ 900) or delete on failure branches.",
+    "canva_module.py:180-191 — refresh_token is persisted in cleartext in MongoDB. This mirrors Stripe key handling elsewhere in the project but is worth flagging: consider encrypting at rest or scoping the field with a projection guard so it never leaks via a stray find_one({}).",
+    "canva_module.py:200-203 — GET /designs returns the raw Canva payload including any continuation cursor. The frontend only reads data.items — fine, but consider whitelisting fields to avoid leaking Canva-side metadata (owner ids, urls) to the client if Canva changes their shape."
+  ],
+  "updated_files": ["/app/backend/tests/test_canva_and_modules.py (NEW — 18 tests, all passing)"],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% (12/12 modules + Canva UI + OAuth redirect)"},
+  "test_credentials": "Jury demo — jury@zynthoro.ai / ZynthoroDemo2026! (no 2FA). Login endpoint returns access_token directly (stage=success).",
+  "seed_data_creation": "None. Tests call POST /api/canva/disconnect at the start of the non-connected path tests to ensure clean state — does not affect other users. Jury user leaves the DB in disconnected state at test end.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Canva integration is prefix /api/canva; endpoints: /status /connect /callback /disconnect /designs (GET+POST) /designs/{id}/export /exports/{job_id}. All except /callback require auth (401 without cookie/Bearer). /callback always 307-redirects to /dashboard/marketing?canva=error|connected — never returns JSON. To fully test the connected path you'd need a mocked httpx layer (bypass canva.com); backend uses db.canva_oauth_states (state doc) and db.canva_connections (per-user tokens). Frontend: MarketingContent has tabs mc-tab-{compose,calendar,photo,video,canva,email,analytics,multi}. CanvaPanel testids: canva-connect-card, canva-connect-btn, canva-connected-panel, canva-designs-grid. Sidebar module slugs = ModulePlaceholder (planning/time-tracking/sales/finance/accounting/projects/hr/communication/compliance) — jury+projects renders DemoProjects; operations renders full OperationsModule; marketing renders MarketingContent. Jury tour overlay (data-testid=jury-tour-overlay) appears once — click Skip. Base URL: https://zynthoro-foundation.preview.emergentagent.com.",
+  "rca of the issue": "N/A — no failures. All 12 modules load, Canva backend + frontend integration verified end-to-end up to the point of the real Canva login page."
+}

@@ -2185,6 +2185,10 @@ app.include_router(api_router)
 import operations_module  # noqa: E402
 app.include_router(operations_module.build_router(db, get_current_user_full))
 
+# Canva Connect integration router
+import canva_module  # noqa: E402
+app.include_router(canva_module.build_router(db, get_current_user_full))
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

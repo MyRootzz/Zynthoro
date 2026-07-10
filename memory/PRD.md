@@ -394,3 +394,13 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - 8 new Payment Links created via API and hardcoded in PLAN_CATALOG + BETA_PAYMENT_LINK.
 - NOTE: new account also has a €499/mo "Zynthoro Starter" (prod_UlNbqlkAoLv0nK) with a pre-existing payment link — NOT wired (pricing page advertises €99). Duplicate Beta product prod_Um9oU3QSQPlZWt unused.
 - Verified: /api/beta/status + /api/pricing/catalog live against new account; test_stripe_metrics 6 passed 2 skipped.
+
+### 2026-07-10 — Starter price €99 → €499 (Founder pricing sunset) + "Book a call" CTA
+- **Starter switched from Zynthoro Starter Founder (€99, prod_UlNgemmdU55SYS) → Zynthoro Starter (€499, prod_UlNbqlkAoLv0nK)** everywhere:
+  - `stripe_subscriptions.py` PLAN_CATALOG Starter entry updated: new product_id, payment_link `https://buy.stripe.com/4gM6oA4YKb7ZgKJard6Ri00`, amount_eur "499".
+  - `components/sections/Pricing.jsx` — Starter card price "€99" → "€499".
+  - `pages/SubscribeStarter.jsx` — Founder verification flow removed entirely (KvK/PDF upload UI dropped). Page reduced to a single €499 checkout CTA that calls `POST /api/checkout/starter/session {package_id: "starter_standard"}`.
+  - `checkout.py` — `starter_founder` package removed from PACKAGES dict so any direct API hit for €99 pricing now 400s.
+- **"Book a free 30-min call" button** added to `layout/Navbar.jsx` (desktop header only, before "Log in"). Links to `https://calendly.com/zynthoro/30min`. testid: `nav-book-call`.
+- Verified via `/api/pricing/catalog` → Starter €499 → correct Stripe link, and homepage screenshot shows €499 card + Book-a-call CTA. No €99 anywhere on the homepage.
+- NOTE: business-verification module + `starter_founder` scaffolding on backend (`business_verification.py`, KvK OCR) left in place but no longer reachable from UI — safe to remove later if desired.

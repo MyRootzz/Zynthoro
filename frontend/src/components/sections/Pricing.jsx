@@ -11,7 +11,7 @@ const plans = [
   {
     name: "Starter",
     plan_key: "Starter",
-    price: "€99",
+    price: "€499",
     suffix: "/mo",
     desc: "Basic modules for solo founders just getting started.",
     features: [

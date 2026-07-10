@@ -23,14 +23,7 @@ from emergentintegrations.payments.stripe.checkout import (
 logger = logging.getLogger(__name__)
 
 PACKAGES: Dict[str, Dict] = {
-    # First-month charge in EUR.
-    "starter_founder": {
-        "amount": 99.00,
-        "currency": "eur",
-        "label": "Zynthoro Starter — Founder month 1",
-        "founder_window_months": 3,
-        "next_amount": 499.00,
-    },
+    # Founder €99 pricing ended 2026-06-30. Only standard €499/mo remains.
     "starter_standard": {
         "amount": 499.00,
         "currency": "eur",

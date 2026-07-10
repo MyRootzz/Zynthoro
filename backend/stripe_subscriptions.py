@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # Sessions server-side. We resolve the *active* recurring price for each
 # product lazily via Stripe's API and cache it in memory.
 PLAN_CATALOG: Dict[str, Dict[str, str]] = {
-    "Starter":             {"product_id": "prod_UlNgemmdU55SYS", "payment_link": "https://buy.stripe.com/6oU6oAbn83FxeCB6aX6Ri01", "amount_eur": "99",    "label": "Starter"},
+    "Starter":             {"product_id": "prod_UlNbqlkAoLv0nK", "payment_link": "https://buy.stripe.com/4gM6oA4YKb7ZgKJard6Ri00", "amount_eur": "499",   "label": "Starter"},
     "Creator":             {"product_id": "prod_UlNjuSTpfiqL4n", "payment_link": "https://buy.stripe.com/8x26oA0Iu4JB9ih7f16Ri02", "amount_eur": "699",   "label": "Creator"},
     "Business":            {"product_id": "prod_UlNlr39JAeUFPr", "payment_link": "https://buy.stripe.com/4gMdR2fDo2Bt2TT56T6Ri03", "amount_eur": "899",   "label": "Business"},
     "Agency":              {"product_id": "prod_UlNmUAq5RfJYsr", "payment_link": "https://buy.stripe.com/bJe7sE4YK4JB0LLard6Ri04", "amount_eur": "1199",  "label": "Agency"},

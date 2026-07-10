@@ -60,6 +60,15 @@ export default function Navbar() {
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
+          <a
+            href="https://calendly.com/zynthoro/30min"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="nav-book-call"
+            className="zy-btn-nav-ghost"
+          >
+            Book a free 30-min call
+          </a>
           <Link
             to="/login"
             data-testid="nav-login"

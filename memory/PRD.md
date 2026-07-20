@@ -489,3 +489,21 @@ Six new tiers wired end-to-end. All Stripe products live-mode.
 
 **Deferred to Batch B (per user Q1=A):**
 - Website builder with templates + custom domain (CNAME/A-record). Not started — needs Emergent infra decision on multi-tenant custom domains.
+
+### 2026-07-20 (late) — Bug fix: Kickstart tier provisioning + credit-limit revenue leak
+User reported: purchased Kickstart 1 with promo ZYNTHORO-QA on production, `subscription_plan` stayed as 'Presale'. Deep-dive uncovered TWO cascading bugs:
+
+**Bug 1 (root cause reported by user):** Stripe webhook branch `if event_type == "checkout.session.completed" and obj.get("mode") == "subscription"` silently dropped ALL one-time-payment tier sessions (K1/K2/K3/AI+Social Week/AI+Social Month all use `mode="payment"`). Only Compleet (`mode="subscription"`) provisioned. **Fix:** widened branch to `mode == "subscription" OR (mode == "payment" AND metadata.kind == "tier_purchase")`.
+
+**Bug 2 (revenue leak introduced by fix, caught by testing agent):** `_provision_tier_purchase()` was reading `ai_credits_limit` from `tier_catalog.get_tier(tier_key)` (Stripe pricing metadata dict, no credit fields) instead of `tier_catalog.TIER_FEATURES[plan_key]`. Result: every K1/K2/K3/Week/Month user would provision with `ai_credits_limit=None` → treated as UNLIMITED by /api/me and /api/ai/chat. **Fix:** source credits from TIER_FEATURES[plan_key] and simplify the `period_end` branch to key off `billing` alone (not the AND with credits_period).
+
+**Extras shipped with the fix:**
+- Refactored provisioning into `_provision_tier_purchase()` helper (single source of truth, callable from webhook and status endpoint).
+- Added **self-heal** to `GET /api/checkout/tier/status/{session_id}` — retrieves the Stripe session, and if it's paid-or-no_payment_required + complete + kind=tier_purchase + owned by the current user, re-runs provisioning. Fixes stuck users from missed webhooks without re-purchase.
+- Frontend `SubscribeReturn.jsx` now treats `payment_status="no_payment_required"` (100%-off coupon result) as paid.
+
+**Tests:**
+- New file `/app/backend/tests/test_tier_provisioning_helper.py` — 11 tests directly invoke `_provision_tier_purchase()` for all 6 tiers + idempotency + self-heal + herroepingsrecht + QA bypass regression.
+- All 11 pass. Combined with the earlier 22 QA-account tests: **33/33 green** (iteration 25 report at `/app/test_reports/iteration_25.json`).
+
+**How stuck production users get healed:** after the fix is redeployed, any user with an unprovisioned tier purchase will be automatically healed the next time their browser hits `/subscribe/return` (or the frontend polls `GET /api/checkout/tier/status/{session_id}`). No manual DB write needed.

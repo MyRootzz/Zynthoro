@@ -1808,6 +1808,11 @@ async def _provision_tier_purchase(
     tier_key = meta.get("tier_key") or ""
     plan_key = meta.get("plan_key") or ""
     tier_def = tier_catalog.get_tier(tier_key)
+    # NOTE: TIER_CATALOG holds Stripe pricing metadata only; the credit
+    # quota + period lives in TIER_FEATURES keyed by plan_key. Do NOT read
+    # credit fields from tier_def — that was the source of a revenue leak
+    # where every tier provisioned with ai_credits_limit=None (unlimited).
+    features = tier_catalog.TIER_FEATURES.get(plan_key) or {}
     billing = (tier_def or {}).get("billing", "lifetime")
 
     prev_doc = await db.users.find_one(
@@ -1816,12 +1821,12 @@ async def _provision_tier_purchase(
     prev_plan = (prev_doc or {}).get("subscription_plan") or "Presale"
     user_email_x = (prev_doc or {}).get("email")
 
-    credits_limit = (tier_def or {}).get("ai_credits_limit")
-    credits_period = (tier_def or {}).get("ai_credits_period", "month")
+    credits_limit = features.get("ai_credits_limit")
+    credits_period = features.get("ai_credits_period", "month")
     now_dt = datetime.now(timezone.utc)
     now_iso = now_dt.isoformat()
     period_end = None
-    if credits_period == "one_time" and billing == "one_time_week":
+    if billing == "one_time_week":
         period_end = (now_dt + timedelta(days=7)).isoformat()
     elif billing == "one_time_month":
         period_end = (now_dt + timedelta(days=30)).isoformat()

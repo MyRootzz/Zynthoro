@@ -450,10 +450,11 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             "available_methods": ["totp", "email"],
         }
 
-    # Demo accounts (XPRIZE jury, etc.) bypass the 2FA setup gate — judges
-    # should land in the dashboard with a single click. The is_demo flag is
-    # set by the seed function and can never be granted via the API.
-    if user.get("is_demo"):
+    # Demo accounts (XPRIZE jury) and the founder owner account bypass the
+    # 2FA setup gate — they land in the dashboard with a single click.
+    # `is_demo` and `is_founder` are only set by the seed functions at
+    # startup and can never be granted via the API.
+    if user.get("is_demo") or user.get("is_founder"):
         access = create_access_token(user["id"], user["email"], twofa_passed=True)
         _set_auth_cookies(response, access)
         return {

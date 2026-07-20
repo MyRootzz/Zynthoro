@@ -1,0 +1,44 @@
+{
+  "summary": "Verified defensive hardening of self-heal endpoint (asyncio.to_thread + asyncio.wait_for 5s). All 33 tier + QA regression tests pass. Self-heal endpoint returns cached state in ~0.2s for a never-paid session (well below 8s ceiling). Unknown session still 404s. Backend startup clean. Production sweep on https://zynthoro.ai all 200.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_tier_provisioning_helper.py",
+    "/app/backend/tests/test_qa_kickstart_provisioning.py",
+    "/app/test_reports/pytest/iter26_hardening.xml",
+    "/tmp/self_heal_probe.py"
+  ],
+  "test_results": {
+    "regression_suite": "33/33 passed (test_tier_provisioning_helper.py 11, test_qa_kickstart_provisioning.py 22) in 20.07s",
+    "self_heal_timing": {
+      "unpaid_session_first_call": "0.20s",
+      "unpaid_session_repeat_calls": "0.10-0.11s",
+      "budget_ceiling": "8.0s",
+      "verdict": "well within budget; asyncio.wait_for wrapper active"
+    },
+    "self_heal_semantics": {
+      "unknown_session": "404 (correct)",
+      "never_paid_session": "200 with payment_status='initiated', provisioned=false, self-heal did not raise or hang"
+    },
+    "backend_startup": "clean — 'Application startup complete.' in logs; no Traceback in recent window",
+    "production_sweep": {
+      "GET https://zynthoro.ai/": 200,
+      "GET https://zynthoro.ai/api/tier/catalog": 200,
+      "GET https://zynthoro.ai/subscribe/kickstart_1": 200,
+      "POST https://zynthoro.ai/api/auth/login (qa-kickstart1)": 200
+    }
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is 2689 lines — recommend splitting into modules (auth, tier, ai, webhook) once next stable window opens.",
+    "@app.on_event('startup'/'shutdown') triggers DeprecationWarning — migrate to lifespan handler.",
+    "Self-heal try/except correctly imports stripe locally to avoid a hot-path top-of-module dependency; timeout branch and general exception branch both log and fall through to cached state — good defensive design."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%"},
+  "test_credentials": "used qa-kickstart1@zynthoro.io / QaKick1!Test on preview to create a real Stripe checkout session (LIVE mode — session was never completed, just used to exercise the self-heal path).",
+  "seed_data_creation": "One extra Stripe checkout Session was created against the live Stripe account (session_id: cs_live_b15bVBYpB3GF23j9D24f3VBNdpU9m9ON5gQ1akDI4M3YRdHiEqpzKRoQrL). It was never paid, will auto-expire per Stripe defaults, no cleanup required.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Endpoint under /api/checkout/tier/session (POST) and /api/checkout/tier/status/{sid} (GET). Requires origin_url in the create payload. self_heal_probe.py at /tmp exercises the full path in <1s wall time."
+}

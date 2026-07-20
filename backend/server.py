@@ -1541,11 +1541,21 @@ async def checkout_tier_status(
     # Self-heal: if the webhook was missed but Stripe already collected
     # payment (or the 100%-off coupon made it "no_payment_required"),
     # re-run provisioning here so the user isn't stuck on Presale.
+    # Runs in a background thread with a strict 5-second budget so a slow
+    # Stripe API can never wedge the FastAPI event loop or trip Cloudflare's
+    # 502 threshold during rollout.
     if not txn.get("provisioned"):
         try:
             import stripe as _stripe
             _stripe.api_key = os.environ["STRIPE_SECRET_KEY"]
-            session = _stripe.checkout.Session.retrieve(session_id)
+
+            def _retrieve():
+                return _stripe.checkout.Session.retrieve(session_id)
+
+            session = await asyncio.wait_for(
+                asyncio.to_thread(_retrieve),
+                timeout=5.0,
+            )
             payment_status = session.get("payment_status")
             status_val = session.get("status")
             if payment_status in ("paid", "no_payment_required") and status_val == "complete":
@@ -1578,6 +1588,12 @@ async def checkout_tier_status(
                         "Self-heal provisioned tier for user=%s session=%s (webhook missed)",
                         user["id"], session_id,
                     )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Tier status self-heal timed out for session %s — returning cached DB state; "
+                "frontend will retry on next poll.",
+                session_id,
+            )
         except Exception:
             logger.exception("Tier status self-heal failed for session %s", session_id)
 

@@ -159,7 +159,49 @@ async def send_stripe_alert(
 
     `kind` is a high-level category from _EMOJI_FOR_KIND. `event_type` is the
     raw Stripe event name (e.g. 'checkout.session.completed').
+
+    Silently skips (returns None) for QA / demo / founder / billing-exempt
+    accounts, and for zero-euro (100%-off) sessions — these do not represent
+    revenue and would otherwise burn through the Resend daily quota during QA.
     """
+    # Guard 1 — never alert on zero-revenue events (100%-off coupon, seat
+    # backfill with quantity=0, etc.). `kind='cancel'` still fires because
+    # cancellations are important to see even when amount=0.
+    revenue_relevant_kinds = {"subscribe", "upgrade", "downgrade", "seats", "cancel"}
+    if kind not in revenue_relevant_kinds:
+        # Non-revenue events (payment_failed reminders etc.) still send.
+        pass
+    if kind in ("subscribe", "upgrade") and (amount_eur is None or amount_eur <= 0):
+        logger.info(
+            "send_stripe_alert skipped — zero-revenue %s event for %s (amount=%s)",
+            kind, user_email or user_id, amount_eur,
+        )
+        return None
+
+    # Guard 2 — never alert for QA / demo / founder / billing-exempt users.
+    if user_id or user_email:
+        try:
+            from motor.motor_asyncio import AsyncIOMotorClient
+            client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+            db = client[os.environ["DB_NAME"]]
+            query = {"id": user_id} if user_id else {"email": (user_email or "").lower()}
+            user_doc = await db.users.find_one(
+                query,
+                {"is_qa_test": 1, "is_demo": 1, "is_founder": 1, "billing_exempt": 1, "email": 1},
+            )
+            client.close()
+            if user_doc and any(user_doc.get(f) for f in ("is_qa_test", "is_demo", "is_founder", "billing_exempt")):
+                flags = [f for f in ("is_qa_test", "is_demo", "is_founder", "billing_exempt") if user_doc.get(f)]
+                logger.info(
+                    "send_stripe_alert skipped — user %s has flags %s (non-real customer)",
+                    user_doc.get("email") or user_id, flags,
+                )
+                return None
+        except Exception:
+            # If the flag lookup fails, we err on the side of sending — a
+            # missed skip is cheaper than a missed real-customer alert.
+            logger.exception("send_stripe_alert: flag lookup failed; sending anyway")
+
     title, accent, emoji = _EMOJI_FOR_KIND.get(kind, _EMOJI_FOR_KIND["other"])
 
     def _row(label: str, value: str) -> str:

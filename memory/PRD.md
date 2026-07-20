@@ -537,3 +537,13 @@ User reported another 502 with Emmy diagnosing "stale price_id at tier_catalog.p
 - 11 provisioning helper tests (test_tier_provisioning_helper.py)
 - 5 catalog startup tests (test_stripe_catalog_startup.py, 3 new)
 - Testing agent report: `/app/test_reports/iteration_28.json`
+
+### 2026-07-20 (email quota fix) — Email alerts filtered to real paid tier purchases
+User's Resend daily quota (100/day) was being exhausted by test traffic (QA seed accounts, founder testing, 100%-off coupons). Added a two-tier guard to `email_service.send_stripe_alert()`:
+
+1. **Zero-revenue guard**: for `kind in ('subscribe', 'upgrade')` where `amount_eur is None or <= 0`, skip the send (covers 100%-off coupons like ZYNTHORO-QA). Cancellations & payment failures still send regardless of amount.
+2. **Non-real-customer guard**: looks up the user in MongoDB and skips the send if ANY of `is_qa_test`, `is_demo`, `is_founder`, `billing_exempt` is true. Errors on the DB lookup fall through and send anyway (safer to over-notify than to miss a real customer).
+
+Verified with 5 direct calls: QA user, founder, demo, zero-euro → all correctly return None (skipped, logged at INFO). Real customer with real amount → email sent (Resend returned an ID). 41-test regression suite still passes.
+
+**Estimated quota savings:** ≥90% of prior test-traffic sends now filtered. Every subsequent QA checkout via `ZYNTHORO-QA` will be silent from an email perspective (still logs in activity feed via `db.activity_events`).

@@ -19,8 +19,14 @@ Provisioning happens in the Stripe webhook (`server.py`).
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
 from typing import Literal
+
+import stripe
+
+logger = logging.getLogger(__name__)
 
 
 # ---- Feature access matrix -------------------------------------------------
@@ -213,7 +219,6 @@ async def create_tier_checkout_session(
     so it survives to the webhook and is stored on the payment_transactions
     row for legal audit.
     """
-    import stripe
     stripe.api_key = _api_key()
 
     tier = get_tier(tier_key)
@@ -253,7 +258,6 @@ async def create_tier_checkout_session(
 
     # Stripe SDK is synchronous — run in a thread with an 8s budget so it
     # cannot wedge the FastAPI event loop or trip Cloudflare's 502 timeout.
-    import asyncio
     session = await asyncio.wait_for(
         asyncio.to_thread(stripe.checkout.Session.create, **session_kwargs),
         timeout=8.0,
@@ -265,3 +269,80 @@ async def create_tier_checkout_session(
         "currency": tier["currency"],
         "metadata": metadata,
     }
+
+
+# ---- Startup validation ----------------------------------------------------
+class StripeCatalogValidationError(RuntimeError):
+    """Raised on startup when one or more TIER_CATALOG price/product IDs
+    are missing or inactive in the connected Stripe account. Refuses to
+    let the backend start serving with a stale catalog."""
+
+
+async def validate_catalog_against_stripe() -> dict:
+    """Verify every TIER_CATALOG entry has a live, active price + product
+    in the current Stripe account.
+
+    Returns a dict:
+        {
+            "ok":               bool,
+            "checked":          int,     # total tiers checked
+            "missing_prices":   [str],
+            "missing_products": [str],
+            "inactive_prices":  [str],
+            "amount_mismatches":[{tier, expected, actual}],
+        }
+
+    Network errors (Stripe outage, DNS, etc.) are NOT treated as failures —
+    they raise a distinct exception the caller can catch to decide whether
+    to boot anyway (safer default) or refuse to boot (paranoid).
+    """
+    stripe.api_key = _api_key()
+
+    report = {
+        "ok": True,
+        "checked": len(TIER_CATALOG),
+        "missing_prices": [],
+        "missing_products": [],
+        "inactive_prices": [],
+        "amount_mismatches": [],
+    }
+
+    def _check_one(tier_key: str, tier: dict) -> None:
+        # Product presence
+        try:
+            prod = stripe.Product.retrieve(tier["product_id"])
+            if not prod.get("active"):
+                report["inactive_prices"].append(f"{tier_key}:product {tier['product_id']}")
+                report["ok"] = False
+        except stripe.error.InvalidRequestError:
+            report["missing_products"].append(f"{tier_key}:{tier['product_id']}")
+            report["ok"] = False
+            return  # skip price check if product missing
+
+        # Price presence + amount + active
+        try:
+            price = stripe.Price.retrieve(tier["price_id"])
+            if not price.get("active"):
+                report["inactive_prices"].append(f"{tier_key}:{tier['price_id']}")
+                report["ok"] = False
+            expected_cents = int(round(tier["amount_eur"] * 100))
+            actual_cents = price.get("unit_amount") or 0
+            if actual_cents != expected_cents:
+                report["amount_mismatches"].append({
+                    "tier": tier_key,
+                    "expected_eur": tier["amount_eur"],
+                    "actual_eur": actual_cents / 100,
+                })
+                report["ok"] = False
+        except stripe.error.InvalidRequestError:
+            report["missing_prices"].append(f"{tier_key}:{tier['price_id']}")
+            report["ok"] = False
+
+    # Run all HTTP calls in a background thread so we don't block the event
+    # loop. Each call ~200-400ms; 6 tiers → ~1.5-2.5s wall time serial.
+    def _run_all_sync():
+        for tier_key, tier in TIER_CATALOG.items():
+            _check_one(tier_key, tier)
+
+    await asyncio.wait_for(asyncio.to_thread(_run_all_sync), timeout=20.0)
+    return report

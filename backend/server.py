@@ -1484,6 +1484,18 @@ async def checkout_tier_session(
     if user.get("billing_exempt"):
         raise HTTPException(status_code=400, detail="Your account is billing-exempt — no checkout required.")
 
+    # Startup validation hard-block: if the local TIER_CATALOG has drifted
+    # from live Stripe (stale product/price ID), refuse to create a session
+    # that we know will fail. Emergency bypass: SKIP_STRIPE_STARTUP_CHECK=1.
+    if _CATALOG_HEALTH.get("boot_status") == "failed":
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Onze prijsplannen zijn tijdelijk niet beschikbaar (interne configuratie). "
+                "Onze ops-team is al gealarmeerd. Probeer het over enkele minuten opnieuw."
+            ),
+        )
+
     consent_at = datetime.now(timezone.utc).isoformat()
     try:
         session = await tier_catalog.create_tier_checkout_session(
@@ -2689,9 +2701,104 @@ async def startup():
     await db.payment_transactions.create_index("session_id", unique=True)
     await seed_founder()
     await seed_jury_demo()
+    # Validate Stripe tier catalog against live Stripe account.
+    await _validate_stripe_catalog_on_startup()
     # Background scheduler: daily digest to info@zynthoro.ai at 07:00 UTC.
     import daily_digest  # noqa: WPS433
     app.state.digest_task = daily_digest.start_scheduler(db)
+
+
+# Snapshot of the last catalog validation result. Set at startup and
+# consumed by GET /api/tier/catalog/health + POST /api/checkout/tier/session.
+# Missing prices/products are hard blockers on tier checkout (503).
+_CATALOG_HEALTH: dict = {
+    "checked_at": None,
+    "ok": None,
+    "report": None,
+    "boot_status": "pending",  # 'pending' | 'ok' | 'failed' | 'skipped' | 'error'
+}
+
+
+async def _validate_stripe_catalog_on_startup() -> None:
+    """Called from FastAPI startup. Fails LOUD (CRITICAL log + refuses tier
+    checkouts) if any TIER_CATALOG entry is stale. Does NOT crash the
+    process — the app still boots so unrelated endpoints (auth, dashboard)
+    keep working while ops fixes the Stripe config.
+
+    Set env `SKIP_STRIPE_STARTUP_CHECK=1` to bypass (emergency use only).
+    """
+    if os.environ.get("SKIP_STRIPE_STARTUP_CHECK", "").lower() in ("1", "true", "yes"):
+        _CATALOG_HEALTH.update({
+            "boot_status": "skipped",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "ok": None,
+            "report": {"skipped": True},
+        })
+        logger.warning(
+            "SKIP_STRIPE_STARTUP_CHECK is set — tier catalog was NOT validated against Stripe. "
+            "Do not leave this on in production."
+        )
+        return
+
+    try:
+        report = await tier_catalog.validate_catalog_against_stripe()
+    except asyncio.TimeoutError:
+        _CATALOG_HEALTH.update({
+            "boot_status": "error",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "ok": None,
+            "report": {"error": "timeout talking to Stripe"},
+        })
+        logger.error(
+            "Stripe catalog validation timed out — booting anyway. "
+            "The tier checkout endpoint will still serve if the catalog is actually OK."
+        )
+        return
+    except Exception as e:
+        _CATALOG_HEALTH.update({
+            "boot_status": "error",
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "ok": None,
+            "report": {"error": str(e)},
+        })
+        logger.exception(
+            "Stripe catalog validation could not run — booting anyway. "
+            "This is usually a transient network error."
+        )
+        return
+
+    _CATALOG_HEALTH.update({
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "ok": bool(report["ok"]),
+        "report": report,
+        "boot_status": "ok" if report["ok"] else "failed",
+    })
+
+    if report["ok"]:
+        logger.info(
+            "Stripe catalog validation ✅ — %d tier prices confirmed active in live Stripe.",
+            report["checked"],
+        )
+    else:
+        logger.critical(
+            "STRIPE CATALOG VALIDATION FAILED — tier checkout endpoint will return 503 "
+            "until this is fixed.\n"
+            "  Missing prices:    %s\n"
+            "  Missing products:  %s\n"
+            "  Inactive prices:   %s\n"
+            "  Amount mismatches: %s",
+            report["missing_prices"],
+            report["missing_products"],
+            report["inactive_prices"],
+            report["amount_mismatches"],
+        )
+
+
+@api_router.get("/tier/catalog/health")
+async def tier_catalog_health():
+    """Ops health endpoint — reports whether the local TIER_CATALOG still
+    matches live Stripe. Public (safe, does not leak secrets)."""
+    return _CATALOG_HEALTH
 
 
 @app.on_event("shutdown")

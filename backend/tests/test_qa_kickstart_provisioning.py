@@ -176,7 +176,7 @@ def test_non_flagged_user_requires_2fa_setup():
         finally:
             client.close()
 
-    asyncio.get_event_loop().run_until_complete(_insert())
+    asyncio.run(_insert())
     try:
         r = _login(email, password)
         assert r.status_code == 200, r.text
@@ -186,4 +186,4 @@ def test_non_flagged_user_requires_2fa_setup():
         )
         assert data.get("access_token") in (None, ""), data
     finally:
-        asyncio.get_event_loop().run_until_complete(_cleanup())
+        asyncio.run(_cleanup())

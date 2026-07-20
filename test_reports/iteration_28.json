@@ -1,0 +1,25 @@
+{
+  "summary": "Bundle regression sweep before single production redeploy. All 41 tests + 1 skipped passed in 23.18s (11 tier provisioning + 22 QA account + 5 catalog startup, incl. 3 new validator tests). GET /api/tier/catalog/health returns 200 boot_status='ok' ok=true checked=6 with all four issue arrays empty. Backend startup log confirms both 'Stripe catalog validation ✅ — 6 tier prices confirmed active in live Stripe.' and 'Application startup complete.' after fresh restart. SKIP_STRIPE_STARTUP_CHECK env override verified in code (server.py:2730 uses .lower() in ('1','true','yes') — case-insensitive as spec'd). Health endpoint exposes NO sensitive data (no secret keys, no customer IDs, no PII — only checked count and tier keys). QA checkout happy-path (all 6 tiers) returned cs_live_ URLs; consent_waiver=false regression returned 400 with Dutch herroepingsrecht message. test_non_flagged_user_requires_2fa_setup now passes both alone AND as last test in the full sequence (asyncio.run() isolation fix confirmed). System is GREEN for redeploy.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_stripe_catalog_startup.py",
+    "/app/backend/tests/test_tier_provisioning_helper.py",
+    "/app/backend/tests/test_qa_kickstart_provisioning.py",
+    "/app/test_reports/pytest/iter28_bundle.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py is ~2810 lines — still over the 700-line threshold; splitting checkout/webhook/startup logic into sub-modules remains advisable (carried over from iter27).",
+    "FastAPI on_event('startup'/'shutdown') is deprecated (7 DeprecationWarnings in the run). Migrate to lifespan context manager before the next FastAPI major bump.",
+    "validate_catalog_against_stripe() is invoked at process startup on a live Stripe key with a 20s timeout — behavior is correct (soft-fails on network error), but consider adding a lightweight caching layer if boot latency becomes noticeable in cold starts."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (41 passed / 1 skipped intentional)", "frontend": "n/a (backend-only per request)"},
+  "test_credentials": "QA accounts from /app/memory/test_credentials.md — all 6 authenticated successfully.",
+  "seed_data_creation": "None — QA tests reset users back to Presale in finally-blocks; validator tests restore TIER_CATALOG in finally-blocks.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Bundle is GREEN — safe to redeploy. Startup validation snapshot in /api/tier/catalog/health, 503 hard-block for stale catalog, SKIP_STRIPE_STARTUP_CHECK bypass, and 3 new validator tests (all_good / detects_missing_price / detects_amount_mismatch) all verified. The 1 skipped test in test_stripe_catalog_startup.py is intentional (cannot mutate a running backend's _CATALOG_HEALTH from an external process — documented in the test docstring).",
+  "rca of the issue": "N/A — regression + smoke pass. Prior test-isolation flake (asyncio.get_event_loop() vs asyncio.run() in test_non_flagged_user_requires_2fa_setup) confirmed fixed: test now passes both standalone and as part of the full 41-test sequence."
+}

@@ -1,0 +1,31 @@
+{
+  "summary": "Backend-only regression + new coverage for the Stripe checkout error-hardening in POST /api/checkout/tier/session and tier_catalog.create_tier_checkout_session. Added 3 new tests to test_tier_provisioning_helper.py (InvalidRequestError raised at helper layer, unknown tier_key -> 422 at API layer, TimeoutError branch via asyncio.wait_for monkeypatch). All 36 tests pass (22 + 11 existing + 3 new). Live curl confirms happy path (kickstart_1) returns cs_live_ URL in 0.38s, consent-false returns 400 with Dutch herroepingsrecht message, bogus tier returns 422 (Pydantic Literal validation). Backend startup is clean, no ImportError.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/checkout/tier/session", "issue": "Unknown tier_key is caught by Pydantic Literal validation (422) BEFORE the ValueError branch in server.py can fire (400). Not a defect — the API still returns 4xx (never 502) — but the `except ValueError` branch at line 1496 is now effectively unreachable. Consider removing it or adding non-Literal validation upstream."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_tier_provisioning_helper.py",
+    "/app/test_reports/pytest/iter27_hardening.xml",
+    "/app/test_reports/pytest/iter27_full.xml"
+  ],
+  "action_items": [
+    "None blocking. Optional: prune the now-dead `except ValueError` branch in server.py:1496 or move to a non-Literal Pydantic validator to keep the branch exercisable."
+  ],
+  "critical_code_review_comments": [
+    "tier_catalog.create_tier_checkout_session uses `import stripe` and `import asyncio` inside the function — works but unusual; top-level imports would be clearer and allow direct `stripe.error.InvalidRequestError` catch instead of class-name string match.",
+    "server.py class-name-based `if exc_cls == 'InvalidRequestError'` is fragile (typos would silently fall through to 502). Since `stripe` is imported at module top, `except stripe.error.InvalidRequestError` would be safer and typo-proof.",
+    "server.py is ~2717 lines — over the 700-line threshold; consider splitting checkout/webhook logic into a sub-module."
+  ],
+  "updated_files": ["/app/backend/tests/test_tier_provisioning_helper.py"],
+  "success_rate": {"backend": "100% (36/36)", "frontend": "n/a (skipped per request)"},
+  "test_credentials": "QA accounts from /app/memory/test_credentials.md (qa-kickstart1..3, qa-compleet, qa-aiweek, qa-aimonth).",
+  "seed_data_creation": "None — all tests reset users back to Presale in finally-blocks.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "3 new tests added at bottom of test_tier_provisioning_helper.py cover: (a) InvalidRequestError bubbling from Stripe when price_id monkey-patched to a bogus format-valid string, (b) unknown tier_key returning 422 via Pydantic Literal validation (server-side path — proves no 502), (c) asyncio.TimeoutError raised via monkey-patched asyncio.wait_for. The API layer's 400/504/429/500 mapping is exercised indirectly (unknown tier gives 422, consent false gives 400). Live 502 -> 400 conversion for InvalidRequestError was not e2e-verified against the running backend because monkey-patching TIER_CATALOG in the running uvicorn process is not possible from an external test — but the helper-level test proves the exception is raised, and the handler code path was reviewed inline (server.py L1505-1528).",
+  "rca of the issue": "N/A — this iteration verifies a defensive hardening change, no bug to RCA. Main agent's prior work (asyncio.to_thread + wait_for(8s), class-name-based Stripe error mapping) is functioning as designed."
+}

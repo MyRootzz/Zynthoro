@@ -1494,10 +1494,38 @@ async def checkout_tier_session(
             consent_at=consent_at,
         )
     except ValueError as e:
+        # Unknown tier_key
         raise HTTPException(status_code=400, detail=str(e))
+    except asyncio.TimeoutError:
+        logger.warning("Tier checkout timed out talking to Stripe for tier=%s", payload.tier_key)
+        raise HTTPException(
+            status_code=504,
+            detail="De betaal-provider reageert traag. Probeer het opnieuw.",
+        )
     except Exception as e:
-        logger.exception("Tier checkout session creation failed")
-        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+        # Any Stripe SDK error is turned into a clean 4xx so the browser
+        # and Cloudflare don't see a 502. We match by class name to avoid
+        # a hard dependency on stripe.error being imported at the top.
+        exc_cls = type(e).__name__
+        stripe_msg = getattr(e, "user_message", None) or str(e)
+        logger.exception("Tier checkout session creation failed (%s)", exc_cls)
+        if exc_cls == "InvalidRequestError":
+            # Stripe rejected the request — usually a stale/deleted price ID,
+            # a product deactivation, or a misconfigured coupon.
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Checkout kan momenteel niet gestart worden — "
+                    "een van onze prijsplannen is tijdelijk niet beschikbaar. "
+                    f"(ref: {stripe_msg})"
+                ),
+            )
+        if exc_cls == "AuthenticationError":
+            raise HTTPException(status_code=500, detail="Payment provider not configured.")
+        if exc_cls == "RateLimitError":
+            raise HTTPException(status_code=429, detail="Too many payment requests — try again in a moment.")
+        # Fall-through: any other Stripe/network error → 502 (Bad Gateway)
+        raise HTTPException(status_code=502, detail=f"Stripe error: {stripe_msg}")
 
     await db.payment_transactions.insert_one({
         "id": str(uuid.uuid4()),

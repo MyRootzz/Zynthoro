@@ -299,3 +299,78 @@ def test_qa_bypass_login_still_ok():
     for email, password, *_ in TIER_MATRIX:
         r = _login(email, password)
         assert r["stage"] == "ok", (email, r)
+
+
+# --------------------------------- iter27: InvalidRequestError → clean error ---
+def test_invalid_price_id_raises_stripe_invalid_request(monkeypatch):
+    """Directly call create_tier_checkout_session with a monkey-patched
+    bogus (but format-valid) price_id. Assert that Stripe raises
+    InvalidRequestError (which the API handler converts to HTTP 400)."""
+    import tier_catalog as _tc  # noqa: WPS433
+    import stripe as _stripe  # noqa: WPS433
+
+    original = _tc.TIER_CATALOG["kickstart_1"]["price_id"]
+    monkeypatch.setitem(
+        _tc.TIER_CATALOG["kickstart_1"],
+        "price_id",
+        "price_1FakeButFormatValid00000000000",
+    )
+    assert _tc.TIER_CATALOG["kickstart_1"]["price_id"] != original
+
+    with pytest.raises(_stripe.error.InvalidRequestError):
+        _run(_tc.create_tier_checkout_session(
+            tier_key="kickstart_1",
+            origin_url=BASE_URL,
+            user_id="test_user_iter27",
+            user_email="qa-kickstart1@zynthoro.io",
+            consent_at=datetime.now(timezone.utc).isoformat(),
+        ))
+
+
+def test_unknown_tier_key_returns_422_or_400():
+    """Hitting POST /api/checkout/tier/session with an unknown tier_key
+    should be rejected by Pydantic (422) or the ValueError branch (400)
+    — NEVER 502."""
+    email, password, _tk, *_ = TIER_MATRIX[0]
+    login = _login(email, password)
+    token = login["access_token"]
+
+    resp = requests.post(
+        f"{BASE_URL}/api/checkout/tier/session",
+        json={
+            "tier_key": "totally_bogus_tier",
+            "origin_url": BASE_URL,
+            "consent_waiver": True,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
+    assert resp.status_code in (400, 422), resp.text
+    assert resp.status_code != 502
+
+
+def test_timeout_branch_returns_504(monkeypatch):
+    """Simulate Stripe hanging past the 8s wait_for by monkey-patching
+    asyncio.wait_for inside tier_catalog to raise TimeoutError. Calling the
+    helper should raise asyncio.TimeoutError (which the API handler maps to
+    HTTP 504)."""
+    import tier_catalog as _tc  # noqa: WPS433
+
+    async def _fake_wait_for(_coro, timeout):  # noqa: ARG001
+        # Close the underlying coroutine so we don't leak a warning.
+        try:
+            _coro.close()
+        except Exception:
+            pass
+        raise asyncio.TimeoutError()
+
+    monkeypatch.setattr(asyncio, "wait_for", _fake_wait_for)
+
+    with pytest.raises(asyncio.TimeoutError):
+        _run(_tc.create_tier_checkout_session(
+            tier_key="kickstart_1",
+            origin_url=BASE_URL,
+            user_id="test_user_iter27_timeout",
+            user_email="qa-kickstart1@zynthoro.io",
+            consent_at=datetime.now(timezone.utc).isoformat(),
+        ))

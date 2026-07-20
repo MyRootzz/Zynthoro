@@ -251,7 +251,13 @@ async def create_tier_checkout_session(
     else:
         session_kwargs["payment_intent_data"] = {"metadata": metadata}
 
-    session = stripe.checkout.Session.create(**session_kwargs)
+    # Stripe SDK is synchronous — run in a thread with an 8s budget so it
+    # cannot wedge the FastAPI event loop or trip Cloudflare's 502 timeout.
+    import asyncio
+    session = await asyncio.wait_for(
+        asyncio.to_thread(stripe.checkout.Session.create, **session_kwargs),
+        timeout=8.0,
+    )
     return {
         "session_id": session.id,
         "url": session.url,

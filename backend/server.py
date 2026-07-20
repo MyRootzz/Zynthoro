@@ -451,11 +451,14 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             "available_methods": ["totp", "email"],
         }
 
-    # Demo accounts (XPRIZE jury) and the founder owner account bypass the
-    # 2FA setup gate — they land in the dashboard with a single click.
-    # `is_demo` and `is_founder` are only set by the seed functions at
-    # startup and can never be granted via the API.
-    if user.get("is_demo") or user.get("is_founder"):
+    # Demo accounts (XPRIZE jury), the founder owner account, and QA test
+    # accounts bypass the 2FA setup gate — they land in the dashboard with
+    # a single click.
+    # `is_demo`, `is_founder`, and `is_qa_test` are only set by seed
+    # functions or direct MongoDB writes and can never be granted via the
+    # API. `is_qa_test` accounts still count AI credits and can still be
+    # charged — the flag ONLY relaxes the 2FA setup gate.
+    if user.get("is_demo") or user.get("is_founder") or user.get("is_qa_test"):
         access = create_access_token(user["id"], user["email"], twofa_passed=True)
         _set_auth_cookies(response, access)
         return {

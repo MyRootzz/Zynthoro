@@ -522,3 +522,18 @@ User reported another 502 with Emmy diagnosing "stale price_id at tier_catalog.p
 - Old class-name string match (`if exc_cls == 'InvalidRequestError':`) replaced with proper `except stripe_sdk.error.InvalidRequestError:` per code review — typo-safe.
 
 **Tests:** 36/36 green (added 3 new tests specifically for the InvalidRequestError → 400 conversion). Report at `/app/test_reports/iteration_27.json`.
+
+### 2026-07-20 (final bundle, ready for redeploy) — Stripe catalog startup validation
+- **`tier_catalog.validate_catalog_against_stripe()`** — iterates all 6 TIER_CATALOG entries, verifies product+price exist & active in Stripe, compares amount_eur to Stripe's unit_amount. Runs in a background thread with 20s hard timeout. Never raises on network errors — soft-fails with an error report so a Stripe outage cannot block boot.
+- **FastAPI startup hook `_validate_stripe_catalog_on_startup()`** — runs the validator at process boot; result cached in `_CATALOG_HEALTH` dict (`boot_status`: 'ok'|'failed'|'error'|'skipped'|'pending').
+- **`POST /api/checkout/tier/session`** — new 503 hard-block when `boot_status == 'failed'`. Users cannot get stuck on 502 from a known-stale catalog anymore.
+- **New `GET /api/tier/catalog/health`** — public ops endpoint reporting last validation state (no PII, no secrets).
+- **`SKIP_STRIPE_STARTUP_CHECK=1|true|yes`** env override for emergency boot without validation. Not set by default.
+- **Code review nit fixed:** `import asyncio` + `import stripe` moved from inline in create_tier_checkout_session to module top of tier_catalog.py.
+- **Test isolation fix:** old `test_non_flagged_user_requires_2fa_setup` used legacy `asyncio.get_event_loop()` which broke when adjacent tests used `asyncio.run()`. Modernized to `asyncio.run(...)`.
+
+**Test suite (bundle regression):** 41 passed + 1 intentional skip.
+- 22 QA account tests (test_qa_kickstart_provisioning.py)
+- 11 provisioning helper tests (test_tier_provisioning_helper.py)
+- 5 catalog startup tests (test_stripe_catalog_startup.py, 3 new)
+- Testing agent report: `/app/test_reports/iteration_28.json`

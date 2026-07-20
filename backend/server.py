@@ -1494,7 +1494,9 @@ async def checkout_tier_session(
             consent_at=consent_at,
         )
     except ValueError as e:
-        # Unknown tier_key
+        # Unknown tier_key (defensive — Pydantic Literal usually catches
+        # this first with 422, but keep the branch in case of upstream
+        # validation changes).
         raise HTTPException(status_code=400, detail=str(e))
     except asyncio.TimeoutError:
         logger.warning("Tier checkout timed out talking to Stripe for tier=%s", payload.tier_key)
@@ -1502,30 +1504,30 @@ async def checkout_tier_session(
             status_code=504,
             detail="De betaal-provider reageert traag. Probeer het opnieuw.",
         )
-    except Exception as e:
-        # Any Stripe SDK error is turned into a clean 4xx so the browser
-        # and Cloudflare don't see a 502. We match by class name to avoid
-        # a hard dependency on stripe.error being imported at the top.
-        exc_cls = type(e).__name__
+    except stripe_sdk.error.InvalidRequestError as e:
+        # Stripe rejected the request — stale price ID, deactivated product,
+        # misconfigured coupon, etc. Convert to a clean 400 so the browser
+        # (and Cloudflare) never see a 502.
         stripe_msg = getattr(e, "user_message", None) or str(e)
-        logger.exception("Tier checkout session creation failed (%s)", exc_cls)
-        if exc_cls == "InvalidRequestError":
-            # Stripe rejected the request — usually a stale/deleted price ID,
-            # a product deactivation, or a misconfigured coupon.
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Checkout kan momenteel niet gestart worden — "
-                    "een van onze prijsplannen is tijdelijk niet beschikbaar. "
-                    f"(ref: {stripe_msg})"
-                ),
-            )
-        if exc_cls == "AuthenticationError":
-            raise HTTPException(status_code=500, detail="Payment provider not configured.")
-        if exc_cls == "RateLimitError":
-            raise HTTPException(status_code=429, detail="Too many payment requests — try again in a moment.")
+        logger.exception("Tier checkout: Stripe InvalidRequestError")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Checkout kan momenteel niet gestart worden — "
+                "een van onze prijsplannen is tijdelijk niet beschikbaar. "
+                f"(ref: {stripe_msg})"
+            ),
+        )
+    except stripe_sdk.error.AuthenticationError:
+        logger.exception("Tier checkout: Stripe AuthenticationError")
+        raise HTTPException(status_code=500, detail="Payment provider not configured.")
+    except stripe_sdk.error.RateLimitError:
+        logger.warning("Tier checkout: Stripe RateLimitError")
+        raise HTTPException(status_code=429, detail="Too many payment requests — try again in a moment.")
+    except Exception as e:
         # Fall-through: any other Stripe/network error → 502 (Bad Gateway)
-        raise HTTPException(status_code=502, detail=f"Stripe error: {stripe_msg}")
+        logger.exception("Tier checkout session creation failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
 
     await db.payment_transactions.insert_one({
         "id": str(uuid.uuid4()),

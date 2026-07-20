@@ -507,3 +507,18 @@ User reported: purchased Kickstart 1 with promo ZYNTHORO-QA on production, `subs
 - All 11 pass. Combined with the earlier 22 QA-account tests: **33/33 green** (iteration 25 report at `/app/test_reports/iteration_25.json`).
 
 **How stuck production users get healed:** after the fix is redeployed, any user with an unprovisioned tier purchase will be automatically healed the next time their browser hits `/subscribe/return` (or the frontend polls `GET /api/checkout/tier/status/{session_id}`). No manual DB write needed.
+
+### 2026-07-20 (later) — Stripe checkout hardening (Emmy 502 report)
+User reported another 502 with Emmy diagnosing "stale price_id at tier_catalog.py line 120". Main agent's direct Stripe API verification proved **all 6 product+price IDs are valid, active, and priced correctly** in the live account — Emmy's diagnosis was wrong. Message also contained an empty `[IDs hieronder]` placeholder (no replacement IDs provided).
+
+**Hardening applied anyway (defensive value for future stale-ID / slow-Stripe scenarios):**
+- `tier_catalog.create_tier_checkout_session()` — `stripe.checkout.Session.create` now runs via `asyncio.to_thread` + `asyncio.wait_for(timeout=8.0)`. Slow Stripe API can no longer wedge the event loop.
+- `POST /api/checkout/tier/session` — new type-based exception handlers:
+  - `stripe.error.InvalidRequestError` → **HTTP 400** with Dutch user message + Stripe's user_message as ref
+  - `stripe.error.AuthenticationError` → **HTTP 500**
+  - `stripe.error.RateLimitError` → **HTTP 429**
+  - `asyncio.TimeoutError` → **HTTP 504**
+  - Anything else → **HTTP 502** (fall-through)
+- Old class-name string match (`if exc_cls == 'InvalidRequestError':`) replaced with proper `except stripe_sdk.error.InvalidRequestError:` per code review — typo-safe.
+
+**Tests:** 36/36 green (added 3 new tests specifically for the InvalidRequestError → 400 conversion). Report at `/app/test_reports/iteration_27.json`.

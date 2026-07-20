@@ -647,7 +647,12 @@ def _tier_context(user: dict) -> dict:
             "is_lifetime": bool(user.get("is_lifetime")),
         }
 
-    limit = user.get("ai_credits_limit") if "ai_credits_limit" in user else features.get("ai_credits_limit")
+    # Prefer the user-doc value when explicitly set to a positive number
+    # (post-provisioning). An explicit `None` on Presale users (written by
+    # the seed refresh path) must fall through to the plan's default —
+    # otherwise Presale users appear unlimited.
+    doc_limit = user.get("ai_credits_limit")
+    limit = doc_limit if doc_limit is not None else features.get("ai_credits_limit")
     used = int(user.get("ai_credits_used_this_period") or 0)
     remaining = None if limit is None else max(0, int(limit) - used)
     return {

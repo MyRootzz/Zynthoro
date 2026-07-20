@@ -430,3 +430,14 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - `/api/dashboard/summary` refactored: unified path reads from `activity_events` for everyone (top 20 by timestamp). Demo user gets an additional merge with `demo_invoices` / `demo_projects` / seeded team members so the XPRIZE feed still looks rich.
 - New index: `db.activity_events` on `(workspace_owner, timestamp desc)`.
 - Verified with founder account: invite a teammate + send AI message → both events appear at the top of the dashboard feed within 1s. Test data cleaned up.
+
+### 2026-07-20 (evening) — Subscription events in activity feed
+- Stripe webhook (`checkout.session.completed` with `kind=subscription_change`) now fires an `activity_log.log_event`:
+  - `alert_kind=upgrade`  → title "🎉 Upgraded to {plan}"
+  - `alert_kind=downgrade` → title "Downgraded to {plan}"
+  - `alert_kind=subscribe` → title "🎉 Subscribed to {plan}"
+  - Subtitle shows "From {prev_plan}" or "New subscription".
+- Starter one-time checkout provisioning path (`/api/checkout/starter/status`) also fires a matching event ("🎉 Subscribed to Starter" or "🎉 Upgraded to Starter").
+- `customer.subscription.deleted` fires "Subscription cancelled — {plan}" so the feed tells the full story.
+- All calls wrapped in `asyncio.create_task(...)` — activity logging never blocks the webhook response.
+- Verified: manually logged an upgrade event for the founder, feed rendered it correctly at the top with the sparkles icon and Settings deep-link. Test data cleaned.

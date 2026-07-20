@@ -1212,6 +1212,7 @@ async def checkout_starter_status(
     # Idempotent post-payment provisioning
     if new_payment_status == "paid" and not txn.get("provisioned"):
         update["provisioned"] = True
+        prev_plan = user.get("subscription_plan") or "Presale"
         user_update = {
             "subscription_plan": "Starter",
             "subscription_status": "active",
@@ -1219,6 +1220,19 @@ async def checkout_starter_status(
             "billing_first_amount_eur": txn["amount"],
         }
         await db.users.update_one({"id": user["id"]}, {"$set": user_update})
+        # Activity feed event
+        _verb = "🎉 Subscribed to" if prev_plan in (None, "", "Presale") else "🎉 Upgraded to"
+        _sub = "New subscription" if prev_plan in (None, "", "Presale") else f"From {prev_plan}"
+        asyncio.create_task(activity_log.log_event(
+            db,
+            workspace_owner=user["id"],
+            actor_email=user["email"],
+            event_type="subscription_starter_paid",
+            icon="sparkles",
+            title=f"{_verb} Starter",
+            subtitle=_sub,
+            href="/dashboard/settings",
+        ))
 
     await db.payment_transactions.update_one(
         {"session_id": session_id}, {"$set": update}
@@ -1589,6 +1603,23 @@ async def stripe_webhook(request: Request):
                 alert_kind = "subscribe" if prev_plan in (None, "Presale", "") else (
                     "upgrade" if _plan_rank(plan_key) > _plan_rank(prev_plan) else "downgrade"
                 )
+                # Activity feed event — show on the user's dashboard
+                _feed_verb = {
+                    "upgrade":   "🎉 Upgraded to",
+                    "downgrade": "Downgraded to",
+                    "subscribe": "🎉 Subscribed to",
+                }.get(alert_kind, "Switched to")
+                _feed_sub = f"From {prev_plan}" if prev_plan and prev_plan != plan_key else "New subscription"
+                asyncio.create_task(activity_log.log_event(
+                    db,
+                    workspace_owner=user_id,
+                    actor_email=user_email,
+                    event_type=f"subscription_{alert_kind}",
+                    icon="sparkles",
+                    title=f"{_feed_verb} {plan_key}",
+                    subtitle=_feed_sub,
+                    href="/dashboard/settings",
+                ))
                 asyncio.create_task(email_service.send_stripe_alert(
                     kind=alert_kind,
                     event_type=event_type,
@@ -1655,6 +1686,17 @@ async def stripe_webhook(request: Request):
                     "subscription_cancelled_at": datetime.now(timezone.utc).isoformat(),
                 }},
             )
+            if cancelled_user and cancelled_user.get("id"):
+                asyncio.create_task(activity_log.log_event(
+                    db,
+                    workspace_owner=cancelled_user["id"],
+                    actor_email=cancelled_user.get("email"),
+                    event_type="subscription_cancelled",
+                    icon="sparkles",
+                    title=f"Subscription cancelled — {cancelled_user.get('subscription_plan') or 'Plan'}",
+                    subtitle="You can resubscribe anytime from Settings",
+                    href="/dashboard/settings",
+                ))
             asyncio.create_task(email_service.send_stripe_alert(
                 kind="cancel",
                 event_type=event_type,

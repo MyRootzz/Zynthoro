@@ -1,0 +1,34 @@
+{
+  "summary": "Verified new emergency endpoint POST /api/admin/disable-2fa. 9 new tests all pass (auth 401 for missing/wrong X-Admin-Key, 404 for unknown email, 422 for malformed email, happy paths with set_founder=False and True incl. direct-mongo verification of $set + $unset side effects, case-insensitive email lookup, and adjacent seed endpoint regression). Endpoint uses hmac.compare_digest correctly, is idempotent, lowercases email before lookup, logs warnings, and returns the documented response shape {ok, matched, modified, set_founder, email}. Backend restarted cleanly ('Stripe catalog validation ✅' + 'Application startup complete'). Total bundle-run (excluding pre-existing broken QA file): 28 passed / 1 skipped in 17.2s (test_admin_disable_2fa: 9, test_tier_provisioning_helper: 11, test_stripe_catalog_startup: 8). Adjacent /api/admin/seed-qa-accounts confirmed still working via dedicated regression tests.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/login (QA accounts)", "issue": "Pre-existing regression in test_qa_kickstart_provisioning.py: 7 tests (6 test_qa_account_tier_context + 1 test_non_flagged_user_requires_2fa_setup) fail when the QA file runs as a whole, but each passes in isolation. Failure mode: after test_qa_account_direct_login runs, /auth/me returns tier.ai_credits_limit=None instead of 10 for QA users. Isolated manual login → /me returns ai_credits_limit=10 correctly, so the endpoint itself is fine — the failure is only intra-file test-ordering pollution. This is NOT caused by the new disable-2fa endpoint (my endpoint does not touch ai_credits_limit and does not target any QA user in the failing tests). Iter28 had these tests passing — regression appeared between iter28 and iter29 but is unrelated to the disable-2fa change."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_admin_disable_2fa.py",
+    "/app/test_reports/pytest/iter29_disable2fa.xml",
+    "/app/test_reports/pytest/iter29_bundle_no_qa.xml"
+  ],
+  "action_items": [
+    "Main agent: investigate the intra-file pollution in test_qa_kickstart_provisioning.py — after test_qa_account_direct_login the QA users' tier.ai_credits_limit resolves to None instead of 10 on subsequent /auth/me calls within the same pytest process. Reproduces reliably; unrelated to the new disable-2fa endpoint. Iter28 reported these passing so a recent unrelated backend change (possibly in login handler or tier resolver) introduced the regression.",
+    "Optional: after production emergency is resolved, remove /api/admin/disable-2fa endpoint as suggested in its own docstring ('Remove this endpoint after use')."
+  ],
+  "critical_code_review_comments": [
+    "Endpoint implementation is clean and secure: uses hmac.compare_digest, EmailStr validation, 503 if ADMIN_SEED_KEY missing, 401 on wrong/missing key, 404 on unknown user, logs warning on every invocation. Good.",
+    "Endpoint correctly $unsets all 2FA-related fields (twofa_method, totp_secret, totp_secret_pending, email_2fa_code_hash, email_2fa_expires_at, email_2fa_attempts, twofa_backup_codes) — confirmed via direct mongo query.",
+    "Consider adding an audit log entry (not just server log) since this endpoint elevates a user to founder — helpful for post-incident forensics.",
+    "server.py is still ~2887 lines; splitting admin/auth/checkout into sub-modules remains advisable (carried from iter27/28).",
+    "FastAPI on_event startup/shutdown deprecation warnings persist (carried from iter28)."
+  ],
+  "updated_files": ["/app/backend/tests/test_admin_disable_2fa.py"],
+  "success_rate": {"backend": "100% for new endpoint (9/9); 100% for stripe-catalog + tier-provisioning (19/19 + 1 intentional skip); pre-existing QA-file pollution unrelated to this iteration", "frontend": "n/a (backend-only per request)"},
+  "test_credentials": "QA accounts from /app/memory/test_credentials.md — qa-kickstart2@zynthoro.io used for one happy-path test then re-seeded via /api/admin/seed-qa-accounts (idempotent). regie@myrootzz.com was NOT touched in preview per instructions. ADMIN_SEED_KEY read from /app/backend/.env — not printed in any log or report.",
+  "seed_data_creation": "Two throwaway users inserted directly into mongo (throwaway-<uuid>@zynthoro-throwaway.io and MixedCase-<uuid>@Zynthoro-Throwaway.io) and both deleted in test finally-blocks. QA users re-seeded (idempotent) to restore any state changes.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The disable-2fa endpoint is production-ready. If retesting, do NOT target regie@myrootzz.com in preview (already correctly configured). Pre-existing QA-file pollution (ai_credits_limit=None after login within the same pytest process) is unrelated to this endpoint — see minor issue above. Endpoint should be deleted after production use per its docstring.",
+  "rca of the issue": "N/A for the new endpoint — all tests pass. RCA for pre-existing QA regression: within a single pytest process, after test_qa_account_direct_login runs, subsequent /auth/me calls for the same QA users return tier.ai_credits_limit=None. When each test is invoked in isolation (or via a direct requests call outside pytest), ai_credits_limit=10 is returned correctly. Suggests the /auth/login handler or a downstream side-effect writes ai_credits_limit=None onto the user doc; iter28 was reported green so a change between iter28 and iter29 (outside this iteration's disable-2fa work) likely regressed it. Recommend main agent bisect recent changes to /api/auth/login and the tier resolver."
+}

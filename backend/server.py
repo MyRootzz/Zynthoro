@@ -360,6 +360,67 @@ async def admin_seed_qa_accounts(request: Request):
     return {"ok": True, "created": created, "refreshed": refreshed, "total": len(QA_SEED_ACCOUNTS)}
 
 
+class DisableTwofaIn(BaseModel):
+    email: EmailStr
+    set_founder: bool = False
+
+
+@api_router.post("/admin/disable-2fa")
+async def admin_disable_2fa(payload: DisableTwofaIn, request: Request):
+    """Emergency endpoint — disables 2FA for a single account by email.
+    Also optionally sets `is_founder: True` (needed for the founder-bypass
+    code path to skip the 2FA-setup wizard on future logins).
+
+    Header: X-Admin-Key: <ADMIN_SEED_KEY>
+    Remove this endpoint after use.
+    """
+    expected = os.environ.get("ADMIN_SEED_KEY")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Endpoint disabled (ADMIN_SEED_KEY not set).")
+    provided = request.headers.get("x-admin-key") or ""
+    if not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Invalid admin key.")
+
+    set_ops = {
+        "twofa_enabled": False,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    if payload.set_founder:
+        set_ops.update({
+            "is_founder": True,
+            "is_unlimited": True,
+            "billing_exempt": True,
+            "email_verified": True,
+        })
+
+    res = await db.users.update_one(
+        {"email": str(payload.email).lower()},
+        {
+            "$set": set_ops,
+            "$unset": {
+                "twofa_method": "",
+                "totp_secret": "",
+                "totp_secret_pending": "",
+                "email_2fa_code_hash": "",
+                "email_2fa_expires_at": "",
+                "email_2fa_attempts": "",
+                "twofa_backup_codes": "",
+            },
+        },
+    )
+    logger.warning("Admin disable-2fa invoked for %s — matched=%d modified=%d set_founder=%s",
+                   payload.email, res.matched_count, res.modified_count, payload.set_founder)
+    if res.matched_count == 0:
+        raise HTTPException(status_code=404, detail=f"No user found with email {payload.email}")
+    return {
+        "ok": True,
+        "email": str(payload.email).lower(),
+        "matched": res.matched_count,
+        "modified": res.modified_count,
+        "set_founder": payload.set_founder,
+    }
+
+
 
 #  ----------------------
 #  Voice Tour lead capture

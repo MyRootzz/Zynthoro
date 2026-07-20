@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import hmac
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
@@ -279,8 +280,89 @@ async def get_presale_count():
 
 
 # =====================================================================
-#  Voice Tour lead capture
+#  One-time admin seed — Kickstart tier QA test accounts
 #  ----------------------
+#  Protected by the `X-Admin-Key` header (must equal env `ADMIN_SEED_KEY`).
+#  Fails closed if the env var is unset. Idempotent — safe to call
+#  multiple times. Remove this endpoint after production seeding is done.
+# =====================================================================
+QA_SEED_ACCOUNTS = [
+    ("qa-kickstart1@zynthoro.io", "QaKick1!Test", "Kickstart 1"),
+    ("qa-kickstart2@zynthoro.io", "QaKick2!Test", "Kickstart 2"),
+    ("qa-kickstart3@zynthoro.io", "QaKick3!Test", "Kickstart 3"),
+    ("qa-compleet@zynthoro.io",   "QaComp!Test",  "Compleet"),
+    ("qa-aiweek@zynthoro.io",     "QaWeek!Test",  "AI+Social Week"),
+    ("qa-aimonth@zynthoro.io",    "QaMonth!Test", "AI+Social Month"),
+]
+
+
+@api_router.post("/admin/seed-qa-accounts")
+async def admin_seed_qa_accounts(request: Request):
+    """Idempotent seed of the 6 Kickstart QA test accounts.
+    Header: X-Admin-Key: <ADMIN_SEED_KEY>
+    """
+    expected = os.environ.get("ADMIN_SEED_KEY")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Seed endpoint disabled (ADMIN_SEED_KEY not set).")
+    provided = request.headers.get("x-admin-key") or ""
+    if not hmac.compare_digest(provided, expected):
+        raise HTTPException(status_code=401, detail="Invalid admin key.")
+
+    from auth import hash_password
+    now_iso = datetime.now(timezone.utc).isoformat()
+    created, refreshed = 0, 0
+    for email, password, target_tier in QA_SEED_ACCOUNTS:
+        pw_hash = hash_password(password)
+        first, _, _ = email.partition("@")
+        base = {
+            "email": email,
+            "password_hash": pw_hash,
+            "first_name": first.replace("qa-", "QA ").title(),
+            "last_name": "Test",
+            "email_verified": True,
+            "twofa_enabled": False,
+            "is_demo": False,
+            "is_founder": False,
+            "is_unlimited": False,
+            "billing_exempt": False,
+            "is_qa_test": True,
+            "subscription_plan": "Presale",
+            "company": f"QA Test — {target_tier}",
+            "ai_credits_used_this_period": 0,
+            "ai_credits_limit": None,
+            "notes_qa_target_tier": target_tier,
+            "updated_at": now_iso,
+        }
+        existing = await db.users.find_one({"email": email}, {"id": 1})
+        if existing:
+            await db.users.update_one(
+                {"email": email},
+                {
+                    "$set": base,
+                    "$unset": {
+                        "totp_secret": "", "totp_secret_pending": "",
+                        "email_2fa_code_hash": "", "email_2fa_expires_at": "",
+                        "email_2fa_attempts": "", "twofa_backup_codes": "",
+                        "twofa_method": "",
+                    },
+                },
+            )
+            refreshed += 1
+        else:
+            await db.users.insert_one({
+                "id": str(uuid.uuid4()),
+                "created_at": now_iso,
+                **base,
+            })
+            created += 1
+
+    logger.warning("QA seed endpoint invoked — created=%d refreshed=%d", created, refreshed)
+    return {"ok": True, "created": created, "refreshed": refreshed, "total": len(QA_SEED_ACCOUNTS)}
+
+
+
+#  ----------------------
+#  Voice Tour lead capture
 #  Anonymous visitors who interact with the homepage voice tryout get
 #  logged here as warm leads (high-intent signal). Optional email turns
 #  them into a follow-up segment for sales.

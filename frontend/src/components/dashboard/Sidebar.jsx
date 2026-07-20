@@ -4,28 +4,28 @@ import { ZyLogo } from "@/components/ZyLogo";
 import {
   Home, CalendarClock, Timer, ShoppingCart, ReceiptEuro, Calculator,
   KanbanSquare, Users, Workflow, Megaphone, MessagesSquare, ShieldCheck,
-  Settings, ToggleLeft, ToggleRight, Sparkles, BrainCircuit, TrendingUp, ChevronLeft,
+  Settings, ToggleLeft, ToggleRight, Sparkles, BrainCircuit, TrendingUp, ChevronLeft, Lock,
 } from "lucide-react";
 
 const MODULES = [
-  { to: "/dashboard", label: "Dashboard", icon: Home, end: true },
-  { to: "/dashboard/planning", label: "Planning", icon: CalendarClock },
-  { to: "/dashboard/time-tracking", label: "Time Tracking", icon: Timer },
-  { to: "/dashboard/sales", label: "Sales", icon: ShoppingCart },
-  { to: "/dashboard/finance", label: "Finance & Invoicing", icon: ReceiptEuro },
-  { to: "/dashboard/accounting", label: "Accounting", icon: Calculator },
-  { to: "/dashboard/projects", label: "Projects", icon: KanbanSquare },
-  { to: "/dashboard/hr", label: "HR & Personnel", icon: Users },
-  { to: "/dashboard/operations", label: "Operations", icon: Workflow },
-  { to: "/dashboard/marketing", label: "Marketing & Content", icon: Megaphone },
-  { to: "/dashboard/communication", label: "Communication", icon: MessagesSquare },
-  { to: "/dashboard/compliance", label: "Compliance", icon: ShieldCheck },
+  { to: "/dashboard", label: "Dashboard", icon: Home, end: true, slug: null },
+  { to: "/dashboard/planning", label: "Planning", icon: CalendarClock, slug: "planning" },
+  { to: "/dashboard/time-tracking", label: "Time Tracking", icon: Timer, slug: "time_tracking" },
+  { to: "/dashboard/sales", label: "Sales", icon: ShoppingCart, slug: "sales" },
+  { to: "/dashboard/finance", label: "Finance & Invoicing", icon: ReceiptEuro, slug: "finance" },
+  { to: "/dashboard/accounting", label: "Accounting", icon: Calculator, slug: "accounting" },
+  { to: "/dashboard/projects", label: "Projects", icon: KanbanSquare, slug: "projects" },
+  { to: "/dashboard/hr", label: "HR & Personnel", icon: Users, slug: "hr" },
+  { to: "/dashboard/operations", label: "Operations", icon: Workflow, slug: "operations" },
+  { to: "/dashboard/marketing", label: "Marketing & Content", icon: Megaphone, slug: "marketing" },
+  { to: "/dashboard/communication", label: "Communication", icon: MessagesSquare, slug: "communication" },
+  { to: "/dashboard/compliance", label: "Compliance", icon: ShieldCheck, slug: "compliance" },
 ];
 
 const ASSISTANTS = [
-  { to: "/dashboard/zyntha", label: "Zyntha — Content", icon: Sparkles, color: "#8B5CF6" },
-  { to: "/dashboard/thoro", label: "Thoro — Builder", icon: BrainCircuit, color: "#06B6D4" },
-  { to: "/dashboard/zyona", label: "Zyona — Growth", icon: TrendingUp, color: "#D4AF37" },
+  { to: "/dashboard/zyntha", label: "Zyntha — Content", icon: Sparkles, color: "#8B5CF6", slug: "zyntha" },
+  { to: "/dashboard/thoro", label: "Thoro — Builder", icon: BrainCircuit, color: "#06B6D4", slug: "thoro" },
+  { to: "/dashboard/zyona", label: "Zyona — Growth", icon: TrendingUp, color: "#D4AF37", slug: "zyona" },
 ];
 
 export default function Sidebar({ user, mode, onToggleMode }) {
@@ -75,14 +75,14 @@ export default function Sidebar({ user, mode, onToggleMode }) {
 
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
           {MODULES.map((m) => (
-            <SidebarItem key={m.to} {...m} />
+            <SidebarItem key={m.to} {...m} allowedModules={user?.tier?.modules} />
           ))}
 
           <div className="pt-5 pb-2 px-2">
             <p className="text-[10.5px] uppercase tracking-[0.18em] text-white/55 font-semibold">AI Assistants</p>
           </div>
           {ASSISTANTS.map((a) => (
-            <SidebarItem key={a.to} {...a} dotColor={a.color} />
+            <SidebarItem key={a.to} {...a} dotColor={a.color} allowedModules={user?.tier?.modules} />
           ))}
 
           <div className="pt-5">
@@ -114,7 +114,8 @@ export default function Sidebar({ user, mode, onToggleMode }) {
   );
 }
 
-function SidebarItem({ to, label, icon: Icon, end, dotColor }) {
+function SidebarItem({ to, label, icon: Icon, end, dotColor, slug, allowedModules }) {
+  const isLocked = slug && Array.isArray(allowedModules) && allowedModules.length > 0 && !allowedModules.includes(slug);
   return (
     <NavLink
       to={to}
@@ -133,7 +134,10 @@ function SidebarItem({ to, label, icon: Icon, end, dotColor }) {
       ) : (
         <Icon size={16} />
       )}
-      <span className="truncate">{label}</span>
+      <span className="truncate flex-1">{label}</span>
+      {isLocked && (
+        <Lock size={11} className="shrink-0 opacity-70" data-testid={`sidebar-lock-${slug}`} />
+      )}
     </NavLink>
   );
 }

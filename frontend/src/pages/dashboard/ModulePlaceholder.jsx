@@ -4,7 +4,7 @@ import { useParams, Link } from "react-router-dom";
 import {
   Briefcase, FileText, Calendar, TrendingUp, AlertCircle, CheckCircle2, Clock,
   CalendarClock, Timer, ShoppingCart, ReceiptEuro, Calculator, KanbanSquare,
-  Users, Workflow, Megaphone, MessagesSquare, ShieldCheck, Plus, ArrowRight, Sparkles,
+  Users, Workflow, Megaphone, MessagesSquare, ShieldCheck, Plus, ArrowRight, Sparkles, Lock,
 } from "lucide-react";
 import { API, formatApiError, useAuth } from "@/contexts/AuthContext";
 import OperationsModule from "@/pages/dashboard/OperationsModule";
@@ -195,6 +195,8 @@ export default function ModulePlaceholder() {
   if (slug === "operations") return <OperationsModule />;
 
   const Icon = cfg.icon;
+  const allowedModules = user?.tier?.modules || [];
+  const isLocked = allowedModules.length > 0 && !allowedModules.includes(slug);
   return (
     <div className="max-w-5xl" data-testid={`module-${slug}-page`}>
       <p className="zy-eyebrow mb-2" style={{ color: "#1A4FFF" }}>{cfg.eyebrow}</p>
@@ -202,6 +204,17 @@ export default function ModulePlaceholder() {
         <h1 className="text-[24px] sm:text-[28px] font-bold tracking-tight flex items-center gap-2">
           <Icon size={22} style={{ color: "#1A4FFF" }} />
           {cfg.title}
+          {isLocked && (
+            <Link
+              to="/#kickstart"
+              data-testid={`module-lock-badge-${slug}`}
+              className="ml-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider transition-all hover:opacity-90"
+              style={{ background: "#FEF3C7", color: "#92400E" }}
+              title="This module isn't included in your current plan. Click to upgrade."
+            >
+              <Lock size={11} /> Upgrade to unlock
+            </Link>
+          )}
         </h1>
         <p className="text-[12.5px] text-[#666] max-w-md">{cfg.desc}</p>
       </div>

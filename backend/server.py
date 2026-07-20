@@ -29,6 +29,7 @@ from auth import (  # noqa: E402
 import ai_assistants  # noqa: E402
 import checkout as checkout_mod  # noqa: E402
 import activity_log  # noqa: E402
+import tier_catalog  # noqa: E402
 import stripe_subscriptions as subs_mod  # noqa: E402
 import stripe as stripe_sdk  # noqa: E402
 import email_service  # noqa: E402
@@ -478,9 +479,54 @@ async def auth_logout(response: Response):
     return {"message": "Logged out"}
 
 
+def _tier_context(user: dict) -> dict:
+    """Return the tier feature block appended to /api/auth/me.
+
+    Never raises — an unknown plan falls back to "Presale" (base features
+    only) so the frontend always gets a valid feature list.
+    """
+    plan_key = user.get("subscription_plan") or "Presale"
+    features = tier_catalog.TIER_FEATURES.get(plan_key) or tier_catalog.TIER_FEATURES["Presale"]
+
+    # Founder / demo / billing-exempt accounts get everything unlocked.
+    if user.get("is_founder") or user.get("is_demo") or user.get("billing_exempt") or user.get("is_unlimited"):
+        return {
+            "plan_key": plan_key,
+            "modules": tier_catalog.ALL_MODULES,
+            "workspaces": features.get("workspaces", 1),
+            "seats": features.get("seats", 1),
+            "ai_credits_limit": None,
+            "ai_credits_used": 0,
+            "ai_credits_remaining": None,  # unlimited
+            "is_lifetime": bool(user.get("is_lifetime")),
+        }
+
+    limit = user.get("ai_credits_limit") if "ai_credits_limit" in user else features.get("ai_credits_limit")
+    used = int(user.get("ai_credits_used_this_period") or 0)
+    remaining = None if limit is None else max(0, int(limit) - used)
+    return {
+        "plan_key": plan_key,
+        "modules": features["modules"],
+        "workspaces": features.get("workspaces", 1),
+        "seats": features.get("seats", 1),
+        "ai_credits_limit": limit,
+        "ai_credits_used": used,
+        "ai_credits_remaining": remaining,
+        "is_lifetime": bool(user.get("is_lifetime")),
+    }
+
+
 @api_router.get("/auth/me")
 async def auth_me(user=Depends(get_current_user_full)):
+    user["tier"] = _tier_context(user)
     return user
+
+
+@api_router.get("/me/tier")
+async def me_tier(user=Depends(get_current_user_full)):
+    """Lightweight tier-only endpoint used by the dashboard sidebar to
+    render the module lock badges without re-fetching the full user."""
+    return _tier_context(user)
 
 
 # ===== 2FA Setup (TOTP) =====
@@ -865,8 +911,65 @@ async def list_ai_assistants():
     return {"assistants": ai_assistants.list_assistants()}
 
 
+async def _consume_ai_credit(user: dict) -> None:
+    """Increment the user's AI credit counter and raise HTTP 402 if the
+    tier's monthly / one-time limit has been reached.
+
+    Bypass conditions: founder / demo / billing-exempt / is_unlimited, or
+    the plan has no limit (Compleet / Starter → ai_credits_limit is None).
+    """
+    if user.get("is_founder") or user.get("is_demo") or user.get("billing_exempt") or user.get("is_unlimited"):
+        return
+    ctx = _tier_context(user)
+    limit = ctx.get("ai_credits_limit")
+    if limit is None:
+        return
+    # Monthly reset: if the period ended, reset the counter first.
+    now = datetime.now(timezone.utc)
+    period_end = user.get("ai_credits_period_ends_at")
+    if user.get("ai_credits_period") == "month":
+        started = user.get("ai_credits_period_started_at")
+        try:
+            started_dt = datetime.fromisoformat(started) if started else now
+        except Exception:
+            started_dt = now
+        if (now - started_dt).days >= 30:
+            await db.users.update_one(
+                {"id": user["id"]},
+                {"$set": {
+                    "ai_credits_used_this_period": 0,
+                    "ai_credits_period_started_at": now.isoformat(),
+                }},
+            )
+            user["ai_credits_used_this_period"] = 0
+    elif period_end:
+        try:
+            end_dt = datetime.fromisoformat(period_end)
+            if now > end_dt:
+                raise HTTPException(
+                    status_code=402,
+                    detail="Your AI+Social top-up has expired. Please renew to continue.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
+    used = int(user.get("ai_credits_used_this_period") or 0)
+    if used >= int(limit):
+        raise HTTPException(
+            status_code=402,
+            detail=f"You've reached your {limit} AI credit limit for this period. Upgrade to Compleet for unlimited access.",
+        )
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$inc": {"ai_credits_used_this_period": 1}},
+    )
+
+
 @api_router.post("/ai/chat")
 async def ai_chat(payload: AssistChatIn, user=Depends(get_current_user_full)):
+    await _consume_ai_credit(user)
     session_id = payload.session_id or f"{user['id']}:{payload.assistant}:{uuid.uuid4()}"
     try:
         result = await ai_assistants.chat_complete(
@@ -902,6 +1005,7 @@ async def ai_stream(payload: AssistChatIn, user=Depends(get_current_user_full)):
     """
     import json as _json
 
+    await _consume_ai_credit(user)
     session_id = payload.session_id or f"{user['id']}:{payload.assistant}:{uuid.uuid4()}"
     plan = user.get("subscription_plan")
 
@@ -1246,6 +1350,120 @@ async def checkout_starter_status(
         "currency": txn["currency"],
         "package_id": txn["package_id"],
     }
+
+
+# ========================================================================
+#  Tier checkout — Kickstart lifetime, Compleet monthly, AI+Social top-ups
+# ========================================================================
+
+
+class TierCheckoutIn(BaseModel):
+    tier_key: Literal[
+        "kickstart_1", "kickstart_2", "kickstart_3",
+        "compleet", "ai_social_week", "ai_social_month",
+    ]
+    origin_url: str
+    consent_waiver: bool  # herroepingsrecht — must be True to proceed
+
+
+@api_router.get("/tier/catalog")
+async def tier_catalog_endpoint():
+    """Public catalog of the 6 tiers — used by the landing page and
+    subscribe pages to render pricing and description."""
+    plans = []
+    for key, t in tier_catalog.TIER_CATALOG.items():
+        plans.append({
+            "tier_key": key,
+            "plan_key": t["plan_key"],
+            "label": t["label"],
+            "amount_eur": t["amount_eur"],
+            "currency": t["currency"],
+            "billing": t["billing"],
+            "mode": t["mode"],
+            "tagline": t["tagline"],
+            "description": t["description"],
+        })
+    return {"plans": plans}
+
+
+@api_router.post("/checkout/tier/session")
+async def checkout_tier_session(
+    payload: TierCheckoutIn,
+    user=Depends(get_current_user_full),
+):
+    if not payload.consent_waiver:
+        raise HTTPException(
+            status_code=400,
+            detail="Je moet uitdrukkelijk afstand doen van je herroepingsrecht om verder te gaan.",
+        )
+    if user.get("billing_exempt"):
+        raise HTTPException(status_code=400, detail="Your account is billing-exempt — no checkout required.")
+
+    consent_at = datetime.now(timezone.utc).isoformat()
+    try:
+        session = await tier_catalog.create_tier_checkout_session(
+            tier_key=payload.tier_key,
+            origin_url=payload.origin_url,
+            user_id=user["id"],
+            user_email=user["email"],
+            consent_at=consent_at,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Tier checkout session creation failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+
+    await db.payment_transactions.insert_one({
+        "id": str(uuid.uuid4()),
+        "session_id": session["session_id"],
+        "user_id": user["id"],
+        "user_email": user["email"],
+        "package_id": payload.tier_key,
+        "plan_key": tier_catalog.get_tier(payload.tier_key)["plan_key"],
+        "amount": session["amount"],
+        "currency": session["currency"],
+        "metadata": session["metadata"],
+        "payment_status": "initiated",
+        "status": "open",
+        "consent_waiver": True,
+        "consent_at": consent_at,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    return {
+        "session_id": session["session_id"],
+        "url": session["url"],
+        "tier_key": payload.tier_key,
+        "amount": session["amount"],
+        "currency": session["currency"],
+    }
+
+
+@api_router.get("/checkout/tier/status/{session_id}")
+async def checkout_tier_status(
+    session_id: str,
+    user=Depends(get_current_user_full),
+):
+    txn = await db.payment_transactions.find_one(
+        {"session_id": session_id, "user_id": user["id"]},
+        {"_id": 0},
+    )
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found.")
+    # Provisioning is handled by the Stripe webhook.
+    return {
+        "session_id": session_id,
+        "payment_status": txn.get("payment_status"),
+        "status": txn.get("status"),
+        "amount": txn.get("amount"),
+        "currency": txn.get("currency"),
+        "plan_key": txn.get("plan_key"),
+        "tier_key": txn.get("package_id"),
+        "provisioned": bool(txn.get("provisioned")),
+    }
+
 
 
 @api_router.post("/checkout/subscription/session")
@@ -1659,6 +1877,77 @@ async def stripe_webhook(request: Request):
                     stripe_session_id=session_id,
                     stripe_subscription_id=obj.get("subscription"),
                 ))
+
+            elif user_id and kind == "tier_purchase":
+                # Kickstart lifetime, Compleet, AI+Social top-ups.
+                tier_key = meta.get("tier_key") or ""
+                plan_key = meta.get("plan_key") or ""
+                tier_def = tier_catalog.get_tier(tier_key)
+                billing = (tier_def or {}).get("billing", "lifetime")
+
+                prev_doc = await db.users.find_one(
+                    {"id": user_id}, {"subscription_plan": 1, "email": 1}
+                )
+                prev_plan = (prev_doc or {}).get("subscription_plan") or "Presale"
+                user_email_x = (prev_doc or {}).get("email")
+
+                credits_limit = (tier_def or {}).get("ai_credits_limit")
+                credits_period = (tier_def or {}).get("ai_credits_period", "month")
+                now_dt = datetime.now(timezone.utc)
+                period_end = None
+                if credits_period == "one_time" and billing == "one_time_week":
+                    period_end = (now_dt + timedelta(days=7)).isoformat()
+                elif billing == "one_time_month":
+                    period_end = (now_dt + timedelta(days=30)).isoformat()
+
+                update_fields = {
+                    "subscription_plan": plan_key,
+                    "subscription_status": "active",
+                    "subscription_started_at": now_iso,
+                    "is_lifetime": billing == "lifetime",
+                    "billing_model": billing,
+                    "consent_waiver": True,
+                    "consent_waiver_at": meta.get("consent_at") or now_iso,
+                    "ai_credits_limit": credits_limit,
+                    "ai_credits_period": credits_period,
+                    "ai_credits_used_this_period": 0,
+                    "ai_credits_period_started_at": now_iso,
+                    "ai_credits_period_ends_at": period_end,
+                }
+                if billing == "monthly":
+                    update_fields["stripe_subscription_id"] = obj.get("subscription")
+                    update_fields["stripe_customer_id"] = obj.get("customer")
+
+                await db.users.update_one({"id": user_id}, {"$set": update_fields})
+
+                # Feed event + email alert
+                feed_verb = "🎉 Purchased" if billing != "monthly" else "🎉 Subscribed to"
+                feed_sub = "Lifetime access" if billing == "lifetime" else (
+                    f"From {prev_plan}" if prev_plan and prev_plan != plan_key else "New subscription"
+                )
+                asyncio.create_task(activity_log.log_event(
+                    db,
+                    workspace_owner=user_id,
+                    actor_email=user_email_x,
+                    event_type=f"tier_{tier_key}_activated",
+                    icon="sparkles",
+                    title=f"{feed_verb} {plan_key}",
+                    subtitle=feed_sub,
+                    href="/dashboard/settings",
+                ))
+                alert_kind_tier = "subscribe" if prev_plan in (None, "Presale", "") else "upgrade"
+                asyncio.create_task(email_service.send_stripe_alert(
+                    kind=alert_kind_tier,
+                    event_type=event_type,
+                    user_email=user_email_x,
+                    user_id=user_id,
+                    plan_key=plan_key,
+                    amount_eur=float(meta.get("amount_eur") or 0) or None,
+                    stripe_session_id=session_id,
+                    stripe_subscription_id=obj.get("subscription"),
+                    extra={"Tier": tier_key, "Billing": billing},
+                ))
+                logger.info("User %s activated tier %s (plan=%s billing=%s)", user_id, tier_key, plan_key, billing)
 
             await db.payment_transactions.update_one(
                 {"session_id": session_id},

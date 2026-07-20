@@ -441,3 +441,51 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - `customer.subscription.deleted` fires "Subscription cancelled — {plan}" so the feed tells the full story.
 - All calls wrapped in `asyncio.create_task(...)` — activity logging never blocks the webhook response.
 - Verified: manually logged an upgrade event for the founder, feed rendered it correctly at the top with the sparkles icon and Settings deep-link. Test data cleaned.
+
+### 2026-07-20 (batch A shipped) — Kickstart lifetime deals + Compleet + AI+Social top-ups
+Six new tiers wired end-to-end. All Stripe products live-mode.
+
+**Stripe catalog (all confirmed via Stripe API):**
+| tier_key           | plan_key         | €      | billing         | mode          | product_id                 | price_id                        |
+|--------------------|------------------|--------|-----------------|---------------|----------------------------|---------------------------------|
+| kickstart_1        | Kickstart 1      | 79.00  | lifetime        | payment       | prod_UttjPOJtS5cTns        | price_1Tu5wO5sy2phCvUrZSqZNzak  |
+| kickstart_2        | Kickstart 2      | 149.00 | lifetime        | payment       | prod_Uttr6UVu8Lcgde        | price_1Tu6465sy2phCvUrmt77jtlS  |
+| kickstart_3        | Kickstart 3      | 199.00 | lifetime        | payment       | prod_UttshkVDM8nk74        | price_1Tu64x5sy2phCvUrwBvmRSuG  |
+| compleet           | Compleet         | 79.99  | monthly         | subscription  | prod_Uv1y3dZi4VLSlz  (NEW) | price_1TvBuG5sy2phCvUrlbahjtFj  |
+| ai_social_week     | AI+Social Week   | 24.99  | one_time_week   | payment       | prod_Utty09spK6ZzVF        | price_1Tu6AT5sy2phCvUrFW68MprM  |
+| ai_social_month    | AI+Social Month  | 59.99  | one_time_month  | payment       | prod_UttzlbwkpBggU9        | price_1Tu6BR5sy2phCvUrXCaUwBvE  |
+
+**New backend files/endpoints:**
+- `/app/backend/tier_catalog.py` — single source of truth (Stripe IDs, feature matrix, credit limits, checkout helper).
+- `GET  /api/tier/catalog` — public catalog for landing/subscribe pages.
+- `POST /api/checkout/tier/session` — requires `consent_waiver=true` (400 otherwise), creates live Stripe Checkout Session in the right mode (payment/subscription), records consent timestamp on `payment_transactions`.
+- `GET  /api/checkout/tier/status/{session_id}` — poll for provisioning done (webhook side).
+- `GET  /api/me/tier` + `.tier` field on `/api/auth/me` — returns `{plan_key, modules, seats, workspaces, ai_credits_limit, ai_credits_used, ai_credits_remaining, is_lifetime}` for the current user.
+- `_consume_ai_credit()` middleware on `POST /api/ai/chat` & `POST /api/ai/stream` — 402 when limit hit; monthly reset for `ai_credits_period=month`; expiry check for one-time top-ups.
+- Stripe webhook `kind=tier_purchase` branch — provisions plan, sets `is_lifetime`, `ai_credits_*`, `consent_waiver_at`, fires activity feed event ("🎉 Purchased Kickstart X" / "🎉 Subscribed to Compleet"), fires email alert.
+
+**New frontend:**
+- `/app/frontend/src/pages/SubscribeTier.jsx` — dynamic subscribe page at `/subscribe/:tierKey` with Dutch herroepingsrecht waiver (unchecked by default; CTA disabled until checked). Uses `art. 6:230p BW` verbatim wording.
+- `/app/frontend/src/pages/SubscribeReturn.jsx` — post-Stripe polling page that waits for webhook provisioning, then routes user to `/dashboard`.
+- `/app/frontend/src/components/sections/KickstartPricing.jsx` — landing section (`id="kickstart"`) with 3 Kickstart cards + Compleet + Week + Month.
+- `ModulePlaceholder.jsx` — reads `user.tier.modules`, shows "🔒 Upgrade to unlock" pill badge on module pages the tier doesn't include.
+- `Sidebar.jsx` — small lock icon next to sidebar items the tier doesn't include.
+- New routes in `App.js`: `/subscribe/return` and `/subscribe/:tierKey`.
+
+**AI credit limits (enforced):**
+- Kickstart 1 = 50/mo · Kickstart 2 = 150/mo · Kickstart 3 = 300/mo
+- Compleet = unlimited (limit=None)
+- AI+Social Week = 30 total (7d expiry)
+- AI+Social Month = 150 total (30d expiry)
+- Founder / demo / billing-exempt / is_unlimited = unlimited (bypass)
+
+**End-to-end verified:**
+- All 6 Stripe live Checkout Sessions successfully created (cs_live_… URLs returned).
+- Waiver-blocked checkout returns 400 with Dutch message.
+- Landing page renders all 6 cards cleanly (screenshot in /tmp/kickstart.png).
+- Subscribe page: waiver unchecked → CTA disabled; checked → CTA enabled (screenshots /tmp/subscribe_before.png, /tmp/subscribe_after.png).
+- Founder /auth/me returns `modules_count=16 limit=None` (bypass).
+- Presale user gets `modules=['settings','team'] limit=10`.
+
+**Deferred to Batch B (per user Q1=A):**
+- Website builder with templates + custom domain (CNAME/A-record). Not started — needs Emergent infra decision on multi-tenant custom domains.

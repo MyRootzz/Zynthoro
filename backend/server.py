@@ -28,6 +28,7 @@ from auth import (  # noqa: E402
 )
 import ai_assistants  # noqa: E402
 import checkout as checkout_mod  # noqa: E402
+import activity_log  # noqa: E402
 import stripe_subscriptions as subs_mod  # noqa: E402
 import stripe as stripe_sdk  # noqa: E402
 import email_service  # noqa: E402
@@ -684,26 +685,42 @@ async def dashboard_summary(user=Depends(get_current_user_full)):
     uid = user["id"]
     team_count = await db.team_members.count_documents({"workspace_owner": uid}) + 1
 
-    # Recent activity — pull the most recent events across the workspace.
-    activity: List[dict] = []
-
-    # Team members added
-    tm_rows = await db.team_members.find(
+    # 1) Unified activity_events log — populated live by team invites,
+    #    AI messages, invoices, etc.
+    ev_rows = await db.activity_events.find(
         {"workspace_owner": uid},
-        {"_id": 0, "name": 1, "email": 1, "role": 1, "created_at": 1},
-    ).sort("created_at", -1).limit(5).to_list(length=5)
-    for r in tm_rows:
-        activity.append({
-            "type": "team_member_added",
-            "icon": "user_plus",
-            "title": f"{r.get('name') or r.get('email') or 'Team member'} joined the workspace",
-            "subtitle": r.get("role") or "Team",
-            "timestamp": r.get("created_at"),
-            "href": "/dashboard/team",
-        })
+        {"_id": 0, "event_type": 1, "icon": 1, "title": 1, "subtitle": 1,
+         "href": 1, "timestamp": 1},
+    ).sort("timestamp", -1).limit(20).to_list(length=20)
+    activity: List[dict] = [
+        {
+            "type": r.get("event_type"),
+            "icon": r.get("icon"),
+            "title": r.get("title"),
+            "subtitle": r.get("subtitle"),
+            "href": r.get("href"),
+            "timestamp": r.get("timestamp"),
+        }
+        for r in ev_rows
+    ]
 
-    # Demo invoices (only demo users have this collection populated)
+    # 2) Fall back to the demo workspace collections so the XPRIZE jury
+    #    account still sees a rich feed without needing to trigger events.
     if user.get("is_demo"):
+        tm_rows = await db.team_members.find(
+            {"workspace_owner": uid},
+            {"_id": 0, "name": 1, "email": 1, "role": 1, "created_at": 1},
+        ).sort("created_at", -1).limit(5).to_list(length=5)
+        for r in tm_rows:
+            activity.append({
+                "type": "team_member_added",
+                "icon": "user_plus",
+                "title": f"{r.get('name') or r.get('email') or 'Team member'} joined the workspace",
+                "subtitle": r.get("role") or "Team",
+                "timestamp": r.get("created_at"),
+                "href": "/dashboard/team",
+            })
+
         inv_rows = await db.demo_invoices.find(
             {"workspace_owner": uid},
             {"_id": 0, "number": 1, "client": 1, "amount_eur": 1, "status": 1, "issued": 1, "created_at": 1},
@@ -733,24 +750,6 @@ async def dashboard_summary(user=Depends(get_current_user_full)):
                 "timestamp": r.get("created_at"),
                 "href": "/dashboard/projects",
             })
-
-    # AI assistant sessions
-    ai_rows = await db.ai_messages.find(
-        {"user_id": uid, "role": "user"},
-        {"_id": 0, "content": 1, "assistant": 1, "timestamp": 1},
-    ).sort("timestamp", -1).limit(3).to_list(length=3)
-    for r in ai_rows:
-        content = (r.get("content") or "").strip().replace("\n", " ")
-        preview = (content[:60] + "…") if len(content) > 60 else content
-        assistant = (r.get("assistant") or "zyntha").lower()
-        activity.append({
-            "type": "ai_message",
-            "icon": "sparkles",
-            "title": f"You asked {assistant.title()}: {preview or '…'}",
-            "subtitle": "AI Assistant",
-            "timestamp": r.get("timestamp"),
-            "href": f"/dashboard/{assistant if assistant in ('zyntha','thoro','zyona') else 'zyntha'}",
-        })
 
     # Sort by timestamp desc and keep the top 8
     def _ts(item):
@@ -835,6 +834,16 @@ async def team_invite(payload: TeamInviteIn, user=Depends(get_current_user_full)
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.team_members.insert_one(doc)
+    await activity_log.log_event(
+        db,
+        workspace_owner=user["id"],
+        actor_email=user["email"],
+        event_type="team_member_invited",
+        icon="user_plus",
+        title=f"Invited {email} to the workspace",
+        subtitle=f"{payload.role} · level {payload.level}",
+        href="/dashboard/team",
+    )
     base = os.environ.get("PUBLIC_APP_URL", "https://zynthoro.ai").rstrip("/")
     accept_link = f"{base}/accept-invite?token={invite_token}"
     email_id = await email_service.send_team_invite(email, user["email"], accept_link, payload.role)
@@ -2134,6 +2143,7 @@ async def startup():
     await db.login_attempts.create_index("identifier")
     await db.ai_logs.create_index([("timestamp", -1)])
     await db.ai_logs.create_index([("assistant", 1), ("timestamp", -1)])
+    await db.activity_events.create_index([("workspace_owner", 1), ("timestamp", -1)])
     await db.payment_transactions.create_index("session_id", unique=True)
     await seed_founder()
     await seed_jury_demo()

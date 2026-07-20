@@ -420,3 +420,13 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - Meta description on landing dropped the "Launching 30 June 2026" phrase.
 - Verified: backend restarts cleanly, `/api/pricing/catalog` still returns Starter €499, `/api/dashboard/summary` returns 8 activity items for demo user, `/api/checkout/starter/session` still creates valid Stripe sessions.
 - **NOT REDEPLOYED to production** — user must trigger a redeploy from the Emergent dashboard to push these changes to https://zynthoro.ai.
+
+### 2026-07-20 (later) — Live activity write-through for real users
+- Added `/app/backend/activity_log.py` with `log_event()` helper that inserts to `db.activity_events` (never raises — activity logging never blocks the primary flow).
+- Wired write-through into two live event sources:
+  1. `POST /api/team/invite` (server.py) — logs `team_member_invited` with role + level.
+  2. `ai_assistants.save_message()` — logs `ai_message_sent` for each user prompt (assistant replies are NOT double-logged).
+  - **Invoice creation hook deferred** — no real-user invoice-create endpoint exists yet (only demo seeded invoices). Add the hook when the Finance CRUD lands.
+- `/api/dashboard/summary` refactored: unified path reads from `activity_events` for everyone (top 20 by timestamp). Demo user gets an additional merge with `demo_invoices` / `demo_projects` / seeded team members so the XPRIZE feed still looks rich.
+- New index: `db.activity_events` on `(workspace_owner, timestamp desc)`.
+- Verified with founder account: invite a teammate + send AI message → both events appear at the top of the dashboard feed within 1s. Test data cleaned up.

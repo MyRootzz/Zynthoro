@@ -225,6 +225,25 @@ async def save_message(db, session_id: str, assistant: str, user_id: str, role: 
         "content": content,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
+    # Emit an activity event only for the user's outgoing prompt — we don't
+    # want assistant replies to double the feed.
+    if role == "user":
+        try:
+            import activity_log as _al  # local import avoids circular deps
+            clean = (content or "").strip().replace("\n", " ")
+            preview = (clean[:60] + "…") if len(clean) > 60 else clean
+            name = assistant.title() if assistant else "AI"
+            await _al.log_event(
+                db,
+                workspace_owner=user_id,
+                event_type="ai_message_sent",
+                icon="sparkles",
+                title=f"You asked {name}: {preview or '…'}",
+                subtitle="AI Assistant",
+                href=f"/dashboard/{assistant if assistant in ('zyntha','thoro','zyona') else 'zyntha'}",
+            )
+        except Exception:
+            pass
 
 
 async def log_ai_call(

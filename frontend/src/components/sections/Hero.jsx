@@ -1,14 +1,12 @@
-import { ArrowRight, Play } from "lucide-react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { ArrowRight, Play, X } from "lucide-react";
 import { HOME } from "@/constants/testIds";
-import { usePresaleDialog } from "@/components/sections/PresaleDialog";
+
+const DEMO_VIDEO_URL = process.env.REACT_APP_DEMO_VIDEO_URL || "";
 
 export default function Hero() {
-  const { openDialog } = usePresaleDialog();
-
-  const scrollToDomains = () => {
-    const el = document.getElementById("domains");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
+  const [demoOpen, setDemoOpen] = useState(false);
 
   return (
     <section
@@ -50,17 +48,17 @@ export default function Hero() {
             className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 zy-reveal"
             style={{ transitionDelay: "240ms" }}
           >
-            <button
+            <Link
+              to="/signup"
               data-testid={HOME.heroPrimaryCta}
-              onClick={openDialog}
               className="zy-btn-primary"
             >
-              Claim Your Presale Spot
+              Get started
               <ArrowRight size={18} />
-            </button>
+            </Link>
             <button
               data-testid={HOME.heroSecondaryCta}
-              onClick={scrollToDomains}
+              onClick={() => setDemoOpen(true)}
               className="zy-btn-outline"
             >
               <Play size={16} />
@@ -69,10 +67,73 @@ export default function Hero() {
           </div>
 
           <p className="mt-7 text-sm text-[#666] zy-reveal" style={{ transitionDelay: "320ms" }}>
-            Founding member pricing locked for life · No risk · Cancel anytime
+            Starting at €499/month · No risk · Cancel anytime
           </p>
         </div>
       </div>
+
+      {demoOpen && (
+        <div
+          data-testid="hero-demo-modal"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8"
+          style={{ background: "rgba(10,22,40,0.72)", backdropFilter: "blur(6px)" }}
+          onClick={() => setDemoOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Zynthoro product demo"
+        >
+          <div
+            className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setDemoOpen(false)}
+              data-testid="hero-demo-modal-close"
+              aria-label="Close demo"
+              className="absolute top-3 right-3 z-10 w-9 h-9 rounded-full flex items-center justify-center bg-white/95 hover:bg-white border border-[#eee] shadow-sm"
+            >
+              <X size={16} />
+            </button>
+
+            {DEMO_VIDEO_URL ? (
+              <div className="relative w-full" style={{ aspectRatio: "16 / 9" }}>
+                <iframe
+                  src={DEMO_VIDEO_URL}
+                  title="Zynthoro product demo"
+                  className="absolute inset-0 w-full h-full"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+            ) : (
+              <div className="p-10 sm:p-14 text-center">
+                <div
+                  className="w-14 h-14 rounded-full mx-auto flex items-center justify-center mb-5"
+                  style={{ background: "#EAF0FF", color: "#1A4FFF" }}
+                >
+                  <Play size={22} />
+                </div>
+                <h3 className="text-[22px] font-bold tracking-tight">Live demo coming soon</h3>
+                <p className="text-[14.5px] text-[#555] mt-3 max-w-md mx-auto leading-relaxed">
+                  Our full product walkthrough is being recorded. In the meantime, book a free 30-minute call
+                  with the founder — you&apos;ll see Zynthoro in action, live.
+                </p>
+                <a
+                  href="https://calendly.com/zynthoro/30min"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="hero-demo-book-call"
+                  className="zy-btn-primary mt-7 inline-flex"
+                >
+                  Book a free 30-min call
+                  <ArrowRight size={16} />
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

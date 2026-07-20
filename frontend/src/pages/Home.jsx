@@ -14,7 +14,6 @@ import Comparison from "@/components/sections/Comparison";
 import AnyDeviceSection from "@/components/sections/AnyDeviceSection";
 import ProductionSection from "@/components/sections/ProductionSection";
 import VoiceAISection from "@/components/sections/VoiceAISection";
-import PresaleCTA from "@/components/sections/PresaleCTA";
 import { PresaleDialogProvider } from "@/components/sections/PresaleDialog";
 
 export default function Home() {
@@ -33,7 +32,7 @@ export default function Home() {
     };
     setMeta(
       "description",
-      "The next-gen AI ERP ecosystem. Replace 15+ business tools with one AI-native platform. Starting at €499/month. Launching 30 June 2026."
+      "The next-gen AI ERP ecosystem. Replace 15+ business tools with one AI-native platform. Starting at €499/month."
     );
 
     // Reveal on scroll
@@ -70,7 +69,6 @@ export default function Home() {
         <Assist />
         <Comparison />
         <AnyDeviceSection />
-        <PresaleCTA />
       </main>
       <Footer />
     </PresaleDialogProvider>

@@ -404,3 +404,19 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 - **"Book a free 30-min call" button** added to `layout/Navbar.jsx` (desktop header only, before "Log in"). Links to `https://calendly.com/zynthoro/30min`. testid: `nav-book-call`.
 - Verified via `/api/pricing/catalog` → Starter €499 → correct Stripe link, and homepage screenshot shows €499 card + Book-a-call CTA. No €99 anywhere on the homepage.
 - NOTE: business-verification module + `starter_founder` scaffolding on backend (`business_verification.py`, KvK OCR) left in place but no longer reachable from UI — safe to remove later if desired.
+
+### 2026-07-20 — Landing cleanup + Dashboard activity feed + orphan removal
+- **`/api/dashboard/summary` — recent_activity now real.** Backend pulls latest team_members + demo_invoices + demo_projects + ai_messages, sorted by timestamp, top 8. Frontend `DashboardHome.jsx` renders each item with icon, title, subtitle, relative timestamp, and click-through link. testid: `dashboard-recent-activity`, `activity-item-{i}`.
+- **Countdown timer + PresaleCTA section removed** from `pages/Home.jsx`. File `components/sections/PresaleCTA.jsx` deleted.
+- **"Claim (Your) Presale Spot" buttons removed** from Navbar (desktop + mobile) and Hero. Replaced with "Get started" Link → `/signup`. Nav still has "Book a free 30-min call" + "Log in".
+- **Hero "Watch Demo"** now opens a real modal (`data-testid=hero-demo-modal`) instead of scrolling. If env `REACT_APP_DEMO_VIDEO_URL` is set, modal renders a 16:9 iframe; otherwise shows "Live demo coming soon" + Calendly CTA to `/zynthoro/30min`.
+- **`business_verification.py` removed** — file deleted, all backend imports/endpoints removed:
+  - Deleted route: `POST /api/business-verification/upload`
+  - Deleted route: `GET /api/admin/business-verifications`
+  - Deleted DB index: `db.business_verifications` compound index
+  - `POST /api/checkout/starter/session` now accepts only `starter_standard` and no `verification_id` (typed via Literal). Provisioning code no longer sets `founder_pricing_*` or `business_verification_id`.
+  - `checkout.py` slimmed: only `starter_standard` package (€499); `founder_pricing_window()` helper removed; `verification_id` parameter kept with default `None` for signature stability.
+- **`ModulePlaceholder.jsx` tiles** — removed `cursor-pointer` + `hover:border-[#1A4FFF]` classes, changed misleading "Open module" copy to "Coming soon". Tiles are now clearly non-interactive.
+- Meta description on landing dropped the "Launching 30 June 2026" phrase.
+- Verified: backend restarts cleanly, `/api/pricing/catalog` still returns Starter €499, `/api/dashboard/summary` returns 8 activity items for demo user, `/api/checkout/starter/session` still creates valid Stripe sessions.
+- **NOT REDEPLOYED to production** — user must trigger a redeploy from the Emergent dashboard to push these changes to https://zynthoro.ai.

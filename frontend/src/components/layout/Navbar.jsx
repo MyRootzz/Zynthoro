@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { HOME } from "@/constants/testIds";
-import { usePresaleDialog } from "@/components/sections/PresaleDialog";
 
 const links = [
   { id: HOME.navPlatform, label: "Platform", href: "#domains" },
@@ -14,7 +13,6 @@ const links = [
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const { openDialog } = usePresaleDialog();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -76,13 +74,13 @@ export default function Navbar() {
           >
             Log in
           </Link>
-          <button
+          <Link
+            to="/signup"
             data-testid={HOME.navCta}
-            onClick={openDialog}
             className="zy-btn-nav"
           >
-            Claim Presale Spot
-          </button>
+            Get started
+          </Link>
         </div>
 
         <button
@@ -108,15 +106,13 @@ export default function Navbar() {
                 {l.label}
               </a>
             ))}
-            <button
-              onClick={() => {
-                setOpen(false);
-                openDialog();
-              }}
+            <Link
+              to="/signup"
+              onClick={() => setOpen(false)}
               className="zy-btn-nav self-start"
             >
-              Claim Presale Spot
-            </button>
+              Get started
+            </Link>
           </div>
         </div>
       )}

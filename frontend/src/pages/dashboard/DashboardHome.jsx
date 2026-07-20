@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { API, useAuth } from "@/contexts/AuthContext";
 import {
   Wallet, ReceiptEuro, KanbanSquare, Users, FilePlus, UserPlus, FolderPlus, Send,
-  Sparkles, ArrowRight,
+  Sparkles, ArrowRight, ReceiptText,
 } from "lucide-react";
 
 const KPIS = [
@@ -20,6 +20,28 @@ const QUICK = [
   { label: "New Project", icon: FolderPlus, to: "/dashboard/projects" },
   { label: "Invite Team Member", icon: Send, to: "/dashboard/team" },
 ];
+
+const ACTIVITY_ICON = {
+  user_plus: UserPlus,
+  receipt: ReceiptText,
+  folder_plus: FolderPlus,
+  sparkles: Sparkles,
+};
+
+function timeAgo(iso) {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const diff = Math.max(0, Date.now() - then);
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -95,14 +117,50 @@ export default function Dashboard() {
       </section>
 
       {/* Recent activity */}
-      <section className="bg-white border border-[#eee] rounded-xl p-6">
-        <h2 className="text-[14.5px] font-semibold mb-2">Recent activity</h2>
+      <section
+        className="bg-white border border-[#eee] rounded-xl p-6"
+        data-testid="dashboard-recent-activity"
+      >
+        <h2 className="text-[14.5px] font-semibold mb-3">Recent activity</h2>
         {(data?.recent_activity || []).length === 0 ? (
           <p className="text-[13.5px] text-[#888]">
             Your activity will appear here. Start by creating your first invoice or project.
           </p>
         ) : (
-          <ul>{/* TODO render */}</ul>
+          <ul className="divide-y divide-[#f2f2f2]">
+            {data.recent_activity.map((a, i) => {
+              const IconEl = ACTIVITY_ICON[a.icon] || Sparkles;
+              const inner = (
+                <>
+                  <span
+                    className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
+                    style={{ background: "#EAF0FF", color: "#1A4FFF" }}
+                  >
+                    <IconEl size={15} />
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13.5px] font-medium text-black truncate">{a.title}</p>
+                    <p className="text-[12px] text-[#888] mt-0.5 truncate">{a.subtitle}</p>
+                  </div>
+                  <span className="text-[11.5px] text-[#999] shrink-0 tabular-nums">
+                    {timeAgo(a.timestamp)}
+                  </span>
+                </>
+              );
+              const commonCls = "flex items-center gap-3 py-3";
+              return (
+                <li key={i} data-testid={`activity-item-${i}`}>
+                  {a.href ? (
+                    <Link to={a.href} className={`${commonCls} hover:bg-[#fafafa] -mx-2 px-2 rounded-md transition-colors`}>
+                      {inner}
+                    </Link>
+                  ) : (
+                    <div className={commonCls}>{inner}</div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </section>
     </div>

@@ -236,14 +236,14 @@ export default function ModulePlaceholder() {
         {cfg.tiles.map((t) => (
           <div
             key={t}
-            className="bg-white border border-[#eee] rounded-xl p-4 hover:border-[#1A4FFF] transition-colors cursor-pointer"
+            className="bg-white border border-[#eee] rounded-xl p-4"
             data-testid={`module-tile-${t.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
           >
             <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3" style={{ background: "#EAF0FF" }}>
               <Icon size={16} style={{ color: "#1A4FFF" }} />
             </div>
             <p className="text-[13.5px] font-semibold text-black">{t}</p>
-            <p className="text-[11.5px] text-[#888] mt-0.5">Open module</p>
+            <p className="text-[11.5px] text-[#888] mt-0.5">Coming soon</p>
           </div>
         ))}
       </section>

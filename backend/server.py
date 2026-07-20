@@ -27,7 +27,6 @@ from auth import (  # noqa: E402
     gen_token_url_safe, gen_numeric_code,
 )
 import ai_assistants  # noqa: E402
-import business_verification  # noqa: E402
 import checkout as checkout_mod  # noqa: E402
 import stripe_subscriptions as subs_mod  # noqa: E402
 import stripe as stripe_sdk  # noqa: E402
@@ -682,7 +681,83 @@ async def onboarding_complete(payload: OnboardingIn, user=Depends(get_current_us
 # ========================================================================
 @api_router.get("/dashboard/summary")
 async def dashboard_summary(user=Depends(get_current_user_full)):
-    team_count = await db.team_members.count_documents({"workspace_owner": user["id"]}) + 1
+    uid = user["id"]
+    team_count = await db.team_members.count_documents({"workspace_owner": uid}) + 1
+
+    # Recent activity — pull the most recent events across the workspace.
+    activity: List[dict] = []
+
+    # Team members added
+    tm_rows = await db.team_members.find(
+        {"workspace_owner": uid},
+        {"_id": 0, "name": 1, "email": 1, "role": 1, "created_at": 1},
+    ).sort("created_at", -1).limit(5).to_list(length=5)
+    for r in tm_rows:
+        activity.append({
+            "type": "team_member_added",
+            "icon": "user_plus",
+            "title": f"{r.get('name') or r.get('email') or 'Team member'} joined the workspace",
+            "subtitle": r.get("role") or "Team",
+            "timestamp": r.get("created_at"),
+            "href": "/dashboard/team",
+        })
+
+    # Demo invoices (only demo users have this collection populated)
+    if user.get("is_demo"):
+        inv_rows = await db.demo_invoices.find(
+            {"workspace_owner": uid},
+            {"_id": 0, "number": 1, "client": 1, "amount_eur": 1, "status": 1, "issued": 1, "created_at": 1},
+        ).sort("created_at", -1).limit(5).to_list(length=5)
+        for r in inv_rows:
+            amount = r.get("amount_eur") or 0
+            status = (r.get("status") or "").lower()
+            activity.append({
+                "type": "invoice",
+                "icon": "receipt",
+                "title": f"Invoice {r.get('number') or ''} — {r.get('client') or ''}".strip(),
+                "subtitle": f"€{amount:,.0f} · {status.title() or 'Draft'}",
+                "timestamp": r.get("created_at") or r.get("issued"),
+                "href": "/dashboard/finance",
+            })
+
+        proj_rows = await db.demo_projects.find(
+            {"workspace_owner": uid},
+            {"_id": 0, "name": 1, "status": 1, "created_at": 1},
+        ).sort("created_at", -1).limit(5).to_list(length=5)
+        for r in proj_rows:
+            activity.append({
+                "type": "project",
+                "icon": "folder_plus",
+                "title": f"Project “{r.get('name') or 'Untitled'}” created",
+                "subtitle": r.get("status") or "Active",
+                "timestamp": r.get("created_at"),
+                "href": "/dashboard/projects",
+            })
+
+    # AI assistant sessions
+    ai_rows = await db.ai_messages.find(
+        {"user_id": uid, "role": "user"},
+        {"_id": 0, "content": 1, "assistant": 1, "timestamp": 1},
+    ).sort("timestamp", -1).limit(3).to_list(length=3)
+    for r in ai_rows:
+        content = (r.get("content") or "").strip().replace("\n", " ")
+        preview = (content[:60] + "…") if len(content) > 60 else content
+        assistant = (r.get("assistant") or "zyntha").lower()
+        activity.append({
+            "type": "ai_message",
+            "icon": "sparkles",
+            "title": f"You asked {assistant.title()}: {preview or '…'}",
+            "subtitle": "AI Assistant",
+            "timestamp": r.get("timestamp"),
+            "href": f"/dashboard/{assistant if assistant in ('zyntha','thoro','zyona') else 'zyntha'}",
+        })
+
+    # Sort by timestamp desc and keep the top 8
+    def _ts(item):
+        return item.get("timestamp") or ""
+    activity.sort(key=_ts, reverse=True)
+    activity = activity[:8]
+
     return {
         "user": user,
         "kpis": {
@@ -696,7 +771,7 @@ async def dashboard_summary(user=Depends(get_current_user_full)):
             "Invite a teammate to start collaborating.",
             "Ask Zyona how to price your first product.",
         ],
-        "recent_activity": [],
+        "recent_activity": activity,
     }
 
 
@@ -1043,84 +1118,13 @@ async def checkout_status():
 
 
 # ========================================================================
-#  Business verification + Starter checkout
+#  Starter checkout
 # ========================================================================
-MAX_PDF_BYTES = 8 * 1024 * 1024  # 8 MB
-
-
-@api_router.post("/business-verification/upload")
-async def business_verification_upload(
-    file: UploadFile = File(...),
-    user=Depends(get_current_user_full),
-):
-    """Upload a business registration PDF, run AI extraction, store result."""
-    if (file.content_type or "").lower() not in ("application/pdf", "application/x-pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
-    data = await file.read()
-    if len(data) > MAX_PDF_BYTES:
-        raise HTTPException(status_code=413, detail="File too large (max 8 MB).")
-    if len(data) < 100:
-        raise HTTPException(status_code=400, detail="File looks empty.")
-
-    session_id = f"verify:{user['id']}:{uuid.uuid4()}"
-    result = await business_verification.verify_pdf(data, session_id)
-
-    extraction = result.get("extraction") or {}
-    record = {
-        "id": str(uuid.uuid4()),
-        "user_id": user["id"],
-        "user_email": user["email"],
-        "plan": "Starter",
-        "filename": file.filename,
-        "file_size": len(data),
-        "company_name": extraction.get("company_name"),
-        "registration_number": extraction.get("registration_number"),
-        "country": extraction.get("country"),
-        "document_type": extraction.get("document_type"),
-        "registration_date": result.get("registration_date"),
-        "age_days": result.get("age_days"),
-        "confidence": extraction.get("confidence"),
-        "status": result["status"],
-        "message": result["message"],
-        "ai_session_id": session_id,
-        "ai_provider": "anthropic",
-        "ai_model": ai_assistants.CLAUDE_MODEL,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.business_verifications.insert_one(record)
-
-    # Mirror to ai_logs for the XPRIZE audit trail
-    await db.ai_logs.insert_one({
-        "user_id": user["id"],
-        "session_id": session_id,
-        "assistant": "business_verification",
-        "provider": "anthropic",
-        "model": ai_assistants.CLAUDE_MODEL,
-        "subscription_plan": user.get("subscription_plan"),
-        "request_chars": len(data),
-        "reply_chars": len((result.get("extraction") or {}).get("company_name") or ""),
-        "latency_ms": 0,
-        "status": "ok" if record["status"] != "failed" else "fallback",
-        "error": None,
-        "timestamp": record["created_at"],
-    })
-
-    return {
-        "verification_id": record["id"],
-        "status": record["status"],
-        "message": record["message"],
-        "eligible": record["status"] == "eligible",
-        "company_name": record["company_name"],
-        "registration_number": record["registration_number"],
-        "country": record["country"],
-        "registration_date": record["registration_date"],
-    }
 
 
 class StarterCheckoutIn(BaseModel):
-    package_id: Literal["starter_founder", "starter_standard"]
+    package_id: Literal["starter_standard"]
     origin_url: str
-    verification_id: Optional[str] = None
 
 
 @api_router.post("/checkout/starter/session")
@@ -1129,17 +1133,6 @@ async def checkout_starter_session(
     request: Request,
     user=Depends(get_current_user_full),
 ):
-    # Hard server-side guard: founder package only allowed with an 'eligible' verification.
-    if payload.package_id == "starter_founder":
-        if not payload.verification_id:
-            raise HTTPException(status_code=400, detail="Verification required for founder pricing.")
-        v = await db.business_verifications.find_one(
-            {"id": payload.verification_id, "user_id": user["id"]},
-            {"_id": 0},
-        )
-        if not v or v.get("status") != "eligible":
-            raise HTTPException(status_code=400, detail="Verification not eligible for founder pricing.")
-
     host_url = str(request.base_url)
     try:
         session = await checkout_mod.create_subscription_checkout(
@@ -1148,7 +1141,7 @@ async def checkout_starter_session(
             origin_url=payload.origin_url,
             user_id=user["id"],
             user_email=user["email"],
-            verification_id=payload.verification_id,
+            verification_id=None,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -1162,7 +1155,6 @@ async def checkout_starter_session(
         "user_id": user["id"],
         "user_email": user["email"],
         "package_id": payload.package_id,
-        "verification_id": payload.verification_id,
         "amount": session["amount"],
         "currency": session["currency"],
         "metadata": session["metadata"],
@@ -1211,19 +1203,12 @@ async def checkout_starter_status(
     # Idempotent post-payment provisioning
     if new_payment_status == "paid" and not txn.get("provisioned"):
         update["provisioned"] = True
-        pkg = txn["package_id"]
-        meta = txn.get("metadata") or {}
-        months = int(meta.get("founder_window_months") or 0)
-        founder_window = checkout_mod.founder_pricing_window(months)
         user_update = {
             "subscription_plan": "Starter",
             "subscription_status": "active",
             "subscription_started_at": datetime.now(timezone.utc).isoformat(),
             "billing_first_amount_eur": txn["amount"],
-            **founder_window,
         }
-        if txn.get("verification_id"):
-            user_update["business_verification_id"] = txn["verification_id"]
         await db.users.update_one({"id": user["id"]}, {"$set": user_update})
 
     await db.payment_transactions.update_one(
@@ -1769,23 +1754,6 @@ async def stripe_webhook(request: Request):
     return {"received": True}
 
 
-@api_router.get("/admin/business-verifications")
-async def admin_business_verifications(
-    user=Depends(get_founder_user),
-    limit: int = 200,
-    status: Optional[str] = None,
-):
-    q = {}
-    if status:
-        q["status"] = status
-    rows = await db.business_verifications.find(q, {"_id": 0}).sort("created_at", -1).limit(min(max(limit, 1), 1000)).to_list(length=None)
-    return {
-        "count": len(rows),
-        "total": await db.business_verifications.count_documents(q),
-        "verifications": rows,
-    }
-
-
 # ========================================================================
 #  Account / Company Settings
 # ========================================================================
@@ -2166,7 +2134,6 @@ async def startup():
     await db.login_attempts.create_index("identifier")
     await db.ai_logs.create_index([("timestamp", -1)])
     await db.ai_logs.create_index([("assistant", 1), ("timestamp", -1)])
-    await db.business_verifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.payment_transactions.create_index("session_id", unique=True)
     await seed_founder()
     await seed_jury_demo()

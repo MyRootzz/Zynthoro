@@ -1,0 +1,33 @@
+{
+  "summary": "Validated the 3-bug fix: (a) AssistantPage textarea (was <input>), (b) task-focused system prompts (no meta-question openers), (c) removal of '30 June' / '€99 Founder Pricing' references. Backend: 5 new behavioural tests + full 41-test regression suite pass. Frontend: textarea confirmed at data-testid='zyntha-input' with correct rows/min-h/max-h/resize-y and Shift+Enter creates real newlines.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_assistant_behavior_iter30.py",
+    "/app/test_reports/pytest/iter30_assistant_behavior.xml",
+    "/app/test_reports/pytest/iter30_regression.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ai_assistants.py — EXECUTION_PRINCIPLES + rewritten SP_* prompts are clean, no duplicate SP_ASSIST detected.",
+    "ZYNTHORO_CONTEXT no longer contains '30 June' or '€99 Founder Pricing'; now correctly lists Kickstart €79/€149/€199 and Compleet €79.99/mo.",
+    "AssistantPage.jsx — textarea has rows=2, min-h-[52px], max-h-[240px], resize-y, whitespace-pre-wrap, break-words; Enter=send, Shift+Enter=newline correctly wired; placeholder includes '(Shift+Enter for newline)'; data-testid preserved."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_assistant_behavior_iter30.py (new)"
+  ],
+  "success_rate": {"backend": "100% (5/5 new + 41/41 regression, 1 pre-existing skip)", "frontend": "100%"},
+  "test_credentials": "qa-kickstart1@zynthoro.io / QaKick1!Test (frontend), jury@zynthoro.ai / ZynthoroDemo2026! (backend AI chat)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 30 covers only the assistant-prompt + textarea fix. New test file is /app/backend/tests/test_assistant_behavior_iter30.py (5 tests, ~50s runtime — LLM-dependent). Regression suite = test_stripe_catalog_startup + test_tier_provisioning_helper + test_qa_kickstart_provisioning = 41 passed + 1 skipped (pre-existing).",
+  "rca of the issue": "N/A — validation run; all fixes verified."
+}

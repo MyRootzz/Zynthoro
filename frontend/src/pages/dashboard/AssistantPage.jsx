@@ -268,21 +268,29 @@ export default function AssistantPage({ assistantKey }) {
 
         <form
           onSubmit={(e) => { e.preventDefault(); send(); }}
-          className="p-3 border-t border-[#eee] flex items-center gap-2"
+          className="p-3 border-t border-[#eee] flex items-end gap-2"
         >
-          <input
+          <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={`Message ${cfg.name}…`}
+            onKeyDown={(e) => {
+              // Enter sends; Shift+Enter adds a newline.
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder={`Message ${cfg.name}…  (Shift+Enter for newline)`}
             data-testid={`${assistantKey}-input`}
-            className="flex-1 text-[14px] outline-none px-3 py-2.5 rounded-md border border-[#eee] focus:border-[#1A4FFF]"
+            rows={2}
+            className="flex-1 text-[14px] leading-relaxed outline-none px-3 py-2.5 rounded-md border border-[#eee] focus:border-[#1A4FFF] resize-y min-h-[52px] max-h-[240px] whitespace-pre-wrap break-words"
           />
           <VoiceButton
             testId={`${assistantKey}-voice-btn`}
             onInterim={(t) => setInput(t)}
             onFinal={(t) => { setInput(""); send(t); }}
           />
-          <button type="submit" disabled={busy || !input.trim()} className="zy-btn-primary px-3.5 py-2.5 disabled:opacity-50" data-testid={`${assistantKey}-send`}>
+          <button type="submit" disabled={busy || !input.trim()} className="zy-btn-primary px-3.5 py-2.5 disabled:opacity-50 shrink-0" data-testid={`${assistantKey}-send`}>
             <Send size={15} />
           </button>
         </form>

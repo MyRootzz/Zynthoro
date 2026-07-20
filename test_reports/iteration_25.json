@@ -1,0 +1,44 @@
+{
+  "summary": "Backend-only iteration 25: added /app/backend/tests/test_tier_provisioning_helper.py (11 tests) directly invoking _provision_tier_purchase() for all 6 tiers + idempotency + self-heal status endpoint smoke + herroepingsrecht + QA-bypass regression. 5 tests pass, 6 fail — and the failures uncovered a REAL bug in the production fix itself.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "server._provision_tier_purchase() (server.py ~L1819-L1841)",
+        "issue": "Reads ai_credits_limit and ai_credits_period from tier_catalog.get_tier(tier_key) — but TIER_CATALOG dict has NO such keys (they live in TIER_FEATURES[plan_key]). Consequence: every provisioned user for Kickstart 1/2/3, AI+Social Week and AI+Social Month gets ai_credits_limit=None (treated as UNLIMITED by /api/me and /api/ai/chat quota code), instead of 50/150/300/30/150. Compleet appears to work only because its expected limit is also None. Fix: replace `tier_def = tier_catalog.get_tier(tier_key)` for credits with `features = tier_catalog.TIER_FEATURES.get(plan_key) or {}` and read ai_credits_limit / ai_credits_period from `features` (see server.py L574 which already does this pattern for /api/me).",
+        "priority": "CRITICAL"
+      },
+      {
+        "endpoint": "server._provision_tier_purchase() period_end calc (server.py ~L1823-L1827)",
+        "issue": "For ai_social_week the period_end branch `if credits_period == 'one_time' and billing == 'one_time_week'` never fires because credits_period defaults to 'month' (tier_def has no ai_credits_period key). Result: AI+Social Week users get ai_credits_period_ends_at=None — no 7-day expiry is applied. AI+Social Month happens to work because its branch keys off `billing == 'one_time_month'` alone.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_tier_provisioning_helper.py",
+    "/app/test_reports/pytest/iter25_provisioning.xml"
+  ],
+  "action_items": [
+    "In _provision_tier_purchase(), source ai_credits_limit + ai_credits_period from tier_catalog.TIER_FEATURES[plan_key] (NOT from tier_catalog.get_tier(tier_key), which is Stripe pricing metadata only). Mirror the pattern already used at server.py L574.",
+    "Re-check the period_end logic: use `billing == 'one_time_week'` OR `credits_period == 'one_time'` alone (the current AND-clause is unreachable given the tier_def lookup). Once ai_credits_period is correctly sourced from TIER_FEATURES, AI+Social Week's period='one_time' will surface, but the AND with billing=='one_time_week' means only that branch fires — that IS the intended behaviour, just needs the credits_period lookup to be correct first.",
+    "After the two fixes above, re-run pytest tests/test_tier_provisioning_helper.py — the 6 currently-failing tests should turn green (they encode the expected 50/150/300/None/30/150 credit limits and 7/30-day expiry semantics)."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 2668 lines — well past the 700-line guideline. The Stripe/webhook/tier logic (roughly L1450–L2200) should be extracted into a dedicated `billing.py` / `webhooks_stripe.py` module.",
+    "_provision_tier_purchase uses `asyncio.create_task(...)` for activity_log + email_service without awaiting or storing the task; if the surrounding request completes and the task raises, the exception is swallowed. Consider `logger.exception` inside a wrapper.",
+    "The self-heal path in GET /checkout/tier/status only re-provisions if `meta.get('kind') == 'tier_purchase'` AND `meta.get('user_id') == user['id']`. If the Stripe session had metadata but was created via a Payment Link (no user_id), self-heal silently no-ops — acceptable but worth a WARN log.",
+    "TIER_CATALOG vs TIER_FEATURES split is confusing and IS the direct cause of the bug above. Consider merging them (features could be nested inside each TIER_CATALOG entry) or add a `get_tier_features(tier_key)` convenience so callers cannot mix them up."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_tier_provisioning_helper.py (NEW)"
+  ],
+  "success_rate": {"backend": "45% (5/11 pass) — but the failures are legitimate production bugs, not test bugs", "frontend": "n/a"},
+  "test_credentials": "All 6 QA accounts from /app/memory/test_credentials.md (qa-kickstart1..3 / qa-compleet / qa-aiweek / qa-aimonth @zynthoro.io) confirmed working, stage='ok' bypass still in effect.",
+  "seed_data_creation": "None. Each test resets its QA user back to Presale state via a try/finally cleanup so the tests are independent and re-runnable.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "After the main agent fixes _provision_tier_purchase to source credits from TIER_FEATURES[plan_key] instead of TIER_CATALOG, simply re-run `pytest /app/backend/tests/test_tier_provisioning_helper.py -v`. The 6 currently-failing tests encode the correct expected state and are re-runnable. The helper is invoked in-process (no Stripe API calls are made against LIVE mode) — the two status-endpoint tests DO call POST /api/checkout/tier/session which creates a real Stripe checkout session in LIVE mode but never opens/pays it (Stripe leaves it 'open' and it expires ~24h later — no charge). Idempotency test currently passes for the parts that don't depend on credits_limit; after the fix it will validate more.",
+  "rca of the issue": "ROOT CAUSE: In server.py L1810, tier_def = tier_catalog.get_tier(tier_key) returns TIER_CATALOG[tier_key], which contains Stripe pricing metadata (product_id, price_id, amount_eur, billing, mode, ...) but NOT credit-quota fields. Those live in a separate dict TIER_FEATURES[plan_key]. The webhook-provisioning refactor (this iteration's fix) accidentally read `ai_credits_limit` from tier_def, which silently evaluates to None for every tier. REPRO: (1) log in as qa-kickstart1@zynthoro.io, (2) call _provision_tier_purchase directly with meta={tier_key:'kickstart_1', plan_key:'Kickstart 1', billing:'lifetime', ...}, (3) fetch users doc → observe ai_credits_limit=None instead of 50. MITIGATION: change L1819-L1820 to `features = tier_catalog.TIER_FEATURES.get(plan_key) or {}; credits_limit = features.get('ai_credits_limit'); credits_period = features.get('ai_credits_period','month')`. IMPACT ON PROD: Any user who purchases Kickstart 1/2/3 or AI+Social top-ups AFTER this fix ships will get UNLIMITED AI credits instead of their tier cap — a revenue leak. Compleet users are unaffected (their limit is also None by design). Users who already provisioned through the buggy code path will need a data-fix pass to set the correct ai_credits_limit values."
+}

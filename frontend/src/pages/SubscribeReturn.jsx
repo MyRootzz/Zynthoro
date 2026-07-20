@@ -21,7 +21,9 @@ export default function SubscribeReturn() {
         const { data } = await axios.get(`${API}/checkout/tier/status/${sessionId}`);
         if (cancelled) return;
         setData(data);
-        if (data.payment_status === "paid" && data.provisioned) {
+        // 100%-off coupons produce payment_status="no_payment_required".
+        const paidLike = data.payment_status === "paid" || data.payment_status === "no_payment_required";
+        if (paidLike && data.provisioned) {
           setStatus("done");
           return;
         }
@@ -34,7 +36,8 @@ export default function SubscribeReturn() {
           setTimeout(poll, 1500);
         } else {
           // Fallback — payment might be paid but webhook still catching up.
-          setStatus(data.payment_status === "paid" ? "done" : "slow");
+          const paidLike = data.payment_status === "paid" || data.payment_status === "no_payment_required";
+          setStatus(paidLike ? "done" : "slow");
         }
       } catch {
         setStatus("failed");

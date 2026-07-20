@@ -1537,7 +1537,50 @@ async def checkout_tier_status(
     )
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found.")
-    # Provisioning is handled by the Stripe webhook.
+
+    # Self-heal: if the webhook was missed but Stripe already collected
+    # payment (or the 100%-off coupon made it "no_payment_required"),
+    # re-run provisioning here so the user isn't stuck on Presale.
+    if not txn.get("provisioned"):
+        try:
+            import stripe as _stripe
+            _stripe.api_key = os.environ["STRIPE_SECRET_KEY"]
+            session = _stripe.checkout.Session.retrieve(session_id)
+            payment_status = session.get("payment_status")
+            status_val = session.get("status")
+            if payment_status in ("paid", "no_payment_required") and status_val == "complete":
+                meta = session.get("metadata") or {}
+                if (meta.get("kind") == "tier_purchase") and (meta.get("user_id") == user["id"]):
+                    await _provision_tier_purchase(
+                        user_id=user["id"],
+                        meta=meta,
+                        stripe_subscription=session.get("subscription"),
+                        stripe_customer=session.get("customer"),
+                        event_type="status_self_heal",
+                        session_id=session_id,
+                    )
+                    await db.payment_transactions.update_one(
+                        {"session_id": session_id},
+                        {"$set": {
+                            "payment_status": payment_status,
+                            "status": "complete",
+                            "provisioned": True,
+                            "stripe_subscription_id": session.get("subscription"),
+                            "stripe_customer_id": session.get("customer"),
+                            "updated_at": datetime.now(timezone.utc).isoformat(),
+                            "healed_by": "status_endpoint",
+                        }},
+                    )
+                    txn["payment_status"] = payment_status
+                    txn["status"] = "complete"
+                    txn["provisioned"] = True
+                    logger.warning(
+                        "Self-heal provisioned tier for user=%s session=%s (webhook missed)",
+                        user["id"], session_id,
+                    )
+        except Exception:
+            logger.exception("Tier status self-heal failed for session %s", session_id)
+
     return {
         "session_id": session_id,
         "payment_status": txn.get("payment_status"),
@@ -1750,6 +1793,91 @@ async def beta_checkout(payload: BetaCheckoutIn):
 
 
 
+async def _provision_tier_purchase(
+    *,
+    user_id: str,
+    meta: dict,
+    stripe_subscription: Optional[str],
+    stripe_customer: Optional[str],
+    event_type: str,
+    session_id: str,
+) -> None:
+    """Idempotent provisioning for tier_purchase Stripe sessions.
+    Called from the webhook AND from the status endpoint as a self-heal
+    fallback (e.g. when a webhook was missed or dropped)."""
+    tier_key = meta.get("tier_key") or ""
+    plan_key = meta.get("plan_key") or ""
+    tier_def = tier_catalog.get_tier(tier_key)
+    billing = (tier_def or {}).get("billing", "lifetime")
+
+    prev_doc = await db.users.find_one(
+        {"id": user_id}, {"subscription_plan": 1, "email": 1}
+    )
+    prev_plan = (prev_doc or {}).get("subscription_plan") or "Presale"
+    user_email_x = (prev_doc or {}).get("email")
+
+    credits_limit = (tier_def or {}).get("ai_credits_limit")
+    credits_period = (tier_def or {}).get("ai_credits_period", "month")
+    now_dt = datetime.now(timezone.utc)
+    now_iso = now_dt.isoformat()
+    period_end = None
+    if credits_period == "one_time" and billing == "one_time_week":
+        period_end = (now_dt + timedelta(days=7)).isoformat()
+    elif billing == "one_time_month":
+        period_end = (now_dt + timedelta(days=30)).isoformat()
+
+    update_fields = {
+        "subscription_plan": plan_key,
+        "subscription_status": "active",
+        "subscription_started_at": now_iso,
+        "is_lifetime": billing == "lifetime",
+        "billing_model": billing,
+        "consent_waiver": True,
+        "consent_waiver_at": meta.get("consent_at") or now_iso,
+        "ai_credits_limit": credits_limit,
+        "ai_credits_period": credits_period,
+        "ai_credits_used_this_period": 0,
+        "ai_credits_period_started_at": now_iso,
+        "ai_credits_period_ends_at": period_end,
+    }
+    if billing == "monthly":
+        update_fields["stripe_subscription_id"] = stripe_subscription
+        update_fields["stripe_customer_id"] = stripe_customer
+
+    await db.users.update_one({"id": user_id}, {"$set": update_fields})
+
+    feed_verb = "🎉 Purchased" if billing != "monthly" else "🎉 Subscribed to"
+    feed_sub = "Lifetime access" if billing == "lifetime" else (
+        f"From {prev_plan}" if prev_plan and prev_plan != plan_key else "New subscription"
+    )
+    asyncio.create_task(activity_log.log_event(
+        db,
+        workspace_owner=user_id,
+        actor_email=user_email_x,
+        event_type=f"tier_{tier_key}_activated",
+        icon="sparkles",
+        title=f"{feed_verb} {plan_key}",
+        subtitle=feed_sub,
+        href="/dashboard/settings",
+    ))
+    alert_kind_tier = "subscribe" if prev_plan in (None, "Presale", "") else "upgrade"
+    asyncio.create_task(email_service.send_stripe_alert(
+        kind=alert_kind_tier,
+        event_type=event_type,
+        user_email=user_email_x,
+        user_id=user_id,
+        plan_key=plan_key,
+        amount_eur=float(meta.get("amount_eur") or 0) or None,
+        stripe_session_id=session_id,
+        stripe_subscription_id=stripe_subscription,
+        extra={"Tier": tier_key, "Billing": billing},
+    ))
+    logger.info(
+        "User %s activated tier %s (plan=%s billing=%s) via %s",
+        user_id, tier_key, plan_key, billing, event_type,
+    )
+
+
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     host_url = str(request.base_url)
@@ -1772,7 +1900,14 @@ async def stripe_webhook(request: Request):
         obj = event["data"]["object"] if event.get("data") else {}
 
         # === Subscription checkout completed (Fix 8 + Fix 9) ===
-        if event_type == "checkout.session.completed" and obj.get("mode") == "subscription":
+        # Also catches one-time-payment Checkout Sessions for Kickstart
+        # lifetime tiers and AI+Social top-ups — those come in with
+        # mode="payment" and kind="tier_purchase" in the metadata.
+        _mode = obj.get("mode")
+        _kind_hint = ((obj.get("metadata") or {}).get("kind") or "")
+        if event_type == "checkout.session.completed" and (
+            _mode == "subscription" or (_mode == "payment" and _kind_hint == "tier_purchase")
+        ):
             session_id = obj.get("id")
             meta = obj.get("metadata") or {}
             user_id = meta.get("user_id") or obj.get("client_reference_id")
@@ -1965,74 +2100,14 @@ async def stripe_webhook(request: Request):
 
             elif user_id and kind == "tier_purchase":
                 # Kickstart lifetime, Compleet, AI+Social top-ups.
-                tier_key = meta.get("tier_key") or ""
-                plan_key = meta.get("plan_key") or ""
-                tier_def = tier_catalog.get_tier(tier_key)
-                billing = (tier_def or {}).get("billing", "lifetime")
-
-                prev_doc = await db.users.find_one(
-                    {"id": user_id}, {"subscription_plan": 1, "email": 1}
-                )
-                prev_plan = (prev_doc or {}).get("subscription_plan") or "Presale"
-                user_email_x = (prev_doc or {}).get("email")
-
-                credits_limit = (tier_def or {}).get("ai_credits_limit")
-                credits_period = (tier_def or {}).get("ai_credits_period", "month")
-                now_dt = datetime.now(timezone.utc)
-                period_end = None
-                if credits_period == "one_time" and billing == "one_time_week":
-                    period_end = (now_dt + timedelta(days=7)).isoformat()
-                elif billing == "one_time_month":
-                    period_end = (now_dt + timedelta(days=30)).isoformat()
-
-                update_fields = {
-                    "subscription_plan": plan_key,
-                    "subscription_status": "active",
-                    "subscription_started_at": now_iso,
-                    "is_lifetime": billing == "lifetime",
-                    "billing_model": billing,
-                    "consent_waiver": True,
-                    "consent_waiver_at": meta.get("consent_at") or now_iso,
-                    "ai_credits_limit": credits_limit,
-                    "ai_credits_period": credits_period,
-                    "ai_credits_used_this_period": 0,
-                    "ai_credits_period_started_at": now_iso,
-                    "ai_credits_period_ends_at": period_end,
-                }
-                if billing == "monthly":
-                    update_fields["stripe_subscription_id"] = obj.get("subscription")
-                    update_fields["stripe_customer_id"] = obj.get("customer")
-
-                await db.users.update_one({"id": user_id}, {"$set": update_fields})
-
-                # Feed event + email alert
-                feed_verb = "🎉 Purchased" if billing != "monthly" else "🎉 Subscribed to"
-                feed_sub = "Lifetime access" if billing == "lifetime" else (
-                    f"From {prev_plan}" if prev_plan and prev_plan != plan_key else "New subscription"
-                )
-                asyncio.create_task(activity_log.log_event(
-                    db,
-                    workspace_owner=user_id,
-                    actor_email=user_email_x,
-                    event_type=f"tier_{tier_key}_activated",
-                    icon="sparkles",
-                    title=f"{feed_verb} {plan_key}",
-                    subtitle=feed_sub,
-                    href="/dashboard/settings",
-                ))
-                alert_kind_tier = "subscribe" if prev_plan in (None, "Presale", "") else "upgrade"
-                asyncio.create_task(email_service.send_stripe_alert(
-                    kind=alert_kind_tier,
-                    event_type=event_type,
-                    user_email=user_email_x,
+                await _provision_tier_purchase(
                     user_id=user_id,
-                    plan_key=plan_key,
-                    amount_eur=float(meta.get("amount_eur") or 0) or None,
-                    stripe_session_id=session_id,
-                    stripe_subscription_id=obj.get("subscription"),
-                    extra={"Tier": tier_key, "Billing": billing},
-                ))
-                logger.info("User %s activated tier %s (plan=%s billing=%s)", user_id, tier_key, plan_key, billing)
+                    meta=meta,
+                    stripe_subscription=obj.get("subscription"),
+                    stripe_customer=obj.get("customer"),
+                    event_type=event_type,
+                    session_id=session_id,
+                )
 
             await db.payment_transactions.update_one(
                 {"session_id": session_id},

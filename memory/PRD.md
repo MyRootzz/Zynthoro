@@ -729,3 +729,55 @@ Everything from the "high business impact" Session A bundle landed.
 
 **Ready to redeploy** — click Deploy in the dashboard. The k8s readiness timeout should be gone now.
 
+
+### 2026-07-21 — Session B: HR + Accounting + Communication + Compliance (all shipped)
+
+**All 4 modules built with real CRUD, live in `/dashboard/{hr,accounting,communication,compliance}`.**
+
+**HR module** (`hr_module.py` + `HRModule.jsx`)
+- `GET/POST/PUT/DELETE /api/hr/employees` — full CRUD with cascade delete of contracts + leave.
+- `GET/POST/DELETE /api/hr/contracts` — permanent/fixed-term/freelance/internship.
+- `GET/POST /api/hr/leave-requests` + `PUT /decide` (approve/reject) + `DELETE`.
+- UI: 3-tab layout (Employees / Contracts / Leave). Auto-computed leave days. Colour-coded status badges (pending/approved/rejected).
+
+**Accounting module** (`accounting_module.py` + `AccountingModule.jsx`)
+- **Auto-seeded 23-account chart of accounts** (assets / liabilities / equity / revenue / expenses) — RGS-inspired SME set.
+- `POST /api/accounting/journal-entries` — **real double-entry validation** (each line one-sided, sum of debits = sum of credits, total > 0).
+- `GET /api/accounting/trial-balance?as_of=` — includes zero-balance accounts; reports `balanced: true/false`.
+- `GET /api/accounting/pnl?date_from=&date_to=` — revenue − expenses = net income.
+- UI: 3-tab (Journal / Trial balance / P&L). Journal builder shows live "Balanced" indicator + disables Save until balanced. P&L has date filters.
+
+**Communication module** (`communication_module.py` + `CommunicationModule.jsx`)
+- `GET/POST/DELETE /api/comm/channels` — auto-seeds an "Inbox" per workspace (protected, non-deletable).
+- `GET /api/comm/messages?channel_id=` + `POST /api/comm/messages` + `DELETE`.
+- UI: Slack-style split view (channel sidebar + message pane). 12-second polling. Enter to send. Message counter per channel.
+
+**Compliance module** (`compliance_module.py` + `ComplianceModule.jsx`)
+- **GDPR checklist**: 12 curated items auto-seeded per workspace (data inventory, privacy notice, consent records, DPAs, DSAR, breach runbook, retention, access controls, encryption, staff training, DPO, log retention). Toggle checked state + notes.
+- **Audit log viewer**: unified feed from `activity_events` + `security_incidents` + blocked `payment_transactions`. Filters by source. Founder/unlimited sees system-wide; regular users see own events only.
+- **Policy library**: 6 policy templates auto-seeded (Data Protection & Privacy, InfoSec, Retention, Breach Response, Third-Party Register, Acceptable Use). Full CRUD with versioning (`version++` on save).
+- UI: 3-tab (Checklist / Audit log / Policy library). Progress bar on checklist. Rich cards on policies.
+
+**Routing**
+- `App.js` now maps `/dashboard/hr`, `/dashboard/accounting`, `/dashboard/communication`, `/dashboard/compliance` to the new pages (before falling through to `ModulePlaceholder`).
+
+**Backend verification (curl smoke)**
+```
+HR: employee created (id ✓)
+Accounting: 23 accounts seeded, journal entry #1 balanced, TB balanced, P&L net €1,000
+Communication: Inbox auto-created
+Compliance: 12 checklist items + 6 policy templates seeded
+```
+
+**Screenshot confirms**: all 4 module routes render, sidebar unlocked for founder, GDPR checklist shows 12/12 items ready.
+
+**Files created**
+- `/app/backend/hr_module.py`, `/app/backend/accounting_module.py`, `/app/backend/communication_module.py`, `/app/backend/compliance_module.py`
+- `/app/frontend/src/pages/dashboard/HRModule.jsx`, `AccountingModule.jsx`, `CommunicationModule.jsx`, `ComplianceModule.jsx`
+
+**Files touched**
+- `/app/backend/server.py` — registered 4 new routers
+- `/app/frontend/src/App.js` — imported + routed 4 new pages
+
+**Ready for XPRIZE Aug 17 jury review.**
+

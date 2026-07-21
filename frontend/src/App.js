@@ -19,6 +19,10 @@ import SubscribeReturn from "@/pages/SubscribeReturn";
 import DashboardLayout from "@/pages/DashboardLayout";
 import DashboardHome from "@/pages/dashboard/DashboardHome";
 import ModulePlaceholder from "@/pages/dashboard/ModulePlaceholder";
+import HRModule from "@/pages/dashboard/HRModule";
+import AccountingModule from "@/pages/dashboard/AccountingModule";
+import CommunicationModule from "@/pages/dashboard/CommunicationModule";
+import ComplianceModule from "@/pages/dashboard/ComplianceModule";
 import TeamPage from "@/pages/dashboard/Team";
 import Settings from "@/pages/dashboard/Settings";
 import AssistantPage from "@/pages/dashboard/AssistantPage";
@@ -79,6 +83,10 @@ function App() {
               <Route path="thoro" element={<AssistantPage assistantKey="thoro" />} />
               <Route path="zyona" element={<AssistantPage assistantKey="zyona" />} />
               <Route path="marketing" element={<MarketingContent />} />
+              <Route path="hr" element={<HRModule />} />
+              <Route path="accounting" element={<AccountingModule />} />
+              <Route path="communication" element={<CommunicationModule />} />
+              <Route path="compliance" element={<ComplianceModule />} />
               <Route path=":slug" element={<ModulePlaceholder />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

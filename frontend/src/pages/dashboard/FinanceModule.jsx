@@ -141,7 +141,13 @@ function InvoicesPanel() {
       const { data } = await axios.post(
         `${API}/finance/invoices/${row.id}/send-email`, {}, { withCredentials: true },
       );
-      toast.success(data.email_sent ? "Invoice emailed to client." : "Invoice queued (dev mode — email logged).");
+      if (data.email_sent) {
+        toast.success("Invoice emailed to client.");
+      } else if (data.error) {
+        toast.error(`Email failed: ${data.error}`);
+      } else {
+        toast.success("Invoice queued (dev mode — email logged).");
+      }
       load();
     } catch (e) { toast.error(formatApiError(e?.response?.data?.detail) || "Failed to send email."); }
   };
@@ -318,7 +324,7 @@ function InvoiceEditor({ value, onChange, onCancel, onSave }) {
                         <td className="px-2 py-1"><input value={it.description} onChange={(e) => setItem(i, { description: e.target.value })} className="w-full px-2 py-1.5 border border-transparent focus:border-[#1A4FFF] rounded outline-none" data-testid={`finance-editor-item-desc-${i}`} /></td>
                         <td className="px-2 py-1"><input type="number" step="0.01" value={it.quantity} onChange={(e) => setItem(i, { quantity: e.target.value })} className="w-full px-2 py-1.5 text-right border border-transparent focus:border-[#1A4FFF] rounded outline-none" data-testid={`finance-editor-item-qty-${i}`} /></td>
                         <td className="px-2 py-1"><input type="number" step="0.01" value={it.unit_price} onChange={(e) => setItem(i, { unit_price: e.target.value })} className="w-full px-2 py-1.5 text-right border border-transparent focus:border-[#1A4FFF] rounded outline-none" data-testid={`finance-editor-item-price-${i}`} /></td>
-                        <td className="px-2 py-1"><input type="number" step="0.1" value={it.tax_rate} onChange={(e) => setItem(i, { tax_rate: e.target.value })} className="w-full px-2 py-1.5 text-right border border-transparent focus:border-[#1A4FFF] rounded outline-none" /></td>
+                        <td className="px-2 py-1"><input type="number" step="0.1" value={it.tax_rate} onChange={(e) => setItem(i, { tax_rate: e.target.value })} className="w-full px-2 py-1.5 text-right border border-transparent focus:border-[#1A4FFF] rounded outline-none" data-testid={`finance-editor-item-tax-${i}`} /></td>
                         <td className="px-3 py-1.5 text-right tabular-nums">{sym(value.currency)}{fmt(line)}</td>
                         <td className="text-center">
                           {value.items.length > 1 && (

@@ -781,3 +781,60 @@ Compliance: 12 checklist items + 6 policy templates seeded
 
 **Ready for XPRIZE Aug 17 jury review.**
 
+
+
+### 2026-02-15 — Session C1: Finance & Sales (shipped)
+
+**Scope**: Full CRUD for the last two P0 ERP modules ahead of Aug 17 jury review.
+
+**Finance & Invoicing** (`/app/backend/finance_module.py` + `FinanceModule.jsx`)
+- Invoices CRUD with line items (qty · unit_price · tax_rate) — auto-computed subtotal / tax / total
+- Auto-numbered `INV-YYYY-####` sequence per workspace (atomic Mongo counter)
+- PDF export via `reportlab` — includes company header, bill-to, line items, totals, **payment terms + bank details** (user pref 2b), notes
+- Send invoice by email via Resend with PDF attached — surfaces real error messages back to UI
+- Mark-paid + payment history (partial payments auto-flip status when cumulative ≥ total)
+- Company settings tab (name/address/VAT/currency/prefix/default payment terms/default bank details)
+- Auto-mark overdue (persisted on list read so status doesn't flip back)
+- Stat pills: Invoiced / Paid / Outstanding / Overdue
+
+**Sales** (`/app/backend/sales_module.py` + `SalesModule.jsx`)
+- Leads CRUD (name, company, email, phone, source, value, expected_close, notes)
+- Kanban pipeline: New → Contacted → Proposal → Won / Lost — HTML5 drag-and-drop between columns
+- Stage change history (`stage_history[]` with timestamp + actor)
+- Aggregate `/pipeline` endpoint (count + total_value per column, open_value/won_value totals)
+- Table view for list-based ops + row-level edit/delete
+- Stat pills: Total leads / Open value / Won value / Lost
+
+**Backend endpoints added (all `/api`)**
+- Finance: `GET|PUT /finance/settings`, `GET|POST /finance/invoices`, `GET|PUT|DELETE /finance/invoices/{id}`, `GET /finance/invoices/{id}/pdf`, `POST /finance/invoices/{id}/send-email`, `POST /finance/invoices/{id}/payments`, `POST /finance/invoices/{id}/mark-paid`, `DELETE /finance/payments/{pid}`
+- Sales: `GET|POST /sales/leads`, `GET|PUT|DELETE /sales/leads/{id}`, `PUT /sales/leads/{id}/stage`, `GET /sales/pipeline`
+
+**Collections**
+- `finance_settings`, `finance_invoices`, `finance_payments`, `sales_leads`
+
+**Testing status** — 100% pass
+- Backend unit tests: `/app/backend/tests/test_session_c1_20260215.py` (7/7)
+- Backend HTTP API tests: `/app/backend/tests/test_session_c1_api_20260215.py` (23/23, created by testing agent)
+- Frontend flows: 100% passing via testing_agent_v3_fork iteration_32 (create/edit/mark-paid invoice, settings persistence, kanban CRUD, stage change, HR regression)
+
+**Files created**
+- `/app/backend/finance_module.py` — full router + PDF renderer
+- `/app/backend/sales_module.py` — leads router + pipeline aggregator
+- `/app/frontend/src/pages/dashboard/FinanceModule.jsx` — invoices, editor modal, detail drawer, settings
+- `/app/frontend/src/pages/dashboard/SalesModule.jsx` — kanban + table + editor
+- `/app/backend/tests/test_session_c1_20260215.py`, `/app/backend/tests/test_session_c1_api_20260215.py`
+
+**Files touched**
+- `/app/backend/server.py` — registered finance + sales routers
+- `/app/backend/email_service.py` — added `send_invoice_email()` (Resend + attachment, returns `{email_id, error}` shape)
+- `/app/frontend/src/App.js` — imported + routed `FinanceModule` and `SalesModule`
+- `/app/frontend/src/index.css` — added `.zy-input` shared form-input class
+
+**Session C1 P0 modules — SHIPPED, jury-ready.**
+
+### Remaining backlog (P1/P2)
+- **P1** — Session C2: Projects · Planning · Time Tracking CRUD
+- **P2** — Replace Meta (FB/IG) + LinkedIn OAuth stubs with real integrations
+- **P2** — Photo/Video AI generation (fal.ai) — replace 'Coming soon' stubs
+- **P2** — Accounting bank statement CSV auto-ingestion + journal drafting
+- **BLOCKED** — Website builder custom-domain routing (awaiting Emergent Support)

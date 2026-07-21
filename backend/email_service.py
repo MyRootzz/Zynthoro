@@ -119,12 +119,12 @@ async def send_invoice_email(
     pdf_bytes: bytes,
     pdf_filename: str,
     reply_to: Optional[str] = None,
-) -> Optional[str]:
-    """Send an invoice to a client with the PDF attached (via Resend).
+) -> dict:
+    """Send an invoice PDF to a client via Resend.
 
-    Falls back to the layout wrapper for consistent branding. In dev (no
-    RESEND_API_KEY) we log and return None so the endpoint still returns
-    200 and the UI can surface "Sent (dev mode)".
+    Returns a dict `{"email_id": Optional[str], "error": Optional[str]}` so
+    the caller can surface the failure reason to the UI (previously errors
+    were silently swallowed).
     """
     html = _layout("Invoice from Zynthoro", body_html)
     if not _init():
@@ -132,7 +132,7 @@ async def send_invoice_email(
             "[invoice-email-mock to=%s subject=%s size=%d bytes]",
             to, subject, len(pdf_bytes),
         )
-        return None
+        return {"email_id": None, "error": None}  # dev-mode: not an error
     import base64
     params = {
         "from": DEFAULT_FROM_HELLO,
@@ -148,10 +148,12 @@ async def send_invoice_email(
         params["reply_to"] = reply_to
     try:
         res = await asyncio.to_thread(resend.Emails.send, params)
-        return res.get("id") if isinstance(res, dict) else None
+        eid = res.get("id") if isinstance(res, dict) else None
+        err = None if eid else (res.get("message") if isinstance(res, dict) else "Unknown Resend response")
+        return {"email_id": eid, "error": err}
     except Exception as e:
         logger.exception("Resend invoice email failed (to=%s): %s", to, e)
-        return None
+        return {"email_id": None, "error": str(e)[:300]}
 
 
 

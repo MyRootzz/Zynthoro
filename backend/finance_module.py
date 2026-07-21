@@ -328,11 +328,16 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
         if status:
             q["status"] = status
         rows = await db.finance_invoices.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
-        # Auto-mark overdue at read-time.
+        # Auto-mark overdue: mutate the returned row AND persist so the
+        # status doesn't "flip back" on the single-invoice GET.
         today = date.today().isoformat()
         for r in rows:
             if r.get("status") == "sent" and r.get("due_date") and r["due_date"] < today:
                 r["status"] = "overdue"
+                await db.finance_invoices.update_one(
+                    {"id": r["id"], "workspace_owner": _wo(user)},
+                    {"$set": {"status": "overdue", "updated_at": _now()}},
+                )
         return {
             "invoices": rows,
             "totals": {
@@ -484,6 +489,9 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
             pdf_filename=f"{inv['number']}.pdf",
             reply_to=settings.get("company_email") or user.get("email"),
         )
+        # send_invoice_email now returns {"email_id":..., "error":...}
+        eid = email_id.get("email_id")
+        eerr = email_id.get("error")
 
         await db.finance_invoices.update_one(
             {"id": iid, "workspace_owner": wo},
@@ -502,7 +510,12 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
             )
         except Exception:
             pass
-        return {"ok": True, "email_id": email_id, "email_sent": email_id is not None}
+        return {
+            "ok": True,
+            "email_id": eid,
+            "email_sent": eid is not None,
+            "error": eerr,
+        }
 
     # ---- Payments ---------------------------------------------------------
     @router.post("/invoices/{iid}/payments", status_code=201)

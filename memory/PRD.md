@@ -866,3 +866,79 @@ Compliance: 12 checklist items + 6 policy templates seeded
 - Bumped `next_invoice_seq` to 7 so the jury's first manually-created invoice is `ZY-2026-0007`.
 
 **Verified**: Jury login → `/dashboard/sales` shows populated kanban with correct totals and Jury Tour overlay firing on top.
+
+### 2026-02-15 — Session C2: Projects · Planning · Time Tracking (shipped)
+
+**Scope**: 3 more P1 ERP modules with full CRUD, in the same pattern as C1. All P0/P1 core ERP modules now shipped ahead of XPRIZE Aug 17 jury review.
+
+**Projects** (`/app/backend/projects_module.py` + `ProjectsModule.jsx` @ `/dashboard/projects`)
+- Projects CRUD (name, description, status, domain, owner, dates, progress %, colour)
+- Tasks CRUD nested under projects (title, assignee, due, priority, status: todo/in_progress/done)
+- Milestones CRUD (title, due, toggleable completed state)
+- **Auto-progress recomputation** — parent project's `progress` field is recomputed from (# done tasks / total tasks) whenever a task is created / updated / status-changed / deleted
+- Cascade delete: deleting a project also removes its tasks + milestones + time_entries
+- Stats: Total / On track / At risk / Completed
+
+**Planning** (`/app/backend/planning_module.py` + `PlanningModule.jsx` @ `/dashboard/planning`)
+- Workspace-wide sprints (per user's C2 choice — sprints not tied to a single project)
+- Sprint CRUD (name, goal, dates, status planned/active/completed, capacity_hours)
+- Task linking works by writing `sprint_id` on the existing `project_tasks` doc → **no duplication**, task appears in both Projects and Planning views
+- `/planning/available-tasks` returns un-sprinted tasks (candidates for the picker)
+- Deleting a sprint DETACHES tasks (they remain, just un-linked)
+- Sprint summary: task_count / done / in_progress / todo / progress %
+- Two-pane UI: left sprint list · right selected-sprint board with burndown + task picker
+
+**Time Tracking** (`/app/backend/time_tracking_module.py` + `TimeTrackingModule.jsx` @ `/dashboard/time-tracking`)
+- **Live timer** — one running per user; starting a new one auto-commits the old one to a `time_entry`
+- Timer displays elapsed time with client-side tick
+- Manual entries CRUD (date, hours, project/task, notes, billable Y/N)
+- **Weekly timesheet** — grid grouped by (project, task) × 7 days of the week starting Monday (ISO week)
+- Prev / Next / This-week navigation
+- **CSV export** — `/api/time-tracking/entries/export.csv` returns `text/csv` with header `date,user_email,project,task,hours,billable,notes,source`; exposed on both Timer and Timesheet tabs
+- Stats: Entries / Total hours / Billable hours
+
+**Backend endpoints added** (all `/api`)
+- Projects: `GET|POST /projects`, `GET|PUT|DELETE /projects/{id}`, `GET /projects/{id}/tasks`, `POST /projects/tasks`, `PUT /projects/tasks/{tid}`, `PUT /projects/tasks/{tid}/status`, `DELETE /projects/tasks/{tid}`, `POST /projects/milestones`, `PUT /projects/milestones/{mid}/toggle`, `DELETE /projects/milestones/{mid}`
+- Planning: `GET|POST /planning/sprints`, `GET|PUT|DELETE /planning/sprints/{sid}`, `POST /planning/sprints/{sid}/tasks`, `DELETE /planning/sprints/{sid}/tasks/{tid}`, `GET /planning/available-tasks`
+- Time Tracking: `GET /time-tracking/timer`, `POST /time-tracking/timer/start`, `POST /time-tracking/timer/stop`, `DELETE /time-tracking/timer`, `GET|POST /time-tracking/entries`, `PUT|DELETE /time-tracking/entries/{eid}`, `GET /time-tracking/timesheet`, `GET /time-tracking/entries/export.csv`
+
+**Collections**
+- `projects`, `project_tasks`, `project_milestones`, `sprints`, `time_entries`, `time_timers`
+
+**Jury demo seed** (auto-called on startup, idempotent, `is_demo=true`):
+- 5 projects (mix of statuses/domains, realistic descriptions)
+- 15 tasks distributed across projects with mix of done/in-progress/todo
+- 7 milestones (5 upcoming, 2 completed)
+- 1 active sprint "Sprint 12 · Jury week" with 5 tasks pulled from 2 projects
+- 8 time entries across the current week totalling 23.5h
+
+**Founder Reset extended** — `POST /api/founder/reset-jury-demo` now also wipes+re-seeds all C2 collections. UI toast updated.
+
+**Testing** — 100% pass
+- Backend unit tests: `/app/backend/tests/test_session_c2_20260215.py` (7/7)
+- Backend HTTP integration tests via testing_agent_v3_fork iteration_33: 10/10
+- Frontend flows via Playwright: all critical paths pass (create project + task, sprint + task-link, timer start/stop, manual entry, weekly timesheet, CSV export)
+- Regression: Sessions B (HR/Accounting/Communication/Compliance) + C1 (Finance/Sales) still working.
+
+**Files created**
+- `/app/backend/projects_module.py`
+- `/app/backend/planning_module.py`
+- `/app/backend/time_tracking_module.py`
+- `/app/frontend/src/pages/dashboard/ProjectsModule.jsx`
+- `/app/frontend/src/pages/dashboard/PlanningModule.jsx`
+- `/app/frontend/src/pages/dashboard/TimeTrackingModule.jsx`
+- `/app/backend/tests/test_session_c2_20260215.py`
+
+**Files touched**
+- `/app/backend/server.py` — 3 new router registrations + `_seed_projects_planning_time_demo` helper + extended founder-reset endpoint
+- `/app/frontend/src/App.js` — 3 new routes
+- `/app/frontend/src/pages/dashboard/Settings.jsx` — updated founder-reset toast copy
+
+**All P0/P1 core ERP modules — SHIPPED, jury-ready.**
+
+### Updated remaining backlog (P2)
+- Replace Meta (FB/IG) + LinkedIn OAuth stubs with real integrations
+- Photo/Video AI generation (fal.ai) — replace 'Coming soon' stubs
+- Accounting bank statement CSV auto-ingestion + journal drafting
+- BLOCKED: Website builder custom-domain routing (awaiting Emergent Support)
+

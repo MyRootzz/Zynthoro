@@ -331,6 +331,11 @@ function TimesheetPanel() {
 
   if (!data) return <Loader2 className="animate-spin text-[#999]" />;
 
+  const downloadCsv = () => {
+    const q = `?start=${data.week_of}&end=${data.days[data.days.length - 1]}`;
+    window.open(`${API}/time-tracking/entries/export.csv${q}`, "_blank", "noopener,noreferrer");
+  };
+
   return (
     <div className="space-y-4" data-testid="tt-timesheet">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -340,8 +345,13 @@ function TimesheetPanel() {
           <button onClick={() => shift(7)} className="zy-btn-outline text-[12px] px-2.5 py-1">Next ▶</button>
           <button onClick={() => setWeekOf(new Date().toISOString().slice(0, 10))} className="text-[12px] text-[#1A4FFF] hover:underline ml-2">This week</button>
         </div>
-        <div className="text-[13px] text-[#555]">
-          Week of <b>{data.week_of}</b> · grand total <b className="tabular-nums">{fmtHours(data.grand_total)}h</b>
+        <div className="flex items-center gap-3">
+          <div className="text-[13px] text-[#555]">
+            Week of <b>{data.week_of}</b> · grand total <b className="tabular-nums">{fmtHours(data.grand_total)}h</b>
+          </div>
+          <button onClick={downloadCsv} className="zy-btn-outline text-[12px]" data-testid="tt-sheet-export-csv-btn">
+            <Download size={13} /> Export CSV
+          </button>
         </div>
       </div>
       <div className="bg-white border border-[#eee] rounded-xl overflow-x-auto">

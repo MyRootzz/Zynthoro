@@ -78,6 +78,27 @@ def test_finance_pdf_renders_valid_pdf():
     assert pdf.startswith(b"%PDF-"), "must be a valid PDF stream"
 
 
+def test_finance_pdf_embeds_logo_when_provided():
+    """When logo_bytes are passed, the PDF should embed an XObject image."""
+    # A minimal valid 1x1 PNG (transparent).
+    import base64
+    tiny_png = base64.b64decode(
+        b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg=="
+    )
+    inv = {
+        "number": "INV-LOGO-1", "client_name": "X", "issue_date": "2026-02-15",
+        "currency": "EUR", "items": [{"description": "x", "quantity": 1, "unit_price": 10, "tax_rate": 0}],
+        "subtotal": 10, "tax_total": 0, "total": 10, "status": "draft",
+    }
+    settings = {"company_name": "Zynthoro", "default_payment_terms": "", "default_bank_details": ""}
+    without = finance_module._render_invoice_pdf(inv, settings)
+    with_logo = finance_module._render_invoice_pdf(inv, settings, logo_bytes=tiny_png)
+    # PDF with an embedded logo must be bigger AND include the XObject dict.
+    assert with_logo.startswith(b"%PDF-")
+    assert len(with_logo) > len(without), "PDF with logo should be larger"
+    assert b"/XObject" in with_logo, "logo should be embedded as an XObject"
+
+
 def test_currency_symbol():
     assert finance_module._sym("EUR") == "€"
     assert finance_module._sym("USD") == "$"

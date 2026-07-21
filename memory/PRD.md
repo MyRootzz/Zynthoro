@@ -978,3 +978,21 @@ Compliance: 12 checklist items + 6 policy templates seeded
 - `/app/frontend/src/pages/dashboard/ProjectsModule.jsx` — new BillHoursModal + green banner card in the project detail drawer + useNavigate import
 - `/app/backend/tests/test_bill_hours_20260215.py` — new regression test
 
+
+### 2026-02-15 (later) — Invoice PDF: company logo on header
+
+**Purpose**: Match the invoice PDF to the workspace's brand. The logo the user uploads in Settings → Company logo (already stored as base64 on the user record via `/api/account/logo`) is now embedded at the top-right of every invoice PDF, above the "INVOICE + number" title.
+
+**Backend** (`/app/backend/finance_module.py`)
+- `_render_invoice_pdf(inv, settings, logo_bytes=None)` — new optional param. When provided, decodes the bytes into a reportlab `Image` object, constrains to max 42×28mm preserving aspect ratio, right-aligns above the "INVOICE" heading. Silently falls back to text-only if the image can't be decoded (corrupt or unsupported format) — never fails the PDF.
+- `_get_logo_bytes(wo)` helper fetches `users.company_logo_data` (base64) for the workspace owner and returns raw bytes.
+- Both `/api/finance/invoices/{id}/pdf` and `/api/finance/invoices/{id}/send-email` now call `_get_logo_bytes` and pass to the renderer, so the client always sees the logo whether they download or receive it by email.
+
+**Testing** — `/app/backend/tests/test_session_c1_20260215.py` (8/8 pass)
+- New `test_finance_pdf_embeds_logo_when_provided` — verifies that passing logo bytes results in a larger PDF containing `/XObject` (reportlab's image dict).
+- Manual visual check via pdftoppm: founder-generated invoice shows the uploaded logo top-right; jury user with no logo gets the clean text-only header as before.
+
+**Files touched**
+- `/app/backend/finance_module.py` — Image import, `_render_invoice_pdf` signature + header layout, `_get_logo_bytes` helper, both endpoints pass logo to renderer
+- `/app/backend/tests/test_session_c1_20260215.py` — extra test for logo embedding
+

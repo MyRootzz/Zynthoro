@@ -33,7 +33,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image,
 )
 
 import activity_log
@@ -126,7 +126,7 @@ class PaymentIn(BaseModel):
 
 
 # ---- PDF generator --------------------------------------------------------
-def _render_invoice_pdf(inv: dict, settings: dict) -> bytes:
+def _render_invoice_pdf(inv: dict, settings: dict, logo_bytes: Optional[bytes] = None) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4,
@@ -144,7 +144,7 @@ def _render_invoice_pdf(inv: dict, settings: dict) -> bytes:
     story: list = []
     sym = _sym(inv.get("currency", "EUR"))
 
-    # Header row: company (left) — INVOICE title + number (right)
+    # Header row: company (left) — logo + INVOICE title + number (right)
     company_html = (
         f"<b>{settings.get('company_name') or 'Your Company'}</b><br/>"
         f"{(settings.get('company_address') or '').replace(chr(10), '<br/>')}"
@@ -154,14 +154,34 @@ def _render_invoice_pdf(inv: dict, settings: dict) -> bytes:
     if settings.get("company_vat"):
         company_html += f"<br/>VAT: {settings['company_vat']}"
 
-    right = (
+    # Build the right-hand column: logo image (if provided) + INVOICE title + number.
+    right_col: list = []
+    if logo_bytes:
+        try:
+            logo_img = Image(io.BytesIO(logo_bytes))
+            # Constrain to a sensible display size (max 42mm wide, 28mm tall)
+            iw, ih = logo_img.imageWidth, logo_img.imageHeight
+            max_w, max_h = 42 * mm, 28 * mm
+            ratio = min(max_w / iw, max_h / ih)
+            logo_img.drawWidth = iw * ratio
+            logo_img.drawHeight = ih * ratio
+            logo_img.hAlign = "RIGHT"
+            right_col.append(logo_img)
+            right_col.append(Spacer(1, 3 * mm))
+        except Exception:
+            # If the logo can't be decoded (corrupt / unsupported), silently
+            # fall through to the text-only header — never fail the PDF.
+            pass
+    right_col.append(Paragraph(
         f"<para align='right'>"
         f"<font size='22' color='#0A1628'><b>INVOICE</b></font><br/>"
         f"<font size='11' color='#1A4FFF'><b>{inv['number']}</b></font>"
-        f"</para>"
-    )
+        f"</para>",
+        body,
+    ))
+
     header = Table(
-        [[Paragraph(company_html, body), Paragraph(right, body)]],
+        [[Paragraph(company_html, body), right_col]],
         colWidths=[95 * mm, 75 * mm],
     )
     header.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
@@ -449,6 +469,24 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
         )
         return {"ok": True, "id": iid}
 
+    async def _get_logo_bytes(wo: str) -> Optional[bytes]:
+        """Fetch the workspace-owner user's uploaded logo (base64 -> bytes).
+
+        Users upload their logo via Settings → Company logo, which stores
+        it as base64 on the `users` document. This is reused verbatim on
+        every invoice PDF so branding stays consistent.
+        """
+        import base64 as _b64
+        rec = await db.users.find_one(
+            {"id": wo}, {"company_logo_data": 1, "company_logo_mime": 1},
+        )
+        if not rec or not rec.get("company_logo_data"):
+            return None
+        try:
+            return _b64.b64decode(rec["company_logo_data"])
+        except Exception:
+            return None
+
     # ---- PDF & email ------------------------------------------------------
     @router.get("/invoices/{iid}/pdf")
     async def invoice_pdf(iid: str, user=Depends(get_user)):
@@ -457,7 +495,8 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
         if not inv:
             raise HTTPException(status_code=404, detail="Invoice not found")
         settings = await _get_settings(wo)
-        pdf_bytes = _render_invoice_pdf(inv, settings)
+        logo_bytes = await _get_logo_bytes(wo)
+        pdf_bytes = _render_invoice_pdf(inv, settings, logo_bytes=logo_bytes)
         return StreamingResponse(
             io.BytesIO(pdf_bytes),
             media_type="application/pdf",
@@ -475,7 +514,8 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
         if not inv.get("client_email"):
             raise HTTPException(status_code=400, detail="Client email is required to send this invoice.")
         settings = await _get_settings(wo)
-        pdf_bytes = _render_invoice_pdf(inv, settings)
+        logo_bytes = await _get_logo_bytes(wo)
+        pdf_bytes = _render_invoice_pdf(inv, settings, logo_bytes=logo_bytes)
 
         sym = _sym(inv.get("currency", "EUR"))
         subject = f"Invoice {inv['number']} from {settings.get('company_name') or 'Zynthoro'}"

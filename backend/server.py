@@ -3267,10 +3267,14 @@ import hr_module  # noqa: E402
 import accounting_module  # noqa: E402
 import communication_module  # noqa: E402
 import compliance_module  # noqa: E402
+import finance_module  # noqa: E402
+import sales_module  # noqa: E402
 app.include_router(hr_module.build_router(db, get_current_user_full))
 app.include_router(accounting_module.build_router(db, get_current_user_full))
 app.include_router(communication_module.build_router(db, get_current_user_full))
 app.include_router(compliance_module.build_router(db, get_current_user_full))
+app.include_router(finance_module.build_router(db, get_current_user_full))
+app.include_router(sales_module.build_router(db, get_current_user_full))
 
 app.add_middleware(
     CORSMiddleware,

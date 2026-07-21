@@ -1,0 +1,42 @@
+{
+  "summary": "Session C1 (Finance & Sales) — comprehensive API + UI testing. 30/30 backend tests pass (23 new API-level tests via HTTP + 7 pre-existing unit tests). All frontend flows verified: Finance module (create invoice with correct totals €2.000/€420/€2.420, PDF, mark-paid, settings persistence after reload) and Sales module (kanban with 5 stages, lead CRUD, stage history via API, leads table, HR regression OK).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/finance/invoices/{id}/send-email", "issue": "Endpoint returns 200 with {email_sent:false, email_id:null} when Resend rejects the recipient (e.g. any @example.com domain in Resend test mode). Not a bug per se — endpoint is fault-tolerant — but tests must use a Resend-accepted domain such as 'delivered@resend.dev' to get a real email_id. Consider surfacing the failure reason back to the client (currently swallowed)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Finance new-invoice modal", "issues": ["Line-item tax_rate input has no data-testid (finance-editor-item-tax-{idx}). Description/qty/price inputs are testable but tax field lacks it — minor testability gap."]},
+      {"screen": "Finance settings tab", "issues": ["Settings field testids are `finance-settings-prefix`, `finance-settings-terms`, `finance-settings-bank` — the review request specified `finance-settings-invoice-prefix`, `finance-settings-payment-terms`, `finance-settings-bank-details`. Mismatch is cosmetic (all controls work and persist after reload) but worth aligning."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_session_c1_api_20260215.py",
+    "/app/backend/tests/test_session_c1_20260215.py",
+    "/app/test_reports/pytest/session_c1_api.xml"
+  ],
+  "action_items": [
+    "OPTIONAL: Add data-testid=\"finance-editor-item-tax-{idx}\" on the tax_rate input inside the invoice editor for Playwright coverage.",
+    "OPTIONAL: Rename settings inputs to `finance-settings-invoice-prefix`, `finance-settings-payment-terms`, `finance-settings-bank-details` to match the review spec — current shorter names work but diverge from documentation.",
+    "OPTIONAL: In send_invoice_email endpoint, when Resend fails validation return the actual error message (or 4xx) instead of silently returning {email_sent:false}."
+  ],
+  "critical_code_review_comments": [
+    "finance_module.py at 610 lines is nearing the 700-line split threshold — PDF rendering could be moved to its own helper module in a future refactor.",
+    "send-email endpoint swallows Resend exceptions silently (email_id=null) — should propagate at least a descriptive error to the UI so users know why the email did not go out.",
+    "Auto-mark-overdue in list_invoices() only mutates the returned list, not the DB record — status will 'flip back' on individual GET of the invoice. Consider persisting the status change or documenting the transient behaviour."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_session_c1_api_20260215.py (new)"
+  ],
+  "success_rate": {"backend": "100% (30/30)", "frontend": "100% of tested flows"},
+  "test_credentials": "Founder regie@myrootzz.com / Zynthoro2026! (from /app/memory/test_credentials.md) — direct login, no 2FA.",
+  "seed_data_creation": "Created & deleted several TEST_-prefixed invoices, payments, and leads during test runs (all cleaned up via fixtures). One UI-created invoice 'INV-2026-0012 / TEST_Acme BV UI' remains in DB (marked PAID) and one lead 'TEST_John Smith UI' — main agent may wish to delete these seed rows, or they can be left as demo data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend HTTP tests live in /app/backend/tests/test_session_c1_api_20260215.py — run with `cd /app/backend && python -m pytest tests/test_session_c1_api_20260215.py -v`. Use `delivered@resend.dev` as client_email whenever the send-email endpoint is exercised (Resend rejects @example.com in test mode). Kanban column testids ARE present in source (SalesModule.jsx line 179) — if a Playwright script does not find them, they are probably not yet mounted; add a short wait after navigating to /dashboard/sales. Settings tab uses shorter testids (finance-settings-prefix/terms/bank) than the spec suggested but all persist correctly after reload.",
+  "rca of the issue": "No functional issues — a single failure on test_send_email surfaced during the first pytest run because the test used `acme@example.com` and Resend (LIVE key mode) refused to deliver to `example.com` domains. Fixed by updating the fixture email to `delivered@resend.dev` (Resend's official test address). Second run: 30/30 pass."
+}

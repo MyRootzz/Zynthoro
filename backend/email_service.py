@@ -111,6 +111,49 @@ async def send_team_invite(to: str, inviter_email: str, accept_link: str, role: 
     )
 
 
+async def send_invoice_email(
+    *,
+    to: str,
+    subject: str,
+    body_html: str,
+    pdf_bytes: bytes,
+    pdf_filename: str,
+    reply_to: Optional[str] = None,
+) -> Optional[str]:
+    """Send an invoice to a client with the PDF attached (via Resend).
+
+    Falls back to the layout wrapper for consistent branding. In dev (no
+    RESEND_API_KEY) we log and return None so the endpoint still returns
+    200 and the UI can surface "Sent (dev mode)".
+    """
+    html = _layout("Invoice from Zynthoro", body_html)
+    if not _init():
+        logger.info(
+            "[invoice-email-mock to=%s subject=%s size=%d bytes]",
+            to, subject, len(pdf_bytes),
+        )
+        return None
+    import base64
+    params = {
+        "from": DEFAULT_FROM_HELLO,
+        "to": [to],
+        "subject": subject,
+        "html": html,
+        "attachments": [{
+            "filename": pdf_filename,
+            "content": base64.b64encode(pdf_bytes).decode("ascii"),
+        }],
+    }
+    if reply_to:
+        params["reply_to"] = reply_to
+    try:
+        res = await asyncio.to_thread(resend.Emails.send, params)
+        return res.get("id") if isinstance(res, dict) else None
+    except Exception as e:
+        logger.exception("Resend invoice email failed (to=%s): %s", to, e)
+        return None
+
+
 
 # ===============================================================
 # Internal founder alert — fires from the Stripe webhook

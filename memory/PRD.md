@@ -601,3 +601,41 @@ Fixed three P0 defects surfaced in the code review + security audit.
 - `/app/backend/server.py` — `checkout_tier_session` passes `allow_promo=bool(user.get("is_qa_test"))`. `_provision_tier_purchase` rewritten with `amount_total_cents` param, top-up branch, and amount-tamper guard. Both callers (webhook + status self-heal) now forward `session.amount_total`.
 - `/app/backend/tests/test_p0_fixes_20260721.py` — new (15 tests).
 
+
+### 2026-07-21 — P1 Reliability & Security Batch
+Five P1 fixes from the code-review + security-audit landed in one pass.
+
+**P1-1 — Refund AI credit on LLM failure**
+- Previously `/api/ai/chat` and `/api/ai/stream` charged the credit up-front and kept it even when the LLM provider returned an error. During an outage a Kickstart 1 customer could burn all 50 credits with zero replies.
+- Added `_refund_ai_credit(user)` helper (defensive: only decrements when the counter is `> 0`, skips for unlimited/founder/demo).
+- `ai_chat` refunds on `RuntimeError` (provider errors) and generic `Exception`.
+- `ai_stream` refunds when the generator errors AND no `delta` frame was delivered — a stream that produced partial output is NOT refunded.
+
+**P1-2 — Idempotent webhook provisioning (CR-4)**
+- `_provision_tier_purchase` now performs an atomic check-and-set on `payment_transactions.provisioned` before any side effects. Stripe event replays and concurrent webhook + self-heal paths can no longer double-provision, send duplicate emails, or reset `ai_credits_used_this_period` to 0.
+- Amount-tamper blocks now set `provisioning_blocked=True` without setting `provisioned=True` so a legitimate follow-up call (e.g. after a refund) can re-run. Both callers (webhook + status self-heal) no longer force-set `provisioned` externally.
+
+**P1-3 — Rate-limit + alert on `/api/admin/disable-2fa` (SEC-004)**
+- New `_rate_limit_admin_disable_2fa(client_ip)` — MongoDB-backed sliding window: **5 calls per 60 min per client IP**. Rate limit runs BEFORE the admin-key comparison so it also protects against brute-force key guessing.
+- Every call (success or failure) is recorded in `admin_call_attempts` with reason. Collection has a 7-day TTL index.
+- Every successful call fires `email_service.send_stripe_alert(kind="alert", event_type="admin_disable_2fa")` to ops with client IP, target email, and `set_founder` flag.
+
+**P1-4 — Cookie `Secure=True` + pinned `CORS_ORIGINS` (SEC-005)**
+- `_set_auth_cookies` now sets `secure=True` by default. Local dev can opt out via `COOKIE_SECURE=false`.
+- CORS middleware refuses to install with wildcard `*` when `allow_credentials=True`. Default origins now: `https://zynthoro.ai`, `https://www.zynthoro.ai`, `https://zynthoro-foundation.preview.emergentagent.com`.
+- `backend/.env` `CORS_ORIGINS` updated to the same explicit list.
+
+**P1-5 — Fail-closed founder/demo seeds (SEC-001/002)**
+- `seed_founder()` — no more source-code default. Refuses to seed if `FOUNDER_PASSWORD` env is missing or shorter than 12 chars (existing founder record is preserved). Password rotation is a dedicated reset flow, not a boot-time overwrite.
+- `seed_jury_demo()` — password now comes from `JURY_DEMO_PASSWORD` env (added to `backend/.env`). If unset or too short, demo seed is skipped entirely with a WARNING log.
+
+**Testing** — 15 new regression tests in `tests/test_p1_fixes_20260721.py` (all pass). No regressions in P0 (15/15), file-extract (11/11), or tier-provisioning-helper (14/14) suites.
+
+**Files touched**
+- `/app/backend/server.py` — refactored `_consume_ai_credit`, `_provision_tier_purchase`, `admin_disable_2fa`, `seed_founder`, `seed_jury_demo`, `ai_chat`, `ai_stream`; added `_refund_ai_credit`, `_rate_limit_admin_disable_2fa`, `_log_admin_call`; changed `_set_auth_cookies` (Secure=True) and CORS middleware.
+- `/app/backend/.env` — pinned `CORS_ORIGINS`; added `JURY_DEMO_PASSWORD`.
+- `/app/backend/tests/test_p1_fixes_20260721.py` — new (15 tests).
+
+**Deployment note**
+Deploy will need `JURY_DEMO_PASSWORD` set in the production env for the XPRIZE demo to keep seeding. If not set, the jury account already in Mongo is preserved — no data loss.
+

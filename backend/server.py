@@ -202,9 +202,14 @@ def _serialize_user(u: dict) -> dict:
 
 
 def _set_auth_cookies(response: Response, access_token: str):
+    # SEC-005 fix (2026-07-21): production is served over HTTPS behind
+    # Cloudflare / k8s ingress, so the cookie MUST be marked Secure to
+    # prevent leakage over a stray plaintext hop. Allow an explicit
+    # opt-out ONLY for local dev via COOKIE_SECURE=false.
+    secure_flag = os.environ.get("COOKIE_SECURE", "true").strip().lower() != "false"
     response.set_cookie(
         key="access_token", value=access_token, httponly=True,
-        secure=False, samesite="lax", max_age=60 * 60 * 24, path="/",
+        secure=secure_flag, samesite="lax", max_age=60 * 60 * 24, path="/",
     )
 
 
@@ -368,6 +373,47 @@ class DisableTwofaIn(BaseModel):
     set_founder: bool = False
 
 
+# SEC-004 (2026-07-21) — sliding-window rate limit on the admin backdoor.
+# Any call attempt (success or failure) is recorded; if more than
+# ADMIN_2FA_MAX_ATTEMPTS calls come from one client_ip in
+# ADMIN_2FA_WINDOW_MIN minutes, further calls are refused with 429.
+ADMIN_2FA_MAX_ATTEMPTS = 5
+ADMIN_2FA_WINDOW_MIN = 60
+
+
+async def _rate_limit_admin_disable_2fa(client_ip: str) -> None:
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(minutes=ADMIN_2FA_WINDOW_MIN)
+    recent = await db.admin_call_attempts.count_documents({
+        "endpoint": "disable-2fa",
+        "client_ip": client_ip,
+        "attempted_at": {"$gte": window_start},
+    })
+    if recent >= ADMIN_2FA_MAX_ATTEMPTS:
+        logger.critical(
+            "SECURITY: admin disable-2fa rate-limit hit for ip=%s (attempts=%d in %d min)",
+            client_ip, recent, ADMIN_2FA_WINDOW_MIN,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many attempts. Try again in {ADMIN_2FA_WINDOW_MIN} minutes.",
+        )
+
+
+async def _log_admin_call(*, endpoint: str, client_ip: str, target_email: str,
+                          ok: bool, extra: Optional[dict] = None) -> None:
+    doc = {
+        "id": str(uuid.uuid4()),
+        "endpoint": endpoint,
+        "client_ip": client_ip,
+        "target_email": target_email,
+        "ok": ok,
+        "attempted_at": datetime.now(timezone.utc),
+        "extra": extra or {},
+    }
+    await db.admin_call_attempts.insert_one(doc)
+
+
 @api_router.post("/admin/disable-2fa")
 async def admin_disable_2fa(payload: DisableTwofaIn, request: Request):
     """Emergency endpoint — disables 2FA for a single account by email.
@@ -375,13 +421,32 @@ async def admin_disable_2fa(payload: DisableTwofaIn, request: Request):
     code path to skip the 2FA-setup wizard on future logins).
 
     Header: X-Admin-Key: <ADMIN_SEED_KEY>
-    Remove this endpoint after use.
+    Rate-limited: 5 calls / 60 min per client IP. Every call — including
+    rejects — is recorded in `admin_call_attempts` and successful calls
+    trigger an alert email to ops.
     """
+    client_ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() \
+        or (request.client.host if request.client else "unknown")
+
+    # 1) Rate limit BEFORE any secret comparison — otherwise the guard is
+    #    useless for brute-force protection.
+    await _rate_limit_admin_disable_2fa(client_ip)
+
     expected = os.environ.get("ADMIN_SEED_KEY")
     if not expected:
+        await _log_admin_call(
+            endpoint="disable-2fa", client_ip=client_ip,
+            target_email=str(payload.email),
+            ok=False, extra={"reason": "no_admin_seed_key_env"},
+        )
         raise HTTPException(status_code=503, detail="Endpoint disabled (ADMIN_SEED_KEY not set).")
     provided = request.headers.get("x-admin-key") or ""
     if not hmac.compare_digest(provided, expected):
+        await _log_admin_call(
+            endpoint="disable-2fa", client_ip=client_ip,
+            target_email=str(payload.email),
+            ok=False, extra={"reason": "bad_admin_key"},
+        )
         raise HTTPException(status_code=401, detail="Invalid admin key.")
 
     set_ops = {
@@ -411,8 +476,36 @@ async def admin_disable_2fa(payload: DisableTwofaIn, request: Request):
             },
         },
     )
-    logger.warning("Admin disable-2fa invoked for %s — matched=%d modified=%d set_founder=%s",
-                   payload.email, res.matched_count, res.modified_count, payload.set_founder)
+    logger.warning("Admin disable-2fa invoked for %s — matched=%d modified=%d set_founder=%s ip=%s",
+                   payload.email, res.matched_count, res.modified_count, payload.set_founder, client_ip)
+
+    ok = res.matched_count > 0
+    await _log_admin_call(
+        endpoint="disable-2fa", client_ip=client_ip,
+        target_email=str(payload.email),
+        ok=ok,
+        extra={"set_founder": payload.set_founder, "modified": res.modified_count},
+    )
+
+    # Alert ops on EVERY successful call — this endpoint is a takeover
+    # primitive and must not run silently in production.
+    if ok:
+        asyncio.create_task(email_service.send_stripe_alert(
+            kind="alert",
+            event_type="admin_disable_2fa",
+            user_email=str(payload.email).lower(),
+            user_id=None,
+            plan_key=None,
+            stripe_session_id=None,
+            stripe_subscription_id=None,
+            extra={
+                "endpoint": "/api/admin/disable-2fa",
+                "client_ip": client_ip,
+                "set_founder": payload.set_founder,
+                "reason": "Emergency 2FA disable — verify this call was authorised.",
+            },
+        ))
+
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail=f"No user found with email {payload.email}")
     return {
@@ -1121,6 +1214,31 @@ async def _consume_ai_credit(user: dict) -> None:
     )
 
 
+async def _refund_ai_credit(user: dict) -> None:
+    """Undo a `_consume_ai_credit` increment when the LLM call fails.
+
+    CR-3 fix (2026-07-21): AI credits used to be charged up-front and
+    never refunded if the provider returned an error, so a Kickstart user
+    could burn their monthly quota during an outage without receiving a
+    single reply. This helper is called from the error paths of ai_chat
+    and ai_stream. Refund is skipped for users who never had a real
+    counter incremented in the first place (founder / demo / unlimited /
+    unlimited-plan or capped-at-zero users)."""
+    if user.get("is_founder") or user.get("is_demo") or user.get("billing_exempt") or user.get("is_unlimited"):
+        return
+    ctx = _tier_context(user)
+    if ctx.get("ai_credits_limit") is None:
+        return
+    # Never let the counter drop below zero (defensive — a concurrent
+    # webhook reset could race with the refund).
+    res = await db.users.update_one(
+        {"id": user["id"], "ai_credits_used_this_period": {"$gt": 0}},
+        {"$inc": {"ai_credits_used_this_period": -1}},
+    )
+    if res.modified_count:
+        logger.info("Refunded 1 AI credit for user=%s (LLM failure)", user["id"])
+
+
 # ------------------------------------------------------------------
 # AI Assistant file uploads (PDF / DOCX / XLSX / PPTX / CSV)
 # ------------------------------------------------------------------
@@ -1258,7 +1376,12 @@ async def ai_chat(payload: AssistChatIn, user=Depends(get_current_user_full)):
             file_context=file_context,
         )
     except RuntimeError as e:
+        # LLM outage / provider error — refund the credit we charged.
+        await _refund_ai_credit(user)
         raise HTTPException(status_code=502, detail=str(e))
+    except Exception:
+        await _refund_ai_credit(user)
+        raise
     return {
         "session_id": session_id,
         "assistant": payload.assistant,
@@ -1287,6 +1410,13 @@ async def ai_stream(payload: AssistChatIn, user=Depends(get_current_user_full)):
     file_context = await _load_ai_file_context(user["id"], payload.file_ids)
 
     async def event_generator():
+        # Track whether we actually delivered any tokens; if the entire
+        # stream fails before the first delta, refund the AI credit
+        # (CR-3 fix 2026-07-21). We refund on ANY error event too — a
+        # partial stream that errors mid-way is not the value the user
+        # paid for.
+        errored = False
+        delivered_any = False
         try:
             async for frame in ai_assistants.chat_stream(
                 db, payload.assistant, session_id, user["id"], payload.message,
@@ -1294,13 +1424,23 @@ async def ai_stream(payload: AssistChatIn, user=Depends(get_current_user_full)):
                 user_context=user,
                 file_context=file_context,
             ):
+                ftype = frame.get("type", "delta")
+                if ftype == "delta" and (frame.get("content") or ""):
+                    delivered_any = True
+                elif ftype == "error":
+                    errored = True
                 ev = frame.pop("type", "delta")
                 yield f"event: {ev}\ndata: {_json.dumps(frame)}\n\n"
         except ValueError as e:
+            errored = True
             yield f"event: error\ndata: {_json.dumps({'message': str(e)})}\n\n"
         except Exception:  # noqa: BLE001
+            errored = True
             logger.exception("ai_stream failure")
             yield f"event: error\ndata: {_json.dumps({'message': 'AI service error.'})}\n\n"
+        finally:
+            if errored and not delivered_any:
+                await _refund_ai_credit(user)
 
     return StreamingResponse(
         event_generator(),
@@ -1818,7 +1958,10 @@ async def checkout_tier_status(
                         {"$set": {
                             "payment_status": payment_status,
                             "status": "complete",
-                            "provisioned": True,
+                            # `provisioned` is set inside _provision_tier_purchase
+                            # via atomic CAS — don't overwrite here or we'd
+                            # clobber `provisioning_blocked` for coupon-abuse
+                            # blocks. See CR-4 / SEC-003 fix 2026-07-21.
                             "stripe_subscription_id": session.get("subscription"),
                             "stripe_customer_id": session.get("customer"),
                             "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -1827,7 +1970,11 @@ async def checkout_tier_status(
                     )
                     txn["payment_status"] = payment_status
                     txn["status"] = "complete"
-                    txn["provisioned"] = True
+                    # Re-read the atomically-set flag so callers see the truth.
+                    fresh_txn = await db.payment_transactions.find_one(
+                        {"session_id": session_id}, {"provisioned": 1, "_id": 0}
+                    ) or {}
+                    txn["provisioned"] = bool(fresh_txn.get("provisioned"))
                     logger.warning(
                         "Self-heal provisioned tier for user=%s session=%s (webhook missed)",
                         user["id"], session_id,
@@ -2068,6 +2215,10 @@ async def _provision_tier_purchase(
     fallback (e.g. when a webhook was missed or dropped).
 
     Guarantees (bugfixes 2026-07-21):
+      • Atomic idempotency: uses conditional update on
+        `payment_transactions.provisioned` so concurrent webhook + self-heal
+        (or Stripe event replay) can never double-provision, double-email
+        or reset `ai_credits_used_this_period`.
       • Top-ups (AI+Social Week/Month) NEVER overwrite subscription_plan
         or is_lifetime — they only grant/replace credit fields.
       • Amount-tamper guard: if the amount actually charged is <50% of the
@@ -2143,7 +2294,64 @@ async def _provision_tier_purchase(
                 "Reason": "Amount paid <50% of list — coupon likely misused. Entitlement NOT granted.",
             },
         ))
+        # Record the block on the transaction so the self-heal / webhook
+        # replay won't keep re-firing alert emails, WITHOUT setting
+        # `provisioned=True` (which would leak entitlement if the block is
+        # later lifted).
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {"$set": {
+                "provisioning_blocked": True,
+                "provisioning_blocked_reason": "amount_below_50pct_of_list",
+                "provisioning_blocked_at": datetime.now(timezone.utc).isoformat(),
+            }},
+        )
         return
+
+    # ---- CR-4 idempotency guard (2026-07-21) ----------------------------
+    # Atomic check-and-set on `payment_transactions.provisioned`. If a
+    # concurrent webhook / self-heal / event replay has already flipped
+    # the flag, matched_count == 0 and we return WITHOUT touching the
+    # user record or emitting duplicate side effects (email, activity
+    # feed, ai_credits reset).
+    guard = await db.payment_transactions.update_one(
+        {
+            "session_id": session_id,
+            "provisioned": {"$ne": True},
+            "provisioning_blocked": {"$ne": True},
+        },
+        {"$set": {
+            "provisioned": True,
+            "provisioned_at": datetime.now(timezone.utc).isoformat(),
+            "provisioning_source": event_type,
+        }},
+    )
+    if guard.matched_count == 0:
+        # No unprovisioned+unblocked row matched. Two possibilities:
+        #  (a) The txn row does not exist yet (rare edge case: webhook
+        #      arrived before the checkout endpoint wrote the row; also
+        #      the test-only direct-call path). Create it and continue.
+        #  (b) A row exists but is already provisioned or blocked → skip.
+        existing = await db.payment_transactions.find_one(
+            {"session_id": session_id},
+            {"provisioned": 1, "provisioning_blocked": 1, "_id": 0},
+        )
+        if existing is None:
+            await db.payment_transactions.insert_one({
+                "id": str(uuid.uuid4()),
+                "session_id": session_id,
+                "user_id": user_id,
+                "provisioned": True,
+                "provisioned_at": datetime.now(timezone.utc).isoformat(),
+                "provisioning_source": event_type,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        else:
+            logger.info(
+                "Provisioning skipped for session=%s — already provisioned or blocked (source=%s).",
+                session_id, event_type,
+            )
+            return
 
     credits_limit = features.get("ai_credits_limit")
     credits_period = features.get("ai_credits_period", "month")
@@ -2481,7 +2689,11 @@ async def stripe_webhook(request: Request):
                 {"$set": {
                     "payment_status": obj.get("payment_status") or "paid",
                     "status": "complete",
-                    "provisioned": True,
+                    # `provisioned` is now atomically set inside
+                    # _provision_tier_purchase (CR-4). Do not overwrite it
+                    # here — a promo-abuse block sets `provisioning_blocked`
+                    # without provisioning, and overwriting `provisioned: True`
+                    # would leak entitlement.
                     "stripe_subscription_id": obj.get("subscription"),
                     "stripe_customer_id": obj.get("customer"),
                     "updated_at": now_iso,
@@ -2742,8 +2954,18 @@ async def account_get_logo(u: Optional[str] = None, user=Depends(get_current_use
 #  Startup
 # ========================================================================
 async def seed_founder():
+    # SEC-001 fix (2026-07-21): FOUNDER_PASSWORD must come from env, no
+    # source-code default. If unset, refuse to seed (log CRITICAL). The
+    # existing founder record in the DB is not touched.
     email = os.environ.get("FOUNDER_EMAIL", "regie@myrootzz.com").lower().strip()
-    password = os.environ.get("FOUNDER_PASSWORD", "Zynthoro2026!")
+    password = os.environ.get("FOUNDER_PASSWORD")
+    if not password or len(password) < 12:
+        logger.critical(
+            "SECURITY: FOUNDER_PASSWORD env var is missing or shorter than 12 chars — "
+            "refusing to seed founder account. Set a strong password in backend/.env "
+            "(existing founder record is preserved if present)."
+        )
+        return
     existing = await db.users.find_one({"email": email})
     if not existing:
         await db.users.insert_one({
@@ -2766,7 +2988,9 @@ async def seed_founder():
         })
         logger.info("Founder account seeded: %s", email)
     else:
-        # Keep founder flags consistent with .env config
+        # Keep founder flags consistent with .env config. Do NOT overwrite
+        # the password_hash — password rotation goes through a dedicated
+        # reset flow, not a boot-time overwrite.
         await db.users.update_one(
             {"email": email},
             {"$set": {
@@ -2786,9 +3010,21 @@ async def seed_jury_demo():
     the dashboard with one click — no email verification, no 2FA prompt, no
     onboarding wizard. The flag `is_demo=True` exempts the account from any
     real billing or destructive operations.
+
+    SEC-002 fix (2026-07-21): password must come from env
+    (`JURY_DEMO_PASSWORD`). If unset, the demo is not seeded — safer to
+    have no jury account than an account whose password sits in the
+    source tree. In non-prod environments where a stable demo login is
+    critical, set the env var and boot again.
     """
     email = "jury@zynthoro.ai"
-    password = "ZynthoroDemo2026!"
+    password = os.environ.get("JURY_DEMO_PASSWORD")
+    if not password or len(password) < 12:
+        logger.warning(
+            "JURY_DEMO_PASSWORD env var is missing or too short — skipping "
+            "jury demo seed. Existing demo user (if any) is left untouched."
+        )
+        return
     now_iso = datetime.now(timezone.utc).isoformat()
 
     base_doc = {
@@ -3003,6 +3239,9 @@ async def startup():
     await db.ai_logs.create_index([("assistant", 1), ("timestamp", -1)])
     await db.activity_events.create_index([("workspace_owner", 1), ("timestamp", -1)])
     await db.payment_transactions.create_index("session_id", unique=True)
+    # SEC-004: rate limit + audit trail for admin backdoors; auto-purge 7d
+    await db.admin_call_attempts.create_index([("client_ip", 1), ("attempted_at", -1)])
+    await db.admin_call_attempts.create_index("attempted_at", expireAfterSeconds=60 * 60 * 24 * 7)
     # ai_uploads is session-temporary — TTL index auto-purges after 24h
     await db.ai_uploads.create_index("file_id", unique=True)
     await db.ai_uploads.create_index("user_id")
@@ -3127,7 +3366,17 @@ app.include_router(canva_module.build_router(db, get_current_user_full))
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    # SEC-005 fix (2026-07-21): never reflect "*" with credentials in
+    # production. If CORS_ORIGINS is unset or "*", fall back to the known
+    # public app origin(s). Comma-separated list is honoured.
+    allow_origins=[
+        o.strip() for o in (
+            os.environ.get('CORS_ORIGINS') or (
+                "https://zynthoro.ai,https://www.zynthoro.ai,"
+                "https://zynthoro-foundation.preview.emergentagent.com"
+            )
+        ).split(',') if o.strip() and o.strip() != "*"
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )

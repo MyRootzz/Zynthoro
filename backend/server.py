@@ -367,6 +367,48 @@ async def founder_digest_preview(user=Depends(get_founder_user)):
     }
 
 
+@api_router.post("/founder/reset-jury-demo")
+async def founder_reset_jury_demo(user=Depends(get_founder_user)):
+    """Founder-only: wipe the jury demo workspace's Finance + Sales data
+    and re-seed it with the original XPRIZE sample records.
+
+    Only touches rows tagged `is_demo=True` for the jury user's workspace,
+    so real work by any other account is never affected.
+    """
+    jury = await db.users.find_one({"email": "jury@zynthoro.ai"})
+    if not jury:
+        raise HTTPException(status_code=404, detail="Jury demo account not found.")
+    wo = jury["id"]
+
+    # 1) Wipe demo-flagged Finance + Sales records for the jury workspace.
+    inv_del  = (await db.finance_invoices.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
+    pay_del  = (await db.finance_payments.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
+    lead_del = (await db.sales_leads.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
+    # Also reset finance_settings so re-seed reinstalls the branded defaults
+    # and the invoice sequence counter starts fresh.
+    await db.finance_settings.delete_many({"workspace_owner": wo})
+
+    # 2) Re-seed via the same helper used at startup.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await _seed_finance_and_sales_demo(wo, now_iso)
+
+    # 3) Count what we just re-seeded so the UI can confirm.
+    inv_new  = await db.finance_invoices.count_documents({"workspace_owner": wo, "is_demo": True})
+    pay_new  = await db.finance_payments.count_documents({"workspace_owner": wo, "is_demo": True})
+    lead_new = await db.sales_leads.count_documents({"workspace_owner": wo, "is_demo": True})
+
+    logger.info(
+        "Founder %s reset jury demo — wiped %d invoices / %d payments / %d leads, "
+        "re-seeded %d invoices / %d payments / %d leads.",
+        user.get("email"), inv_del, pay_del, lead_del, inv_new, pay_new, lead_new,
+    )
+    return {
+        "ok": True,
+        "wiped": {"invoices": inv_del, "payments": pay_del, "leads": lead_del},
+        "seeded": {"invoices": inv_new, "payments": pay_new, "leads": lead_new},
+    }
+
+
 # ========================================================================
 #  Auth Routes
 # ========================================================================

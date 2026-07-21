@@ -3,7 +3,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Image as ImageIcon, Loader2, Trash2, Upload, Save, CreditCard } from "lucide-react";
+import { Image as ImageIcon, Loader2, Trash2, Upload, Save, CreditCard, RotateCcw } from "lucide-react";
 import { API, formatApiError, useAuth } from "@/contexts/AuthContext";
 import ChangePlanDialog from "@/components/dashboard/ChangePlanDialog";
 
@@ -210,7 +210,66 @@ export default function Settings() {
       </section>
 
       <ChangePlanDialog open={changePlanOpen} onOpenChange={setChangePlanOpen} />
+
+      {user?.is_founder && <FounderResetJuryDemo />}
     </div>
+  );
+}
+
+function FounderResetJuryDemo() {
+  const [busy, setBusy] = useState(false);
+  const reset = async () => {
+    if (!window.confirm(
+      "Wipe all demo data (invoices, payments, leads) from the jury@zynthoro.ai " +
+      "workspace and re-seed the original XPRIZE sample records?\n\n" +
+      "Real work by other accounts is never touched.",
+    )) return;
+    setBusy(true);
+    try {
+      const { data } = await axios.post(
+        `${API}/founder/reset-jury-demo`, {}, { withCredentials: true },
+      );
+      toast.success(
+        `Jury demo reset. Wiped ${data.wiped.invoices} invoices / ${data.wiped.leads} leads · ` +
+        `re-seeded ${data.seeded.invoices} invoices, ${data.seeded.payments} payments, ${data.seeded.leads} leads.`,
+      );
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || "Reset failed.");
+    }
+    setBusy(false);
+  };
+  return (
+    <section
+      id="founder-jury-reset"
+      className="mt-6 bg-white border border-[#eee] rounded-2xl p-6"
+      data-testid="founder-jury-reset-section"
+    >
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase tracking-wider" style={{ background: "rgba(212,175,55,0.18)", color: "#8a6e1d" }}>
+              Founder only
+            </span>
+            <h2 className="text-[15px] font-semibold">Reset jury demo data</h2>
+          </div>
+          <p className="text-[13px] text-[#555] mt-1.5 max-w-lg">
+            Wipes the <b>jury@zynthoro.ai</b> workspace&apos;s demo invoices, payments and leads,
+            then re-seeds the original XPRIZE sample records. Handy if the jury walkthrough
+            accidentally modifies data mid-demo. Other accounts are never touched.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={reset}
+          disabled={busy}
+          className="zy-btn-outline whitespace-nowrap disabled:opacity-50"
+          data-testid="founder-reset-jury-btn"
+        >
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+          {busy ? "Resetting…" : "Reset jury demo"}
+        </button>
+      </div>
+    </section>
   );
 }
 

@@ -22,6 +22,7 @@ import io
 import uuid
 from datetime import datetime, timezone, date
 from typing import List, Optional, Literal
+from xml.sax.saxutils import escape as _xml_escape
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -70,6 +71,18 @@ CURRENCY_SYMBOL = {"EUR": "€", "USD": "$", "GBP": "£"}
 
 def _sym(currency: str) -> str:
     return CURRENCY_SYMBOL.get((currency or "EUR").upper(), (currency or "EUR"))
+
+
+def _rl(text: Optional[str]) -> str:
+    """Escape a user-supplied string for safe embedding in reportlab
+    Paragraph mini-HTML markup. Also converts newlines to `<br/>`.
+
+    Without this, any `<` in a customer name, invoice notes, bank details, etc.
+    crashes the PDF renderer with a parse error (HTTP 500).
+    """
+    if not text:
+        return ""
+    return _xml_escape(str(text)).replace("\n", "<br/>")
 
 
 def _totals(items: list[dict]) -> tuple[float, float, float]:
@@ -146,13 +159,13 @@ def _render_invoice_pdf(inv: dict, settings: dict, logo_bytes: Optional[bytes] =
 
     # Header row: company (left) — logo + INVOICE title + number (right)
     company_html = (
-        f"<b>{settings.get('company_name') or 'Your Company'}</b><br/>"
-        f"{(settings.get('company_address') or '').replace(chr(10), '<br/>')}"
+        f"<b>{_rl(settings.get('company_name') or 'Your Company')}</b><br/>"
+        f"{_rl(settings.get('company_address') or '')}"
     )
     if settings.get("company_email"):
-        company_html += f"<br/>{settings['company_email']}"
+        company_html += f"<br/>{_rl(settings['company_email'])}"
     if settings.get("company_vat"):
-        company_html += f"<br/>VAT: {settings['company_vat']}"
+        company_html += f"<br/>VAT: {_rl(settings['company_vat'])}"
 
     # Build the right-hand column: logo image (if provided) + INVOICE title + number.
     right_col: list = []
@@ -175,7 +188,7 @@ def _render_invoice_pdf(inv: dict, settings: dict, logo_bytes: Optional[bytes] =
     right_col.append(Paragraph(
         f"<para align='right'>"
         f"<font size='22' color='#0A1628'><b>INVOICE</b></font><br/>"
-        f"<font size='11' color='#1A4FFF'><b>{inv['number']}</b></font>"
+        f"<font size='11' color='#1A4FFF'><b>{_rl(inv['number'])}</b></font>"
         f"</para>",
         body,
     ))
@@ -191,17 +204,17 @@ def _render_invoice_pdf(inv: dict, settings: dict, logo_bytes: Optional[bytes] =
     # Bill-to + meta
     bill_to = (
         f"<b>Bill To</b><br/>"
-        f"{inv['client_name']}<br/>"
-        f"{(inv.get('client_address') or '').replace(chr(10), '<br/>')}"
+        f"{_rl(inv['client_name'])}<br/>"
+        f"{_rl(inv.get('client_address') or '')}"
     )
     if inv.get("client_email"):
-        bill_to += f"<br/>{inv['client_email']}"
+        bill_to += f"<br/>{_rl(inv['client_email'])}"
 
     meta = (
         f"<para align='right'>"
-        f"<b>Issue date:</b> {inv.get('issue_date') or ''}<br/>"
-        f"<b>Due date:</b> {inv.get('due_date') or '—'}<br/>"
-        f"<b>Status:</b> <font color='#1A4FFF'>{(inv.get('status') or 'draft').upper()}</font>"
+        f"<b>Issue date:</b> {_rl(inv.get('issue_date') or '')}<br/>"
+        f"<b>Due date:</b> {_rl(inv.get('due_date') or '—')}<br/>"
+        f"<b>Status:</b> <font color='#1A4FFF'>{_rl((inv.get('status') or 'draft').upper())}</font>"
         f"</para>"
     )
     meta_tbl = Table(
@@ -220,7 +233,7 @@ def _render_invoice_pdf(inv: dict, settings: dict, logo_bytes: Optional[bytes] =
         tax = float(it.get("tax_rate") or 0)
         line_total = qty * price * (1 + tax / 100.0)
         rows.append([
-            Paragraph(it.get("description", ""), body),
+            Paragraph(_rl(it.get("description", "")), body),
             f"{qty:g}",
             f"{sym}{price:,.2f}",
             f"{tax:g}%",
@@ -273,15 +286,15 @@ def _render_invoice_pdf(inv: dict, settings: dict, logo_bytes: Optional[bytes] =
     bank = (inv.get("bank_details") or settings.get("default_bank_details") or "").strip()
     if pay_terms:
         story.append(Paragraph("PAYMENT TERMS", h_label))
-        story.append(Paragraph(pay_terms.replace("\n", "<br/>"), body))
+        story.append(Paragraph(_rl(pay_terms), body))
         story.append(Spacer(1, 4 * mm))
     if bank:
         story.append(Paragraph("BANK DETAILS", h_label))
-        story.append(Paragraph(bank.replace("\n", "<br/>"), body))
+        story.append(Paragraph(_rl(bank), body))
         story.append(Spacer(1, 4 * mm))
     if inv.get("notes"):
         story.append(Paragraph("NOTES", h_label))
-        story.append(Paragraph(str(inv["notes"]).replace("\n", "<br/>"), body))
+        story.append(Paragraph(_rl(inv["notes"]), body))
         story.append(Spacer(1, 4 * mm))
 
     story.append(Spacer(1, 6 * mm))
@@ -520,12 +533,12 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
         sym = _sym(inv.get("currency", "EUR"))
         subject = f"Invoice {inv['number']} from {settings.get('company_name') or 'Zynthoro'}"
         body_html = (
-            f"<p>Hi {inv['client_name']},</p>"
-            f"<p>Please find your invoice <b>{inv['number']}</b> attached.</p>"
+            f"<p>Hi {_rl(inv['client_name'])},</p>"
+            f"<p>Please find your invoice <b>{_rl(inv['number'])}</b> attached.</p>"
             f"<p>Amount due: <b>{sym}{inv.get('total', 0):,.2f}</b><br/>"
-            f"Due date: <b>{inv.get('due_date') or '—'}</b></p>"
-            f"<p>{(inv.get('payment_terms') or '').replace(chr(10), '<br/>')}</p>"
-            f"<p>Thank you,<br/>{settings.get('company_name') or 'The team'}</p>"
+            f"Due date: <b>{_rl(inv.get('due_date') or '—')}</b></p>"
+            f"<p>{_rl(inv.get('payment_terms') or '')}</p>"
+            f"<p>Thank you,<br/>{_rl(settings.get('company_name') or 'The team')}</p>"
         )
         email_id = await email_service.send_invoice_email(
             to=inv["client_email"],
@@ -539,25 +552,30 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
         eid = email_id.get("email_id")
         eerr = email_id.get("error")
 
-        await db.finance_invoices.update_one(
-            {"id": iid, "workspace_owner": wo},
-            {"$set": {
-                "status": "sent" if inv.get("status") == "draft" else inv.get("status"),
-                "sent_at": _now(), "updated_at": _now(),
-            }},
-        )
-        try:
-            await activity_log.log_event(
-                db, workspace_owner=wo, actor_email=user.get("email"),
-                event_type="invoice_sent", icon="receipt",
-                title=f"Invoice {inv['number']} emailed to {inv['client_name']}",
-                subtitle=inv["client_email"],
-                href="/dashboard/finance",
+        # CRITICAL: only flip status to "sent" if Resend confirmed delivery
+        # (returned a real email_id). Otherwise keep the prior status so
+        # the owner knows to retry — never silently mark a failed send as
+        # "sent" (that would break overdue tracking and collections trust).
+        if eid:
+            await db.finance_invoices.update_one(
+                {"id": iid, "workspace_owner": wo},
+                {"$set": {
+                    "status": "sent" if inv.get("status") == "draft" else inv.get("status"),
+                    "sent_at": _now(), "updated_at": _now(),
+                }},
             )
-        except Exception:
-            pass
+            try:
+                await activity_log.log_event(
+                    db, workspace_owner=wo, actor_email=user.get("email"),
+                    event_type="invoice_sent", icon="receipt",
+                    title=f"Invoice {inv['number']} emailed to {inv['client_name']}",
+                    subtitle=inv["client_email"],
+                    href="/dashboard/finance",
+                )
+            except Exception:
+                pass
         return {
-            "ok": True,
+            "ok": eid is not None,
             "email_id": eid,
             "email_sent": eid is not None,
             "error": eerr,

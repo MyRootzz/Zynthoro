@@ -364,10 +364,10 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
     async def invoice_billable_time(pid: str, payload: BillHoursIn, user=Depends(get_user)):
         """Create a draft invoice from a project's unbilled billable hours.
 
-        - Client comes from a Sales lead (must be stage='won').
-        - Line items are grouped by task (title = task, qty = hours, price = rate).
-        - Time entries used are marked `invoiced=True` + `invoice_id=<new>` so
-          they cannot be double-billed.
+        Concurrency-safe: atomically CLAIMS unbilled entries with a temporary
+        `invoice_id=<claim_token>` before building the invoice. Two concurrent
+        requests will each only see the entries they successfully claimed —
+        the same hour can never end up on two draft invoices.
         """
         wo = _wo(user)
         p = await db.projects.find_one({"id": pid, "workspace_owner": wo})
@@ -383,100 +383,126 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
                 detail="Only 'won' leads can be used as invoice clients. Move the lead to Won first.",
             )
 
-        # Grab unbilled billable entries + group by task.
-        entries = await db.time_entries.find(
-            {"workspace_owner": wo, "project_id": pid,
-             "billable": True,
+        # --- ATOMIC CLAIM PASS ---
+        # Each individual `update_many` document write is atomic in Mongo.
+        # By filtering on `invoiced: false/missing` and setting `invoiced=True`
+        # in one statement, only ONE concurrent request can win each doc.
+        claim_token = f"claim-{uuid.uuid4()}"
+        claim_res = await db.time_entries.update_many(
+            {"workspace_owner": wo, "project_id": pid, "billable": True,
              "$or": [{"invoiced": {"$exists": False}}, {"invoiced": False}]},
-        ).to_list(5000)
-        if not entries:
+            {"$set": {"invoiced": True, "invoice_id": claim_token, "updated_at": _now()}},
+        )
+        if claim_res.modified_count == 0:
             raise HTTPException(status_code=400, detail="No unbilled billable time entries for this project.")
 
-        tids = list({e.get("task_id") for e in entries if e.get("task_id")})
-        titles: dict = {}
-        if tids:
-            async for t in db.project_tasks.find(
-                {"workspace_owner": wo, "id": {"$in": tids}},
-                {"_id": 0, "id": 1, "title": 1},
-            ):
-                titles[t["id"]] = t["title"]
+        # Fetch ONLY the entries this request successfully claimed.
+        entries = await db.time_entries.find(
+            {"workspace_owner": wo, "invoice_id": claim_token},
+        ).to_list(10000)
+        if not entries:
+            # Extremely unlikely (would need a purge between claim and read)
+            # but be defensive.
+            raise HTTPException(status_code=400, detail="Claimed entries disappeared before invoicing.")
 
-        buckets: dict = {}
-        for e in entries:
-            tid = e.get("task_id") or "_no_task_"
-            if tid not in buckets:
-                buckets[tid] = {"title": titles.get(tid, "General work"), "hours": 0.0}
-            buckets[tid]["hours"] += float(e.get("hours") or 0)
+        try:
+            tids = list({e.get("task_id") for e in entries if e.get("task_id")})
+            titles: dict = {}
+            if tids:
+                async for t in db.project_tasks.find(
+                    {"workspace_owner": wo, "id": {"$in": tids}},
+                    {"_id": 0, "id": 1, "title": 1},
+                ):
+                    titles[t["id"]] = t["title"]
 
-        # Build line items.
-        items: List[dict] = []
-        for tid, b in buckets.items():
-            if b["hours"] <= 0:
-                continue
-            items.append({
-                "description": f"{b['title']} ({p['name']}) — {round(b['hours'], 2)}h",
-                "quantity": round(b["hours"], 2),
-                "unit_price": float(payload.hourly_rate),
-                "tax_rate": float(payload.tax_rate or 0),
-            })
-        if not items:
-            raise HTTPException(status_code=400, detail="Nothing to invoice (zero total hours).")
+            buckets: dict = {}
+            for e in entries:
+                tid = e.get("task_id") or "_no_task_"
+                if tid not in buckets:
+                    buckets[tid] = {"title": titles.get(tid, "General work"), "hours": 0.0}
+                buckets[tid]["hours"] += float(e.get("hours") or 0)
 
-        # Ensure finance_settings exists (idempotent) and grab an invoice number.
-        settings = await db.finance_settings.find_one({"workspace_owner": wo}, {"_id": 0})
-        if not settings:
-            settings = _finance_default_settings(wo)
-            settings["created_at"] = _now()
-            await db.finance_settings.insert_one(dict(settings))
+            items: List[dict] = []
+            for tid, b in buckets.items():
+                if b["hours"] <= 0:
+                    continue
+                items.append({
+                    "description": f"{b['title']} ({p['name']}) — {round(b['hours'], 2)}h",
+                    "quantity": round(b["hours"], 2),
+                    "unit_price": float(payload.hourly_rate),
+                    "tax_rate": float(payload.tax_rate or 0),
+                })
+            if not items:
+                raise HTTPException(status_code=400, detail="Nothing to invoice (zero total hours).")
 
-        # Atomic sequence bump — same logic as finance_module.
-        res = await db.finance_settings.find_one_and_update(
-            {"workspace_owner": wo}, {"$inc": {"next_invoice_seq": 1}},
-            return_document=True,
-        )
-        seq = max(1, int((res or settings).get("next_invoice_seq", 1)) - 1)
-        prefix = settings.get("invoice_prefix") or "INV-"
-        from datetime import date as _date
-        number = f"{prefix}{_date.today().year}-{seq:04d}"
+            # Ensure finance_settings exists (idempotent) and grab an invoice number.
+            settings = await db.finance_settings.find_one({"workspace_owner": wo}, {"_id": 0})
+            if not settings:
+                settings = _finance_default_settings(wo)
+                settings["created_at"] = _now()
+                await db.finance_settings.insert_one(dict(settings))
 
-        subtotal, tax_total, total = _finance_totals(items)
+            # Atomic sequence bump — same logic as finance_module.
+            res = await db.finance_settings.find_one_and_update(
+                {"workspace_owner": wo}, {"$inc": {"next_invoice_seq": 1}},
+                return_document=True,
+            )
+            seq = max(1, int((res or settings).get("next_invoice_seq", 1)) - 1)
+            prefix = settings.get("invoice_prefix") or "INV-"
+            from datetime import date as _date
+            number = f"{prefix}{_date.today().year}-{seq:04d}"
 
-        today = datetime.now(timezone.utc).date().isoformat()
-        due_date = None
-        if payload.due_in_days is not None:
-            from datetime import timedelta
-            due_date = (datetime.now(timezone.utc).date() + timedelta(days=int(payload.due_in_days))).isoformat()
+            subtotal, tax_total, total = _finance_totals(items)
 
-        invoice_id = str(uuid.uuid4())
-        invoice = {
-            "id": invoice_id,
-            "workspace_owner": wo,
-            "number": number,
-            "client_name": lead["name"] + (f" · {lead['company']}" if lead.get("company") else ""),
-            "client_email": lead.get("email"),
-            "client_address": "",
-            "issue_date": today,
-            "due_date": due_date,
-            "currency": payload.currency or settings.get("currency") or "EUR",
-            "items": items,
-            "subtotal": subtotal, "tax_total": tax_total, "total": total,
-            "status": "draft",
-            "payment_terms": settings.get("default_payment_terms", ""),
-            "bank_details": settings.get("default_bank_details", ""),
-            "notes": f"Billed from time tracking for project “{p['name']}”.",
-            "sent_at": None, "paid_at": None,
-            "created_at": _now(), "updated_at": _now(),
-            "source_project_id": pid,
-            "source_lead_id": lead["id"],
-        }
-        await db.finance_invoices.insert_one(invoice)
+            today = datetime.now(timezone.utc).date().isoformat()
+            due_date = None
+            if payload.due_in_days is not None:
+                from datetime import timedelta
+                due_date = (datetime.now(timezone.utc).date() + timedelta(days=int(payload.due_in_days))).isoformat()
 
-        # Mark the billed entries so they can't be re-billed.
-        entry_ids = [e["id"] for e in entries]
-        await db.time_entries.update_many(
-            {"id": {"$in": entry_ids}, "workspace_owner": wo},
-            {"$set": {"invoiced": True, "invoice_id": invoice_id, "updated_at": _now()}},
-        )
+            invoice_id = str(uuid.uuid4())
+            invoice = {
+                "id": invoice_id,
+                "workspace_owner": wo,
+                "number": number,
+                "client_name": lead["name"] + (f" · {lead['company']}" if lead.get("company") else ""),
+                "client_email": lead.get("email"),
+                "client_address": "",
+                "issue_date": today,
+                "due_date": due_date,
+                "currency": payload.currency or settings.get("currency") or "EUR",
+                "items": items,
+                "subtotal": subtotal, "tax_total": tax_total, "total": total,
+                "status": "draft",
+                "payment_terms": settings.get("default_payment_terms", ""),
+                "bank_details": settings.get("default_bank_details", ""),
+                "notes": f"Billed from time tracking for project “{p['name']}”.",
+                "sent_at": None, "paid_at": None,
+                "created_at": _now(), "updated_at": _now(),
+                "source_project_id": pid,
+                "source_lead_id": lead["id"],
+            }
+            await db.finance_invoices.insert_one(invoice)
+
+            # Commit: swap the claim token for the real invoice id.
+            await db.time_entries.update_many(
+                {"workspace_owner": wo, "invoice_id": claim_token},
+                {"$set": {"invoice_id": invoice_id, "updated_at": _now()}},
+            )
+        except HTTPException:
+            # On any downstream failure, RELEASE the claimed entries so they
+            # can be billed by a retry — never leave them in limbo.
+            await db.time_entries.update_many(
+                {"workspace_owner": wo, "invoice_id": claim_token},
+                {"$set": {"invoiced": False, "invoice_id": None, "updated_at": _now()}},
+            )
+            raise
+        except Exception:
+            await db.time_entries.update_many(
+                {"workspace_owner": wo, "invoice_id": claim_token},
+                {"$set": {"invoiced": False, "invoice_id": None, "updated_at": _now()}},
+            )
+            raise
 
         try:
             await activity_log.log_event(
@@ -493,7 +519,7 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
         invoice.pop("_id", None)
         return {
             "invoice": invoice,
-            "entries_marked": len(entry_ids),
+            "entries_marked": len(entries),
             "hours_billed": round(sum(float(e.get("hours") or 0) for e in entries), 2),
         }
 

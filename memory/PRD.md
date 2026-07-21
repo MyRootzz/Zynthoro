@@ -996,3 +996,43 @@ Compliance: 12 checklist items + 6 policy templates seeded
 - `/app/backend/finance_module.py` — Image import, `_render_invoice_pdf` signature + header layout, `_get_logo_bytes` helper, both endpoints pass logo to renderer
 - `/app/backend/tests/test_session_c1_20260215.py` — extra test for logo embedding
 
+
+### 2026-02-15 (later) — Code review fixes: 3 P0/P1 defects in Finance & Billing
+
+Following an internal code review of Sessions B/C1/C2 modules, fixed the 3 most impactful defects (option D of the plan — pagination truncation deferred to a later session).
+
+**FIX #1 — HIGH · Invoice PDF crash on `<` in user-supplied fields** (`finance_module.py`)
+- **Bug**: Any customer whose name/notes/bank details contained `<` (e.g. `"Acme <div> Corp"`, `"IBAN NL01 <bank>"`) crashed the PDF renderer with `ValueError: Parse error` — HTTP 500 on both `/pdf` and `/send-email` endpoints. Broke core billing for any customer with punctuation resembling markup.
+- **Fix**: New `_rl(text)` helper — `xml.sax.saxutils.escape` + `\n` → `<br/>` — applied to every user-controlled field embedded in reportlab `Paragraph` markup: `company_name`, `company_address`, `company_email`, `company_vat`, `client_name`, `client_address`, `client_email`, `notes`, `payment_terms`, `bank_details`, `item.description`, `invoice.number`, and the email body HTML.
+- **Verified** — E2E curl created an invoice with `<div>`, `<font color=red>`, `<b>` fragments in every field. PDF now renders successfully (200, 3.3kb valid `%PDF-` stream) instead of 500.
+
+**FIX #2 — MED · Invoice status flipped to "sent" even when email failed** (`finance_module.py`)
+- **Bug**: `send-email` endpoint unconditionally updated `status='sent'` + `sent_at=now()` regardless of Resend outcome. A quota failure, bad key, or oversized attachment silently marked the invoice sent → the founder believed the client received it → collections/overdue tracking was wrong.
+- **Fix**: Gate the status update on `email_id.get('email_id')` — only flip when Resend returned a real ID. Response now returns `ok: false` + the error message when send fails, so the UI toast correctly says "Email failed" and the invoice stays draft.
+
+**FIX #3 — MED · Bill-Hours race allowed double-billing** (`projects_module.py`)
+- **Bug**: `POST /api/projects/{pid}/invoice-billable-time` read unbilled entries, built the invoice, then marked entries — three separate ops. Two simultaneous calls (double-click, client retry) could both see the same unbilled set and each create a full invoice → the same hours appeared on two draft invoices.
+- **Fix**: Two-step **claim-then-commit** pattern:
+  1. Atomic `update_many` with a unique `claim_token` — MongoDB's per-doc atomicity guarantees each entry is claimed by exactly one concurrent request.
+  2. Fetch only entries with THIS request's claim token.
+  3. Build invoice, then `update_many` swaps `invoice_id` from claim_token to real invoice id.
+  4. On any downstream failure (401, 500, etc.), the `try/except` releases claimed entries back to the unbilled pool → no orphaned "invoiced with no invoice" state.
+- **Verified** — 3 concurrent httpx calls to the same endpoint: **1 succeeded** (201, 10.5h across 3 entries), **2 correctly returned 400** ("No unbilled billable time entries"). Pre-fix same test would have created 3 invoices for 31.5h phantom hours.
+
+**Tests** — `/app/backend/tests/test_code_review_fixes_20260215.py` (5/5 pass)
+- `test_pdf_renders_when_client_name_contains_angle_brackets`
+- `test_rl_escape_helper_escapes_and_preserves_newlines`
+- `test_invoice_status_unchanged_when_email_returns_no_id`
+- `test_atomic_claim_prevents_double_billing`
+- `test_claim_release_on_failure_puts_entries_back`
+
+**Deferred (P2 backlog)**
+- LOW: Float money math → Decimal for cent-perfect totals at scale
+- LOW: Overdue-flip should move from GET handler into scheduled job
+- MED: Finance dashboard pagination — currently `to_list(500)` silently truncates for very-high-volume workspaces (below current customer scale, but worth fixing before mass adoption).
+
+**Files touched**
+- `/app/backend/finance_module.py` — `_rl` helper + all user-string interpolations + email HTML + email-failure gating
+- `/app/backend/projects_module.py` — atomic claim-then-commit for `invoice-billable-time`
+- `/app/backend/tests/test_code_review_fixes_20260215.py` — new regression suite (5 tests)
+

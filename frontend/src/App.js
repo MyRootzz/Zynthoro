@@ -25,6 +25,9 @@ import CommunicationModule from "@/pages/dashboard/CommunicationModule";
 import ComplianceModule from "@/pages/dashboard/ComplianceModule";
 import FinanceModule from "@/pages/dashboard/FinanceModule";
 import SalesModule from "@/pages/dashboard/SalesModule";
+import ProjectsModule from "@/pages/dashboard/ProjectsModule";
+import PlanningModule from "@/pages/dashboard/PlanningModule";
+import TimeTrackingModule from "@/pages/dashboard/TimeTrackingModule";
 import TeamPage from "@/pages/dashboard/Team";
 import Settings from "@/pages/dashboard/Settings";
 import AssistantPage from "@/pages/dashboard/AssistantPage";
@@ -91,6 +94,9 @@ function App() {
               <Route path="compliance" element={<ComplianceModule />} />
               <Route path="finance" element={<FinanceModule />} />
               <Route path="sales" element={<SalesModule />} />
+              <Route path="projects" element={<ProjectsModule />} />
+              <Route path="planning" element={<PlanningModule />} />
+              <Route path="time-tracking" element={<TimeTrackingModule />} />
               <Route path=":slug" element={<ModulePlaceholder />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

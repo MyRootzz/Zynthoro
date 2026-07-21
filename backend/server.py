@@ -380,32 +380,49 @@ async def founder_reset_jury_demo(user=Depends(get_founder_user)):
         raise HTTPException(status_code=404, detail="Jury demo account not found.")
     wo = jury["id"]
 
-    # 1) Wipe demo-flagged Finance + Sales records for the jury workspace.
+    # 1) Wipe demo-flagged Finance + Sales + C2 records for the jury workspace.
     inv_del  = (await db.finance_invoices.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
     pay_del  = (await db.finance_payments.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
     lead_del = (await db.sales_leads.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
+    proj_del = (await db.projects.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
+    task_del = (await db.project_tasks.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
+    ms_del   = (await db.project_milestones.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
+    spr_del  = (await db.sprints.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
+    time_del = (await db.time_entries.delete_many({"workspace_owner": wo, "is_demo": True})).deleted_count
     # Also reset finance_settings so re-seed reinstalls the branded defaults
     # and the invoice sequence counter starts fresh.
     await db.finance_settings.delete_many({"workspace_owner": wo})
 
-    # 2) Re-seed via the same helper used at startup.
+    # 2) Re-seed via the same helpers used at startup.
     now_iso = datetime.now(timezone.utc).isoformat()
     await _seed_finance_and_sales_demo(wo, now_iso)
+    await _seed_projects_planning_time_demo(wo, now_iso)
 
     # 3) Count what we just re-seeded so the UI can confirm.
     inv_new  = await db.finance_invoices.count_documents({"workspace_owner": wo, "is_demo": True})
     pay_new  = await db.finance_payments.count_documents({"workspace_owner": wo, "is_demo": True})
     lead_new = await db.sales_leads.count_documents({"workspace_owner": wo, "is_demo": True})
+    proj_new = await db.projects.count_documents({"workspace_owner": wo, "is_demo": True})
+    task_new = await db.project_tasks.count_documents({"workspace_owner": wo, "is_demo": True})
+    ms_new   = await db.project_milestones.count_documents({"workspace_owner": wo, "is_demo": True})
+    spr_new  = await db.sprints.count_documents({"workspace_owner": wo, "is_demo": True})
+    time_new = await db.time_entries.count_documents({"workspace_owner": wo, "is_demo": True})
 
     logger.info(
-        "Founder %s reset jury demo — wiped %d invoices / %d payments / %d leads, "
-        "re-seeded %d invoices / %d payments / %d leads.",
-        user.get("email"), inv_del, pay_del, lead_del, inv_new, pay_new, lead_new,
+        "Founder %s reset jury demo — wiped inv=%d pay=%d lead=%d proj=%d task=%d ms=%d spr=%d time=%d, "
+        "re-seeded inv=%d pay=%d lead=%d proj=%d task=%d ms=%d spr=%d time=%d.",
+        user.get("email"),
+        inv_del, pay_del, lead_del, proj_del, task_del, ms_del, spr_del, time_del,
+        inv_new, pay_new, lead_new, proj_new, task_new, ms_new, spr_new, time_new,
     )
     return {
         "ok": True,
-        "wiped": {"invoices": inv_del, "payments": pay_del, "leads": lead_del},
-        "seeded": {"invoices": inv_new, "payments": pay_new, "leads": lead_new},
+        "wiped":  {"invoices": inv_del,  "payments": pay_del,  "leads": lead_del,
+                   "projects": proj_del, "tasks": task_del,    "milestones": ms_del,
+                   "sprints": spr_del,   "time_entries": time_del},
+        "seeded": {"invoices": inv_new,  "payments": pay_new,  "leads": lead_new,
+                   "projects": proj_new, "tasks": task_new,    "milestones": ms_new,
+                   "sprints": spr_new,   "time_entries": time_new},
     }
 
 
@@ -3125,6 +3142,179 @@ async def _seed_finance_and_sales_demo(workspace_owner: str, now_iso: str) -> No
             len(demo_leads),
         )
 
+    # ---- Session C2 demo seed: projects, tasks, milestones, sprints, time -
+    await _seed_projects_planning_time_demo(workspace_owner, now_iso)
+
+
+async def _seed_projects_planning_time_demo(workspace_owner: str, now_iso: str) -> None:
+    """Session C2 (2026-02-15) — seed realistic projects, tasks, milestones,
+    sprints, and time entries into the XPRIZE jury demo workspace. Idempotent.
+    """
+    from datetime import date, timedelta
+
+    today = date.today()
+
+    # ---- Projects (with realistic mix of statuses) --------------------
+    if await db.projects.count_documents({"workspace_owner": workspace_owner}) == 0:
+        proj_specs = [
+            ("Q1 Product Roadmap",       "Product",     "on_track",  "Amelia Chen",   72,  today - timedelta(days=45), today + timedelta(days=45), "#1A4FFF",
+             "Ship the Q1 roadmap for Zynthoro modules — Finance, Sales, Projects, Planning, Time Tracking."),
+            ("Spring Marketing Launch",  "Marketing",   "on_track",  "Priya Shah",    48,  today - timedelta(days=20), today + timedelta(days=60), "#D97706",
+             "March/April marketing campaign — website refresh, LinkedIn ads, launch event."),
+            ("SOC 2 Type II Audit",      "Compliance",  "at_risk",   "Daniel Krüger", 31,  today - timedelta(days=90), today + timedelta(days=90), "#dc2626",
+             "Achieve SOC 2 Type II certification — evidence collection, policy review, third-party audit."),
+            ("EU Sales Pipeline 2026",   "Sales",       "on_track",  "Luca Rossi",    64,  today - timedelta(days=60), today + timedelta(days=300), "#16a34a",
+             "Build a €1M+ EU pipeline by year end. Focus on FR/DE/NL manufacturing SMEs."),
+            ("AI Caption Engine v2",     "Operations",  "completed", "Amelia Chen",   100, today - timedelta(days=120), today - timedelta(days=10), "#8b5cf6",
+             "Rebuild the caption engine on Claude Sonnet 4.5 with brand-voice presets."),
+        ]
+        proj_docs = []
+        for name, domain, status, owner, progress, sd, ed, color, desc in proj_specs:
+            proj_docs.append({
+                "id": str(uuid.uuid4()),
+                "workspace_owner": workspace_owner,
+                "name": name, "description": desc,
+                "status": status, "domain": domain, "owner": owner,
+                "start_date": sd.isoformat(), "end_date": ed.isoformat(),
+                "progress": progress, "color": color,
+                "created_at": now_iso, "updated_at": now_iso,
+                "is_demo": True,
+            })
+        await db.projects.insert_many(proj_docs)
+
+        # ---- Tasks distributed across projects ------------------------
+        task_specs = [
+            # (project_index, title, assignee, status, priority, due_offset)
+            (0, "Finalise invoice PDF template",           "Amelia Chen",  "done",        "high",   -20),
+            (0, "Build sales kanban drag-drop",            "Amelia Chen",  "done",        "high",   -15),
+            (0, "Ship projects + planning modules",        "Amelia Chen",  "in_progress", "high",   +5),
+            (0, "Ship time tracking module",               "Luca Rossi",   "in_progress", "high",   +7),
+            (0, "Write jury-day rehearsal script",         "Priya Shah",   "todo",        "medium", +10),
+            (1, "Homepage hero refresh",                   "Priya Shah",   "done",        "medium", -5),
+            (1, "LinkedIn ad creative batch A",            "Priya Shah",   "in_progress", "medium", +3),
+            (1, "Book launch venue in Amsterdam",          "Nina Adebayo", "todo",        "high",   +14),
+            (2, "Encrypt customer data at rest",           "Daniel Krüger","in_progress", "high",   +21),
+            (2, "Publish updated Privacy Policy",          "Daniel Krüger","done",        "medium", -8),
+            (2, "Vendor risk questionnaire — Anthropic",   "Daniel Krüger","todo",        "medium", +30),
+            (3, "Cold-email sequence for FR manufacturers","Luca Rossi",   "in_progress", "medium", +7),
+            (3, "Discovery calls with 10 target accounts", "Luca Rossi",   "todo",        "high",   +14),
+            (4, "Migrate captioning to Claude Sonnet 4.5", "Amelia Chen",  "done",        "high",   -30),
+            (4, "Add EN/NL/DE brand-voice presets",         "Amelia Chen", "done",        "medium", -20),
+        ]
+        task_docs = []
+        for pi, title, assignee, status, prio, due_off in task_specs:
+            task_docs.append({
+                "id": str(uuid.uuid4()),
+                "workspace_owner": workspace_owner,
+                "project_id": proj_docs[pi]["id"],
+                "title": title, "description": "",
+                "assignee": assignee, "status": status, "priority": prio,
+                "due_date": (today + timedelta(days=due_off)).isoformat(),
+                "sprint_id": None,
+                "completed_at": now_iso if status == "done" else None,
+                "created_at": now_iso, "updated_at": now_iso,
+                "is_demo": True,
+            })
+        await db.project_tasks.insert_many(task_docs)
+
+        # ---- Milestones per project -----------------------------------
+        ms_specs = [
+            (0, "XPRIZE jury demo day",           +30, False),
+            (0, "Ship Session C2",                +7,  False),
+            (1, "Launch event",                   +45, False),
+            (2, "SOC 2 evidence deadline",        +60, False),
+            (2, "Kick-off with auditor",          -60, True),
+            (3, "€500K pipeline",                 +180, False),
+            (4, "V2 shipped",                     -10, True),
+        ]
+        ms_docs = []
+        for pi, title, due_off, completed in ms_specs:
+            ms_docs.append({
+                "id": str(uuid.uuid4()),
+                "workspace_owner": workspace_owner,
+                "project_id": proj_docs[pi]["id"],
+                "title": title,
+                "due_date": (today + timedelta(days=due_off)).isoformat(),
+                "completed": completed,
+                "completed_at": now_iso if completed else None,
+                "created_at": now_iso, "updated_at": now_iso,
+                "is_demo": True,
+            })
+        await db.project_milestones.insert_many(ms_docs)
+
+        # ---- 1 active sprint pulling tasks from multiple projects -----
+        sprint_id = str(uuid.uuid4())
+        await db.sprints.insert_one({
+            "id": sprint_id,
+            "workspace_owner": workspace_owner,
+            "name": "Sprint 12 · Jury week",
+            "goal": "Finish Session C1+C2 modules and rehearse the XPRIZE demo end-to-end.",
+            "start_date": (today - timedelta(days=3)).isoformat(),
+            "end_date": (today + timedelta(days=11)).isoformat(),
+            "status": "active",
+            "capacity_hours": 80,
+            "created_at": now_iso, "updated_at": now_iso,
+            "is_demo": True,
+        })
+        # Pull the "in-progress" and "todo" roadmap + marketing tasks into it.
+        sprint_task_ids = [t["id"] for t in task_docs if t["status"] in ("in_progress", "todo") and t["project_id"] in (proj_docs[0]["id"], proj_docs[1]["id"])][:6]
+        if sprint_task_ids:
+            await db.project_tasks.update_many(
+                {"id": {"$in": sprint_task_ids}},
+                {"$set": {"sprint_id": sprint_id, "updated_at": now_iso}},
+            )
+
+        # ---- Time entries this week for realism -----------------------
+        # Use the workspace owner's email (jury user) as author.
+        jury = await db.users.find_one({"id": workspace_owner}, {"email": 1})
+        author_email = (jury or {}).get("email", "jury@zynthoro.ai")
+        # Monday of this week
+        monday = today - timedelta(days=today.weekday())
+        time_specs = [
+            # (day_offset_from_monday, project_index, task_index_in_that_project's_tasks, hours, notes, billable)
+            (0, 0, 2, 3.5, "Finance module PR review",             True),
+            (0, 3, 11, 2.0, "Cold email A/B test copy",             False),
+            (1, 0, 3, 5.0, "Time Tracking backend build",           True),
+            (1, 2, 8, 1.5, "SOC 2 evidence prep",                   False),
+            (2, 0, 4, 2.0, "Jury rehearsal script draft",           True),
+            (2, 1, 6, 3.0, "LinkedIn ad creative iteration",        True),
+            (3, 3, 12, 2.5, "Discovery calls prep",                  True),
+            (4, 4, 13, 4.0, "V2 wrap-up + retro",                   False),
+        ]
+        # Build a quick lookup by project idx -> [task ids in insertion order]
+        tasks_by_project: dict = {}
+        for t in task_docs:
+            tasks_by_project.setdefault(t["project_id"], []).append(t["id"])
+        entry_docs = []
+        for day_off, pi, tidx, hrs, notes, billable in time_specs:
+            pid = proj_docs[pi]["id"]
+            tid = None
+            plist = tasks_by_project.get(pid, [])
+            # tidx is the global task_specs row → convert to that specific project's task
+            # Simpler: pick the (tidx modulo len) task inside that project.
+            if plist:
+                tid = plist[tidx % len(plist)]
+            entry_docs.append({
+                "id": str(uuid.uuid4()),
+                "workspace_owner": workspace_owner,
+                "user_email": author_email,
+                "project_id": pid,
+                "task_id": tid,
+                "date": (monday + timedelta(days=day_off)).isoformat(),
+                "hours": hrs,
+                "notes": notes,
+                "billable": billable,
+                "source": "manual",
+                "created_at": now_iso, "updated_at": now_iso,
+                "is_demo": True,
+            })
+        await db.time_entries.insert_many(entry_docs)
+
+        logger.info(
+            "Seeded %d projects, %d tasks, %d milestones, 1 sprint, %d time entries for jury workspace",
+            len(proj_docs), len(task_docs), len(ms_docs), len(entry_docs),
+        )
+
 
 async def seed_jury_demo():
     """XPRIZE / investor demo account, pre-populated with realistic sample data.
@@ -3502,12 +3692,18 @@ import communication_module  # noqa: E402
 import compliance_module  # noqa: E402
 import finance_module  # noqa: E402
 import sales_module  # noqa: E402
+import projects_module  # noqa: E402
+import planning_module  # noqa: E402
+import time_tracking_module  # noqa: E402
 app.include_router(hr_module.build_router(db, get_current_user_full))
 app.include_router(accounting_module.build_router(db, get_current_user_full))
 app.include_router(communication_module.build_router(db, get_current_user_full))
 app.include_router(compliance_module.build_router(db, get_current_user_full))
 app.include_router(finance_module.build_router(db, get_current_user_full))
 app.include_router(sales_module.build_router(db, get_current_user_full))
+app.include_router(projects_module.build_router(db, get_current_user_full))
+app.include_router(planning_module.build_router(db, get_current_user_full))
+app.include_router(time_tracking_module.build_router(db, get_current_user_full))
 
 app.add_middleware(
     CORSMiddleware,

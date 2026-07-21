@@ -230,8 +230,8 @@ function FounderResetJuryDemo() {
         `${API}/founder/reset-jury-demo`, {}, { withCredentials: true },
       );
       toast.success(
-        `Jury demo reset. Wiped ${data.wiped.invoices} invoices / ${data.wiped.leads} leads · ` +
-        `re-seeded ${data.seeded.invoices} invoices, ${data.seeded.payments} payments, ${data.seeded.leads} leads.`,
+        `Jury demo reset. Wiped ${data.wiped.invoices} inv · ${data.wiped.leads} leads · ${data.wiped.projects || 0} projects. ` +
+        `Re-seeded ${data.seeded.invoices} inv, ${data.seeded.leads} leads, ${data.seeded.projects || 0} projects, ${data.seeded.tasks || 0} tasks, ${data.seeded.sprints || 0} sprints.`,
       );
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || "Reset failed.");

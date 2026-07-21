@@ -14,12 +14,12 @@ import {
 import { Link } from "react-router-dom";
 
 const PLATFORMS = [
-  { id: "facebook", name: "Facebook", icon: Facebook, color: "#1877F2", tier: "Starter" },
-  { id: "instagram", name: "Instagram", icon: Instagram, color: "#E4405F", tier: "Starter" },
-  { id: "linkedin", name: "LinkedIn", icon: Linkedin, color: "#0A66C2", tier: "Creator" },
-  { id: "tiktok", name: "TikTok", icon: Music2, color: "#000000", tier: "Creator" },
-  { id: "x", name: "X", icon: Twitter, color: "#000000", tier: "Creator" },
-  { id: "youtube", name: "YouTube", icon: Youtube, color: "#FF0000", tier: "Creator" },
+  { id: "facebook", name: "Facebook", icon: Facebook, color: "#1877F2", tier: "Starter", status: "connect" },
+  { id: "instagram", name: "Instagram", icon: Instagram, color: "#E4405F", tier: "Starter", status: "connect" },
+  { id: "linkedin", name: "LinkedIn", icon: Linkedin, color: "#0A66C2", tier: "Creator", status: "connect" },
+  { id: "tiktok", name: "TikTok", icon: Music2, color: "#000000", tier: "Creator", status: "coming_soon" },
+  { id: "x", name: "X", icon: Twitter, color: "#000000", tier: "Creator", status: "coming_soon" },
+  { id: "youtube", name: "YouTube", icon: Youtube, color: "#FF0000", tier: "Creator", status: "coming_soon" },
 ];
 
 const TABS = [
@@ -78,14 +78,35 @@ export default function MarketingContent() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {PLATFORMS.map((p) => {
             const Icon = p.icon;
-            const locked = p.tier === "Creator" && !canCreator;
+            const comingSoon = p.status === "coming_soon";
+            const locked = !comingSoon && p.tier === "Creator" && !canCreator;
+            const disabled = comingSoon || locked;
+            const onConnect = async () => {
+              if (disabled) return;
+              try {
+                const { data } = await axios.get(`${API}/social/oauth/start`, {
+                  params: { provider: p.id },
+                });
+                if (data?.authorize_url) {
+                  window.location.href = data.authorize_url;
+                }
+              } catch (err) {
+                const resp = err?.response;
+                if (resp?.status === 501 && resp.data?.coming_soon) {
+                  toast.info(resp.data.message || "Connect coming soon.");
+                } else {
+                  toast.error(formatApiError(resp?.data?.detail) || "Could not start the connect flow.");
+                }
+              }
+            };
             return (
               <button
                 key={p.id}
-                disabled={locked}
+                disabled={disabled}
+                onClick={onConnect}
                 data-testid={`platform-${p.id}`}
                 className={`relative flex flex-col items-center gap-2 p-4 rounded-xl border transition-colors ${
-                  locked
+                  disabled
                     ? "border-[#eee] bg-[#FAFAFB] cursor-not-allowed"
                     : "border-[#eee] hover:border-[#1A4FFF] hover:bg-[#F4F6FB]"
                 }`}
@@ -95,12 +116,19 @@ export default function MarketingContent() {
                     <Lock size={11} className="text-[#aaa]" />
                   </span>
                 )}
-                <Icon size={20} style={{ color: locked ? "#bbb" : p.color }} />
-                <span className={`text-[12px] font-medium ${locked ? "text-[#aaa]" : "text-[#333]"}`}>
+                <Icon size={20} style={{ color: disabled ? "#bbb" : p.color }} />
+                <span className={`text-[12px] font-medium ${disabled ? "text-[#888]" : "text-[#333]"}`}>
                   {p.name}
                 </span>
-                <span className={`text-[10px] uppercase tracking-wider ${locked ? "text-[#bbb]" : "text-[#888]"}`}>
-                  {locked ? p.tier + "+" : "Connect"}
+                <span
+                  className={`text-[10px] uppercase tracking-wider ${
+                    comingSoon ? "text-[#8a6e1d]"
+                    : locked ? "text-[#bbb]"
+                    : "text-[#888]"
+                  }`}
+                  data-testid={`platform-${p.id}-status`}
+                >
+                  {comingSoon ? "Coming soon" : locked ? p.tier + "+" : "Connect"}
                 </span>
               </button>
             );
@@ -367,11 +395,17 @@ function PhotoPanel({ canCreator }) {
           <div className="flex items-center gap-2 mb-3">
             <Sparkles size={15} style={{ color: "#1A4FFF" }} />
             <h3 className="text-[14px] font-semibold">AI Photo Suite</h3>
-            <span className="ml-auto text-[11px] text-[#888]">PicsArt-level — included</span>
+            <span className="ml-auto text-[10.5px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#FFF6D6] text-[#8a6e1d] font-bold">
+              Coming soon
+            </span>
           </div>
+          <p className="text-[13px] text-[#555] mb-3">
+            Nano Banana-powered image editing arrives in the next release — background removal,
+            object removal, AI recolor, sky replacement and more.
+          </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {proTools.map((t) => (
-              <div key={t} className="p-3 rounded-md bg-[#F4F6FB] text-[12.5px] font-medium text-center">
+              <div key={t} className="p-3 rounded-md bg-[#F4F6FB] text-[12.5px] font-medium text-center text-[#888]">
                 {t}
               </div>
             ))}
@@ -417,11 +451,17 @@ function VideoPanel({ canCreator }) {
           <div className="flex items-center gap-2 mb-3">
             <Sparkles size={15} style={{ color: "#1A4FFF" }} />
             <h3 className="text-[14px] font-semibold">AI Video Suite</h3>
-            <span className="ml-auto text-[11px] text-[#888]">CapCut-level — included</span>
+            <span className="ml-auto text-[10.5px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#FFF6D6] text-[#8a6e1d] font-bold">
+              Coming soon
+            </span>
           </div>
+          <p className="text-[13px] text-[#555] mb-3">
+            Sora 2-powered AI video generation is arriving in an upcoming release — short-form video,
+            AI voiceovers, auto-captions and more.
+          </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {pro.map((t) => (
-              <div key={t} className="p-3 rounded-md bg-[#F4F6FB] text-[12.5px] font-medium text-center">
+              <div key={t} className="p-3 rounded-md bg-[#F4F6FB] text-[12.5px] font-medium text-center text-[#888]">
                 {t}
               </div>
             ))}

@@ -196,7 +196,17 @@ export default function ModulePlaceholder() {
 
   const Icon = cfg.icon;
   const allowedModules = user?.tier?.modules || [];
-  const isLocked = allowedModules.length > 0 && !allowedModules.includes(slug);
+  // Founder / unlimited / billing-exempt / demo users MUST NEVER see the
+  // "Upgrade to unlock" badge — even if a slug drifts from the tier
+  // catalog. Server-side ALL_MODULES is the primary defence; this is the
+  // belt-and-braces client check. Fix 2026-07-21.
+  const isPrivileged = !!(
+    user?.is_founder || user?.is_unlimited ||
+    user?.billing_exempt || user?.is_demo
+  );
+  const isLocked = !isPrivileged
+    && allowedModules.length > 0
+    && !allowedModules.includes(slug);
   return (
     <div className="max-w-5xl" data-testid={`module-${slug}-page`}>
       <p className="zy-eyebrow mb-2" style={{ color: "#1A4FFF" }}>{cfg.eyebrow}</p>

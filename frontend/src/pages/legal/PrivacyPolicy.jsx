@@ -35,9 +35,10 @@ export default function PrivacyPolicy() {
         <LegalList
           items={[
             "Account data: full name, work email, company name, role, hashed password, 2FA secret.",
-            "Subscription data: plan tier, billing email, Stripe customer ID, founder-discount eligibility.",
+            "Subscription data: plan tier, billing email, Stripe customer ID.",
+            "Kickstart lifetime purchase records: tier purchased, amount, purchase timestamp, and the herroepingsrecht waiver consent event (timestamp, IP, session ID) — retained for 10 years for tax/legal audit as required under Dutch bookkeeping law (Art. 52 AWR).",
             "Business verification data: PDF business-registration documents you upload (KvK, LLC, Companies House, etc.) and the AI-extracted metadata (company name, registration number, registration date).",
-            "Usage data: page views, feature events, AI assistant prompts and responses (linked to your workspace, never sold).",
+            "Usage data: page views, feature events, AI assistant prompts and responses, uploaded files for AI context (auto-purged after 24 hours).",
             "Technical data: IP address, browser, device, language, session cookies.",
           ]}
         />
@@ -47,7 +48,6 @@ export default function PrivacyPolicy() {
         <LegalList
           items={[
             "To create and secure your Zynthoro account (Art. 6(1)(b) GDPR — contract).",
-            "To verify your business age for the €99/month founder discount (Art. 6(1)(b) GDPR).",
             "To run the AI Assistants (Zynthoro Assist, Zyntha, Thoro, Zyona) on your behalf (Art. 6(1)(b)).",
             "To bill you via Stripe and prevent payment fraud (Art. 6(1)(c) — legal obligation).",
             "To improve product quality and security (Art. 6(1)(f) — legitimate interest).",

@@ -37,26 +37,76 @@ export default function TermsOfService() {
         />
       </LegalSection>
 
-      <LegalSection id="plans" number="3" title="Plans, billing & founder pricing">
+      <LegalSection id="plans" number="3" title="Plans, billing & Kickstart lifetime deals">
         <LegalList
           items={[
-            "Standard pricing: Starter €499/mo, Growth €999/mo, Scale €1,999/mo, Enterprise on quote.",
-            "Founder pricing: businesses incorporated less than 12 months before signup may qualify for €99/mo on Starter, verified via the Business Verification flow (PDF upload).",
-            "Founder pricing is locked at €99/mo for the first 24 months from activation, after which it returns to the then-current Starter price.",
-            "Subscriptions are monthly, billed in advance via Stripe in EUR.",
-            "All fees are exclusive of VAT, which is added where legally required.",
-            "Failed payments trigger a 7-day grace period before service suspension.",
+            "Standard subscription pricing: Starter €499/mo, Creator €699/mo, Business €899/mo, Agency €1,199/mo, Enterprise from €2,499/mo. Annual billing (2 months free) is available on all subscription plans.",
+            "Kickstart lifetime deals are one-time purchases: Kickstart 1 €79, Kickstart 2 €129, Kickstart 3 €199 — each capped at 100 seats. The purchased tier includes lifetime access to the modules and workspaces defined in the tier at time of purchase.",
+            "Kickstart Compleet is a monthly subscription (€49/mo) with the full non-ERP module suite.",
+            "AI+Social top-ups (Week €24.99 / Month €59.99) grant additional AI credits for a fixed period on top of any existing plan. Top-ups do not modify or extend the base plan.",
+            "Subscriptions are billed in advance via Stripe in EUR. All fees are exclusive of VAT, which is added where legally required.",
+            "Failed payments on subscriptions trigger a 7-day grace period before service suspension.",
           ]}
         />
       </LegalSection>
 
-      <LegalSection id="cancellation" number="4" title="Cancellation & refunds">
+      <LegalSection id="lifetime-terms" number="3a" title="Kickstart lifetime — specific terms">
+        <p className="mb-3">
+          "Lifetime" means for the operational lifetime of the Zynthoro
+          platform in its consumer-facing form. Zynthoro Labs BV commits to
+          maintaining the service for a minimum of five (5) years from your
+          purchase date. If the service is sunset, migrated, or the entity
+          restructures such that the platform is discontinued, we will provide
+          at least ninety (90) days' notice and, where technically feasible, a
+          data export.
+        </p>
+        <p className="mb-3">
+          Lifetime access is bound to the account (email) that made the
+          purchase. It is non-transferable, non-refundable after activation
+          (see waiver below), and cannot be resold. Feature parity is preserved:
+          your Kickstart tier will always include the modules and workspace
+          count listed at the time of your purchase, even if we later restructure
+          plan tiers.
+        </p>
         <p>
-          You can cancel any time from Settings → Billing. Cancellation takes
-          effect at the end of the current billing period; you keep access until
-          then. We do not refund partial months. Founder-discount users who
-          cancel within the first 14 days receive a full refund. Annual
-          contracts on Enterprise follow their negotiated termination clause.
+          Fair-use limits apply on AI credits per the tier you purchased.
+          Exceeding your allowance requires an AI+Social top-up or a Compleet
+          subscription.
+        </p>
+      </LegalSection>
+
+      <LegalSection id="withdrawal-waiver" number="3b" title="EU right of withdrawal — waiver (herroepingsrecht)">
+        <p className="mb-3">
+          Under EU Directive 2011/83/EU and Article 6:230p sub h of the Dutch
+          Civil Code (BW), you normally have 14 days to withdraw from a distance
+          purchase. By checking the herroepingsrecht waiver on the Kickstart
+          checkout page, you <strong>expressly consent to immediate performance
+          of the service</strong> and <strong>acknowledge that you lose your
+          right of withdrawal</strong> once we begin providing access — which
+          happens immediately on successful payment.
+        </p>
+        <p>
+          This waiver applies exclusively to Kickstart lifetime tiers and
+          AI+Social top-ups (one-time digital services). It does <em>not</em>
+          apply to subscription plans, which are governed by clause 4
+          (Cancellation) below.
+        </p>
+      </LegalSection>
+
+      <LegalSection id="cancellation" number="4" title="Cancellation & refunds (subscriptions only)">
+        <p>
+          Subscription plans (Starter, Creator, Business, Agency, Enterprise,
+          Compleet) can be cancelled any time from Settings → Billing.
+          Cancellation takes effect at the end of the current billing period;
+          you keep access until then. We do not refund partial months.
+          Annual contracts on Enterprise follow their negotiated termination
+          clause.
+        </p>
+        <p className="mt-3">
+          Kickstart lifetime purchases and AI+Social top-ups are one-time
+          digital services and are governed by clauses 3a and 3b above — they
+          are non-refundable after activation (herroepingsrecht waived at
+          checkout).
         </p>
       </LegalSection>
 

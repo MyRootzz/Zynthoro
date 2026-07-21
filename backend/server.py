@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse, JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -286,235 +286,6 @@ async def get_presale_count():
     count = await db.presale_signups.count_documents({})
     return {"count": count}
 
-
-# =====================================================================
-#  One-time admin seed — Kickstart tier QA test accounts
-#  ----------------------
-#  Protected by the `X-Admin-Key` header (must equal env `ADMIN_SEED_KEY`).
-#  Fails closed if the env var is unset. Idempotent — safe to call
-#  multiple times. Remove this endpoint after production seeding is done.
-# =====================================================================
-QA_SEED_ACCOUNTS = [
-    ("qa-kickstart1@zynthoro.io", "QaKick1!Test", "Kickstart 1"),
-    ("qa-kickstart2@zynthoro.io", "QaKick2!Test", "Kickstart 2"),
-    ("qa-kickstart3@zynthoro.io", "QaKick3!Test", "Kickstart 3"),
-    ("qa-compleet@zynthoro.io",   "QaComp!Test",  "Compleet"),
-    ("qa-aiweek@zynthoro.io",     "QaWeek!Test",  "AI+Social Week"),
-    ("qa-aimonth@zynthoro.io",    "QaMonth!Test", "AI+Social Month"),
-]
-
-
-@api_router.post("/admin/seed-qa-accounts")
-async def admin_seed_qa_accounts(request: Request):
-    """Idempotent seed of the 6 Kickstart QA test accounts.
-    Header: X-Admin-Key: <ADMIN_SEED_KEY>
-    """
-    expected = os.environ.get("ADMIN_SEED_KEY")
-    if not expected:
-        raise HTTPException(status_code=503, detail="Seed endpoint disabled (ADMIN_SEED_KEY not set).")
-    provided = request.headers.get("x-admin-key") or ""
-    if not hmac.compare_digest(provided, expected):
-        raise HTTPException(status_code=401, detail="Invalid admin key.")
-
-    from auth import hash_password
-    now_iso = datetime.now(timezone.utc).isoformat()
-    created, refreshed = 0, 0
-    for email, password, target_tier in QA_SEED_ACCOUNTS:
-        pw_hash = hash_password(password)
-        first, _, _ = email.partition("@")
-        base = {
-            "email": email,
-            "password_hash": pw_hash,
-            "first_name": first.replace("qa-", "QA ").title(),
-            "last_name": "Test",
-            "email_verified": True,
-            "twofa_enabled": False,
-            "is_demo": False,
-            "is_founder": False,
-            "is_unlimited": False,
-            "billing_exempt": False,
-            "is_qa_test": True,
-            "subscription_plan": "Presale",
-            "company": f"QA Test — {target_tier}",
-            "ai_credits_used_this_period": 0,
-            "ai_credits_limit": None,
-            "notes_qa_target_tier": target_tier,
-            "updated_at": now_iso,
-        }
-        existing = await db.users.find_one({"email": email}, {"id": 1})
-        if existing:
-            await db.users.update_one(
-                {"email": email},
-                {
-                    "$set": base,
-                    "$unset": {
-                        "totp_secret": "", "totp_secret_pending": "",
-                        "email_2fa_code_hash": "", "email_2fa_expires_at": "",
-                        "email_2fa_attempts": "", "twofa_backup_codes": "",
-                        "twofa_method": "",
-                    },
-                },
-            )
-            refreshed += 1
-        else:
-            await db.users.insert_one({
-                "id": str(uuid.uuid4()),
-                "created_at": now_iso,
-                **base,
-            })
-            created += 1
-
-    logger.warning("QA seed endpoint invoked — created=%d refreshed=%d", created, refreshed)
-    return {"ok": True, "created": created, "refreshed": refreshed, "total": len(QA_SEED_ACCOUNTS)}
-
-
-class DisableTwofaIn(BaseModel):
-    email: EmailStr
-    set_founder: bool = False
-
-
-# SEC-004 (2026-07-21) — sliding-window rate limit on the admin backdoor.
-# Any call attempt (success or failure) is recorded; if more than
-# ADMIN_2FA_MAX_ATTEMPTS calls come from one client_ip in
-# ADMIN_2FA_WINDOW_MIN minutes, further calls are refused with 429.
-ADMIN_2FA_MAX_ATTEMPTS = 5
-ADMIN_2FA_WINDOW_MIN = 60
-
-
-async def _rate_limit_admin_disable_2fa(client_ip: str) -> None:
-    now = datetime.now(timezone.utc)
-    window_start = now - timedelta(minutes=ADMIN_2FA_WINDOW_MIN)
-    recent = await db.admin_call_attempts.count_documents({
-        "endpoint": "disable-2fa",
-        "client_ip": client_ip,
-        "attempted_at": {"$gte": window_start},
-    })
-    if recent >= ADMIN_2FA_MAX_ATTEMPTS:
-        logger.critical(
-            "SECURITY: admin disable-2fa rate-limit hit for ip=%s (attempts=%d in %d min)",
-            client_ip, recent, ADMIN_2FA_WINDOW_MIN,
-        )
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many attempts. Try again in {ADMIN_2FA_WINDOW_MIN} minutes.",
-        )
-
-
-async def _log_admin_call(*, endpoint: str, client_ip: str, target_email: str,
-                          ok: bool, extra: Optional[dict] = None) -> None:
-    doc = {
-        "id": str(uuid.uuid4()),
-        "endpoint": endpoint,
-        "client_ip": client_ip,
-        "target_email": target_email,
-        "ok": ok,
-        "attempted_at": datetime.now(timezone.utc),
-        "extra": extra or {},
-    }
-    await db.admin_call_attempts.insert_one(doc)
-
-
-@api_router.post("/admin/disable-2fa")
-async def admin_disable_2fa(payload: DisableTwofaIn, request: Request):
-    """Emergency endpoint — disables 2FA for a single account by email.
-    Also optionally sets `is_founder: True` (needed for the founder-bypass
-    code path to skip the 2FA-setup wizard on future logins).
-
-    Header: X-Admin-Key: <ADMIN_SEED_KEY>
-    Rate-limited: 5 calls / 60 min per client IP. Every call — including
-    rejects — is recorded in `admin_call_attempts` and successful calls
-    trigger an alert email to ops.
-    """
-    client_ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() \
-        or (request.client.host if request.client else "unknown")
-
-    # 1) Rate limit BEFORE any secret comparison — otherwise the guard is
-    #    useless for brute-force protection.
-    await _rate_limit_admin_disable_2fa(client_ip)
-
-    expected = os.environ.get("ADMIN_SEED_KEY")
-    if not expected:
-        await _log_admin_call(
-            endpoint="disable-2fa", client_ip=client_ip,
-            target_email=str(payload.email),
-            ok=False, extra={"reason": "no_admin_seed_key_env"},
-        )
-        raise HTTPException(status_code=503, detail="Endpoint disabled (ADMIN_SEED_KEY not set).")
-    provided = request.headers.get("x-admin-key") or ""
-    if not hmac.compare_digest(provided, expected):
-        await _log_admin_call(
-            endpoint="disable-2fa", client_ip=client_ip,
-            target_email=str(payload.email),
-            ok=False, extra={"reason": "bad_admin_key"},
-        )
-        raise HTTPException(status_code=401, detail="Invalid admin key.")
-
-    set_ops = {
-        "twofa_enabled": False,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
-    if payload.set_founder:
-        set_ops.update({
-            "is_founder": True,
-            "is_unlimited": True,
-            "billing_exempt": True,
-            "email_verified": True,
-        })
-
-    res = await db.users.update_one(
-        {"email": str(payload.email).lower()},
-        {
-            "$set": set_ops,
-            "$unset": {
-                "twofa_method": "",
-                "totp_secret": "",
-                "totp_secret_pending": "",
-                "email_2fa_code_hash": "",
-                "email_2fa_expires_at": "",
-                "email_2fa_attempts": "",
-                "twofa_backup_codes": "",
-            },
-        },
-    )
-    logger.warning("Admin disable-2fa invoked for %s — matched=%d modified=%d set_founder=%s ip=%s",
-                   payload.email, res.matched_count, res.modified_count, payload.set_founder, client_ip)
-
-    ok = res.matched_count > 0
-    await _log_admin_call(
-        endpoint="disable-2fa", client_ip=client_ip,
-        target_email=str(payload.email),
-        ok=ok,
-        extra={"set_founder": payload.set_founder, "modified": res.modified_count},
-    )
-
-    # Alert ops on EVERY successful call — this endpoint is a takeover
-    # primitive and must not run silently in production.
-    if ok:
-        asyncio.create_task(email_service.send_stripe_alert(
-            kind="alert",
-            event_type="admin_disable_2fa",
-            user_email=str(payload.email).lower(),
-            user_id=None,
-            plan_key=None,
-            stripe_session_id=None,
-            stripe_subscription_id=None,
-            extra={
-                "endpoint": "/api/admin/disable-2fa",
-                "client_ip": client_ip,
-                "set_founder": payload.set_founder,
-                "reason": "Emergency 2FA disable — verify this call was authorised.",
-            },
-        ))
-
-    if res.matched_count == 0:
-        raise HTTPException(status_code=404, detail=f"No user found with email {payload.email}")
-    return {
-        "ok": True,
-        "email": str(payload.email).lower(),
-        "matched": res.matched_count,
-        "modified": res.modified_count,
-        "set_founder": payload.set_founder,
-    }
 
 
 
@@ -1451,6 +1222,125 @@ async def ai_stream(payload: AssistChatIn, user=Depends(get_current_user_full)):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+
+# ------------------------------------------------------------------
+# Social account connections (Meta = Facebook+Instagram, LinkedIn)
+# ------------------------------------------------------------------
+# Graceful-fallback stubs: if the app credentials env vars are set the
+# endpoint returns a real OAuth authorize URL; otherwise a 501 with a
+# `coming_soon: True` payload so the frontend can render a friendly
+# "Connect coming soon" state without treating it as an error.
+SOCIAL_PROVIDERS = {
+    "facebook": {
+        "env_id":  "META_APP_ID",
+        "env_sec": "META_APP_SECRET",
+        "authorize": "https://www.facebook.com/v20.0/dialog/oauth",
+        "scopes": "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management",
+    },
+    "instagram": {
+        # Instagram Business uses the same Meta OAuth flow.
+        "env_id":  "META_APP_ID",
+        "env_sec": "META_APP_SECRET",
+        "authorize": "https://www.facebook.com/v20.0/dialog/oauth",
+        "scopes": "instagram_basic,instagram_content_publish,pages_show_list,business_management",
+    },
+    "linkedin": {
+        "env_id":  "LINKEDIN_CLIENT_ID",
+        "env_sec": "LINKEDIN_CLIENT_SECRET",
+        "authorize": "https://www.linkedin.com/oauth/v2/authorization",
+        "scopes": "openid profile email w_member_social",
+    },
+}
+
+
+@api_router.get("/social/connections")
+async def social_connections(user=Depends(get_current_user_full)):
+    """List the user's connected social accounts. Empty list is a valid
+    response and does not indicate an error."""
+    rows = await db.social_connections.find(
+        {"user_id": user["id"]},
+        {"_id": 0, "provider": 1, "account_name": 1, "connected_at": 1, "expires_at": 1},
+    ).to_list(length=50)
+    return {"connections": rows}
+
+
+@api_router.get("/social/oauth/start")
+async def social_oauth_start(provider: str, user=Depends(get_current_user_full)):
+    """Kick off the OAuth authorize redirect. If the platform's app
+    credentials are not configured on the server, respond with
+    501 + `coming_soon: True` so the client can show a friendly banner
+    instead of an error toast."""
+    cfg = SOCIAL_PROVIDERS.get(provider.lower())
+    if not cfg:
+        raise HTTPException(status_code=400, detail=f"Unknown social provider: {provider}")
+    client_id = os.environ.get(cfg["env_id"])
+    if not client_id:
+        # Graceful fallback: the platform isn't configured yet.
+        return JSONResponse(
+            status_code=501,
+            content={
+                "coming_soon": True,
+                "provider": provider,
+                "message": (
+                    "Social connect for this platform is coming soon — the OAuth app "
+                    "is not yet configured. Check back shortly."
+                ),
+            },
+        )
+    # Build the authorize URL. Real callback endpoint is added when the
+    # user configures the app; state carries the user id + provider for CSRF.
+    import secrets, urllib.parse
+    state = secrets.token_urlsafe(24)
+    await db.social_oauth_states.insert_one({
+        "state": state,
+        "user_id": user["id"],
+        "provider": provider,
+        "created_at": datetime.now(timezone.utc),
+    })
+    redirect_uri = f"{os.environ.get('PUBLIC_APP_URL', 'https://zynthoro.ai')}/api/social/oauth/callback"
+    params = {
+        "client_id":     client_id,
+        "redirect_uri":  redirect_uri,
+        "response_type": "code",
+        "scope":         cfg["scopes"],
+        "state":         state,
+    }
+    url = f"{cfg['authorize']}?{urllib.parse.urlencode(params)}"
+    return {"authorize_url": url, "provider": provider}
+
+
+@api_router.get("/social/oauth/callback")
+async def social_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    """OAuth callback landing route. Full token-exchange is intentionally
+    stubbed — the platforms' app credentials aren't configured yet, so
+    this route just closes the loop with a friendly redirect. When the
+    apps are approved and creds are added, this handler is where the
+    `requests.post(token_url, ...)` exchange goes."""
+    frontend_url = f"{os.environ.get('PUBLIC_APP_URL', '')}/dashboard/marketing?social_status="
+    if error:
+        return RedirectResponse(url=f"{frontend_url}error&reason={error}")
+    if not code or not state:
+        return RedirectResponse(url=f"{frontend_url}error&reason=missing_params")
+    st = await db.social_oauth_states.find_one_and_delete({"state": state})
+    if not st:
+        return RedirectResponse(url=f"{frontend_url}error&reason=invalid_state")
+    # TODO(prod): exchange `code` for access_token + long-lived token,
+    # fetch page/account metadata, then insert into social_connections.
+    return RedirectResponse(url=f"{frontend_url}pending&provider={st['provider']}")
+
+
+@api_router.post("/social/disconnect")
+async def social_disconnect(payload: dict, user=Depends(get_current_user_full)):
+    provider = (payload.get("provider") or "").lower()
+    if not provider:
+        raise HTTPException(status_code=400, detail="provider required")
+    res = await db.social_connections.delete_one(
+        {"user_id": user["id"], "provider": provider}
+    )
+    return {"ok": True, "deleted": res.deleted_count}
+
 
 
 @api_router.post("/marketing/caption")

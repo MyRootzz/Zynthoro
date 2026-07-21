@@ -12,7 +12,9 @@ const plans = [
     name: "Starter",
     plan_key: "Starter",
     price: "€499",
+    price_annual: "€4,990",
     suffix: "/mo",
+    suffix_annual: "/yr",
     desc: "Basic modules for solo founders just getting started.",
     features: [
       "Basic planning & time tracking",
@@ -27,7 +29,9 @@ const plans = [
     name: "Creator",
     plan_key: "Creator",
     price: "€699",
+    price_annual: "€6,990",
     suffix: "/mo",
+    suffix_annual: "/yr",
     desc: "Everything in Starter, plus the full AI creative suite.",
     features: [
       "AI video suite",
@@ -43,7 +47,9 @@ const plans = [
     name: "Business",
     plan_key: "Business",
     price: "€899",
+    price_annual: "€8,990",
     suffix: "/mo",
+    suffix_annual: "/yr",
     desc: "More modules for growing SMEs and entrepreneurs.",
     features: [
       "Everything in Creator",
@@ -60,7 +66,9 @@ const plans = [
     name: "Agency",
     plan_key: "Agency",
     price: "€1,199",
+    price_annual: "€11,990",
     suffix: "/mo",
+    suffix_annual: "/yr",
     desc: "Full non-ERP suite for agencies and multi-client teams.",
     features: [
       "Everything in Business",
@@ -76,7 +84,9 @@ const plans = [
     name: "Enterprise",
     plan_key: "Enterprise Basic",
     price: "from €2,499",
+    price_annual: "from €24,990",
     suffix: "/mo",
+    suffix_annual: "/yr",
     desc: "All 12 domains, full ERP, unlimited companies.",
     features: [
       "All 12 domains · full ERP",
@@ -94,6 +104,7 @@ export default function Pricing() {
   const { openDialog } = usePresaleDialog();
   const navigate = useNavigate();
   const [catalog, setCatalog] = useState({});
+  const [annual, setAnnual] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -128,12 +139,54 @@ export default function Pricing() {
   return (
     <section id="pricing" data-testid={HOME.pricing} className="zy-section bg-white">
       <div className="zy-container">
-        <div className="max-w-3xl mx-auto text-center mb-16 zy-reveal">
+        <div className="max-w-3xl mx-auto text-center mb-10 zy-reveal">
           <p className="zy-eyebrow mb-4">Pricing</p>
           <h2 className="zy-h2">Simple, transparent pricing. No surprises.</h2>
           <p className="zy-body mt-5">
             Founding member pricing locked for life when you join the presale.
           </p>
+        </div>
+
+        {/* Monthly / Annual toggle (2 months free on annual) */}
+        <div className="flex justify-center mb-10 zy-reveal">
+          <div
+            role="tablist"
+            aria-label="Billing period"
+            className="inline-flex items-center gap-1 p-1 rounded-full border border-[#e5e7ee] bg-white shadow-sm"
+            data-testid="pricing-billing-toggle"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!annual}
+              onClick={() => setAnnual(false)}
+              className={`px-4 py-1.5 rounded-full text-[13.5px] font-medium transition-colors ${
+                !annual ? "bg-[#1A4FFF] text-white" : "text-[#333] hover:text-black"
+              }`}
+              data-testid="pricing-toggle-monthly"
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={annual}
+              onClick={() => setAnnual(true)}
+              className={`px-4 py-1.5 rounded-full text-[13.5px] font-medium transition-colors flex items-center gap-2 ${
+                annual ? "bg-[#1A4FFF] text-white" : "text-[#333] hover:text-black"
+              }`}
+              data-testid="pricing-toggle-annual"
+            >
+              Annual
+              <span
+                className={`text-[10.5px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                  annual ? "bg-white/25 text-white" : "bg-[#E8FFE9] text-[#0F7A2A]"
+                }`}
+              >
+                2 months free
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
@@ -163,8 +216,12 @@ export default function Pricing() {
 
               <h3 className="zy-h3 text-[1.05rem]">{p.name}</h3>
               <div className="mt-3 flex items-baseline gap-1">
-                <span className="text-[28px] font-bold tracking-tight text-black">{p.price}</span>
-                <span className="text-[#666] text-[14px]">{p.suffix}</span>
+                <span className="text-[28px] font-bold tracking-tight text-black" data-testid={`pricing-card-${p.name.toLowerCase()}-price`}>
+                  {annual ? (p.price_annual || p.price) : p.price}
+                </span>
+                <span className="text-[#666] text-[14px]">
+                  {annual ? (p.suffix_annual || p.suffix) : p.suffix}
+                </span>
               </div>
               <p className="text-[13.5px] text-[#555] mt-2 leading-relaxed min-h-[40px]">{p.desc}</p>
 

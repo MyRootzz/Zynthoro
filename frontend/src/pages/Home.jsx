@@ -33,7 +33,7 @@ export default function Home() {
     };
     setMeta(
       "description",
-      "The next-gen AI ERP ecosystem. Replace 15+ business tools with one AI-native platform. Starting at €499/month."
+      "AI-native ERP for European SMEs · Kickstart lifetime deals from €79 · Starting at €79 lifetime."
     );
 
     // Reveal on scroll
@@ -59,12 +59,12 @@ export default function Home() {
       <main>
         <Hero />
         <SocialProof />
+        <KickstartPricing />
         <WhyZynthoro />
         <Domains />
         <ProductionSection />
         <Assistants />
         <VoiceAISection />
-        <KickstartPricing />
         <Pricing />
         <PricingComparisonTables />
         <EnterpriseSection />

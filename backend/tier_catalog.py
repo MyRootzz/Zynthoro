@@ -38,6 +38,7 @@ ALL_MODULES = [
     "projects", "operations",
     "communication", "compliance",
     "marketing", "canva",
+    "hr",                                  # HR & Personnel (added 2026-07-21)
     "team", "settings",
 ]
 

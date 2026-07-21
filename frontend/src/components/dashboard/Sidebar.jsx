@@ -40,6 +40,14 @@ export default function Sidebar({ user, mode, onToggleMode }) {
     return () => window.removeEventListener("resize", fit);
   }, []);
 
+  // Founder / unlimited / billing-exempt / demo users must never see the
+  // module lock icons even if the server's tier.modules list is stale.
+  // Fix 2026-07-21.
+  const isPrivileged = !!(
+    user?.is_founder || user?.is_unlimited ||
+    user?.billing_exempt || user?.is_demo
+  );
+
   return (
     <>
       {/* Mobile open button */}
@@ -75,14 +83,14 @@ export default function Sidebar({ user, mode, onToggleMode }) {
 
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
           {MODULES.map((m) => (
-            <SidebarItem key={m.to} {...m} allowedModules={user?.tier?.modules} />
+            <SidebarItem key={m.to} {...m} allowedModules={user?.tier?.modules} isPrivileged={isPrivileged} />
           ))}
 
           <div className="pt-5 pb-2 px-2">
             <p className="text-[10.5px] uppercase tracking-[0.18em] text-white/55 font-semibold">AI Assistants</p>
           </div>
           {ASSISTANTS.map((a) => (
-            <SidebarItem key={a.to} {...a} dotColor={a.color} allowedModules={user?.tier?.modules} />
+            <SidebarItem key={a.to} {...a} dotColor={a.color} allowedModules={user?.tier?.modules} isPrivileged={isPrivileged} />
           ))}
 
           <div className="pt-5">
@@ -114,8 +122,12 @@ export default function Sidebar({ user, mode, onToggleMode }) {
   );
 }
 
-function SidebarItem({ to, label, icon: Icon, end, dotColor, slug, allowedModules }) {
-  const isLocked = slug && Array.isArray(allowedModules) && allowedModules.length > 0 && !allowedModules.includes(slug);
+function SidebarItem({ to, label, icon: Icon, end, dotColor, slug, allowedModules, isPrivileged = false }) {
+  const isLocked = !isPrivileged
+    && slug
+    && Array.isArray(allowedModules)
+    && allowedModules.length > 0
+    && !allowedModules.includes(slug);
   return (
     <NavLink
       to={to}

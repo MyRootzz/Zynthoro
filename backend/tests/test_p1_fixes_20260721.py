@@ -5,8 +5,6 @@
         lost even if no response was delivered).
   P1-2: `_provision_tier_purchase` is atomically idempotent — concurrent
         webhook + self-heal (or Stripe replay) can never double-provision.
-  P1-3: `/api/admin/disable-2fa` is rate-limited (5 / 60 min per IP) and
-        emits an alert email on every successful call.
   P1-4: Auth cookie is `Secure` by default; `CORS_ORIGINS` no longer
         reflects `*` when `allow_credentials=True`.
   P1-5: `seed_founder` fails-closed if `FOUNDER_PASSWORD` env is unset;
@@ -21,8 +19,6 @@ import asyncio
 import os
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import patch
-
 import pytest
 from dotenv import load_dotenv
 
@@ -36,8 +32,6 @@ from server import (  # noqa: E402
     _provision_tier_purchase,
     seed_founder,
     seed_jury_demo,
-    _rate_limit_admin_disable_2fa,
-    ADMIN_2FA_MAX_ATTEMPTS,
 )
 
 # Reuse ONE event loop — Motor binds to first loop it sees.
@@ -222,106 +216,6 @@ class TestIdempotentProvisioning:
                 await server_db.security_incidents.delete_many({"user_id": uid})
         _run(run())
 
-
-# ============================================================================
-# P1-3 — Rate limit + alert on /api/admin/disable-2fa
-# ============================================================================
-class TestAdminDisable2faRateLimit:
-
-    def test_rate_limit_trips_after_max_attempts(self):
-        async def run():
-            ip = f"192.0.2.{uuid.uuid4().int % 250}"
-            try:
-                # Seed `ADMIN_2FA_MAX_ATTEMPTS` prior attempts in the last window
-                await server_db.admin_call_attempts.insert_many([
-                    {
-                        "endpoint": "disable-2fa", "client_ip": ip,
-                        "attempted_at": datetime.now(timezone.utc),
-                        "target_email": "x@x", "ok": False,
-                    }
-                    for _ in range(ADMIN_2FA_MAX_ATTEMPTS)
-                ])
-                from fastapi import HTTPException
-                with pytest.raises(HTTPException) as ei:
-                    await _rate_limit_admin_disable_2fa(ip)
-                assert ei.value.status_code == 429
-            finally:
-                await server_db.admin_call_attempts.delete_many({"client_ip": ip})
-        _run(run())
-
-    def test_rate_limit_allows_when_under_threshold(self):
-        async def run():
-            ip = f"198.51.100.{uuid.uuid4().int % 250}"
-            try:
-                await server_db.admin_call_attempts.insert_many([
-                    {
-                        "endpoint": "disable-2fa", "client_ip": ip,
-                        "attempted_at": datetime.now(timezone.utc),
-                        "target_email": "x@x", "ok": True,
-                    }
-                    for _ in range(ADMIN_2FA_MAX_ATTEMPTS - 1)
-                ])
-                # Must not raise
-                await _rate_limit_admin_disable_2fa(ip)
-            finally:
-                await server_db.admin_call_attempts.delete_many({"client_ip": ip})
-        _run(run())
-
-
-def test_admin_disable_2fa_e2e_alerts_and_rate_limits(monkeypatch):
-    """Full HTTP flow using httpx.AsyncClient on our shared loop — verifies:
-       1. Correct key → 200 + alert email fired
-       2. Repeated calls from the same IP → 429 after the 5th
-    """
-    from httpx import AsyncClient, ASGITransport
-    monkeypatch.setenv("ADMIN_SEED_KEY", "test-admin-key-p1")
-    alerts_fired: list[dict] = []
-
-    async def fake_alert(**kw):
-        alerts_fired.append(kw)
-
-    monkeypatch.setattr("email_service.send_stripe_alert", fake_alert)
-
-    async def go():
-        uid = f"test-p1-2fa-{uuid.uuid4()}"
-        email = f"test-p1-2fa-{uuid.uuid4()}@zynthoro-test.com"
-        await server_db.users.insert_one({
-            "id": uid, "email": email, "twofa_enabled": True,
-        })
-        # Clean any prior attempts for this synthetic IP
-        ip = "203.0.113.99"
-        await server_db.admin_call_attempts.delete_many({"client_ip": ip})
-        try:
-            transport = ASGITransport(app=server.app)
-            async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-                headers = {
-                    "X-Admin-Key": "test-admin-key-p1",
-                    "X-Forwarded-For": ip,
-                }
-                for i in range(ADMIN_2FA_MAX_ATTEMPTS):
-                    r = await client.post(
-                        "/api/admin/disable-2fa",
-                        headers=headers,
-                        json={"email": email, "set_founder": False},
-                    )
-                    assert r.status_code == 200, f"call {i+1}: {r.status_code} {r.text}"
-                r = await client.post(
-                    "/api/admin/disable-2fa",
-                    headers=headers,
-                    json={"email": email, "set_founder": False},
-                )
-                assert r.status_code == 429, f"expected 429, got {r.status_code} {r.text}"
-        finally:
-            await server_db.users.delete_one({"id": uid})
-            await server_db.admin_call_attempts.delete_many({"client_ip": ip})
-
-    _run(go())
-    # Every successful call fired an alert (5 calls, 5 alerts).
-    assert len(alerts_fired) == ADMIN_2FA_MAX_ATTEMPTS, (
-        f"expected {ADMIN_2FA_MAX_ATTEMPTS} alerts, got {len(alerts_fired)}"
-    )
-    assert all(a["kind"] == "alert" for a in alerts_fired)
-    assert all(a["event_type"] == "admin_disable_2fa" for a in alerts_fired)
 
 
 # ============================================================================

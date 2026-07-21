@@ -639,3 +639,59 @@ Five P1 fixes from the code-review + security-audit landed in one pass.
 **Deployment note**
 Deploy will need `JURY_DEMO_PASSWORD` set in the production env for the XPRIZE demo to keep seeding. If not set, the jury account already in Mongo is preserved — no data loss.
 
+
+### 2026-07-21 — Session A: Landing bundle + Socials + Terms
+Everything from the "high business impact" Session A bundle landed.
+
+**Landing page**
+- Kickstart pricing moved to the top of the marketing sections (right after Hero + SocialProof) for maximum conversion prominence.
+- Meta description updated: "AI-native ERP for European SMEs · Kickstart lifetime deals from €79 · Starting at €79 lifetime."
+- Monthly ↔ Annual toggle added to `Pricing.jsx` — annual = 10× monthly = 2 months free, "2 MONTHS FREE" badge on the annual button. Applies to Starter/Creator/Business/Agency/Enterprise.
+
+**Founder / privileged bypass on module locks**
+- Added `hr` slug to `tier_catalog.ALL_MODULES` (was missing → founder was getting `Upgrade to unlock` on `/dashboard/hr`).
+- Belt-and-braces client bypass in `Sidebar.jsx` + `ModulePlaceholder.jsx`: any user with `is_founder | is_unlimited | billing_exempt | is_demo` is now `isPrivileged` and never sees the lock icon regardless of the server's `tier.modules` payload.
+
+**Admin backdoor endpoints removed**
+- `POST /api/admin/seed-qa-accounts` and `POST /api/admin/disable-2fa` — deleted along with helpers (`_rate_limit_admin_disable_2fa`, `_log_admin_call`, `QA_SEED_ACCOUNTS`, `DisableTwofaIn`).
+- Removed `ADMIN_SEED_KEY` from `backend/.env`.
+- Related tests removed: `test_admin_disable_2fa.py` deleted; TestAdminDisable2faRateLimit and E2E test stripped from `test_p1_fixes_20260721.py` (12/12 remaining tests still pass).
+- 404 confirmed on both endpoints in the running preview.
+
+**Social OAuth stubs (Meta + LinkedIn)**
+- `GET /api/social/connections` — returns user's connected accounts (empty list is valid, not an error).
+- `GET /api/social/oauth/start?provider=facebook|instagram|linkedin` — if env creds (`META_APP_ID` / `LINKEDIN_CLIENT_ID`) are set, returns real authorize URL; otherwise **501 with `coming_soon: True`** so the client can show a friendly toast.
+- `GET /api/social/oauth/callback` — placeholder that closes the loop safely (token exchange stubbed until app credentials are added; `TODO(prod)` marker in code).
+- `POST /api/social/disconnect` — removes a stored connection.
+- New collection `social_oauth_states` for CSRF `state` values.
+
+**Marketing Content UI**
+- Facebook / Instagram / LinkedIn buttons wired to the new `/api/social/oauth/start`. On 501 the button shows a toast "Social connect for this platform is coming soon…"; on success, redirects to the OAuth authorize URL.
+- **TikTok / X / YouTube** buttons now show "Coming soon" (visibly disabled, yellow chip). Their status field is `coming_soon` in the `PLATFORMS` config.
+- Photo + Video panels honestly labelled "Coming soon" (Nano Banana / Sora 2 not yet wired) — no false promises.
+
+**Legal**
+- Terms of Service — split billing clause 3 into: "3. Plans, billing & Kickstart lifetime deals" (new pricing incl. Kickstart 1/2/3 + Compleet + AI+Social top-ups), "3a. Kickstart lifetime — specific terms" (5-year platform commitment, non-transferable, fair-use), "3b. EU right of withdrawal — waiver (herroepingsrecht)" (Art. 6(1)(1) waiver). Cancellation clause 4 rewritten to distinguish subscription plans from one-time lifetime purchases.
+- Privacy Policy — added "Kickstart lifetime purchase records" collection item (10-year retention per Dutch Art. 52 AWR); removed stale "founder-discount eligibility" and "€99/month founder discount" text; documented 24h auto-purge for AI file uploads.
+
+**Files touched**
+- `/app/frontend/src/pages/Home.jsx` — meta description + Kickstart section moved to top
+- `/app/frontend/src/components/sections/Pricing.jsx` — annual toggle + `price_annual` data
+- `/app/frontend/src/pages/dashboard/MarketingContent.jsx` — coming-soon labels + Connect button wired + Photo/Video honesty
+- `/app/frontend/src/components/dashboard/Sidebar.jsx` — `isPrivileged` bypass
+- `/app/frontend/src/pages/dashboard/ModulePlaceholder.jsx` — `isPrivileged` bypass
+- `/app/frontend/src/pages/legal/TermsOfService.jsx` — Kickstart + herroepingsrecht sections
+- `/app/frontend/src/pages/legal/PrivacyPolicy.jsx` — Kickstart record retention
+- `/app/backend/server.py` — social OAuth endpoints; admin backdoor endpoints deleted; RedirectResponse/JSONResponse imports
+- `/app/backend/tier_catalog.py` — added "hr" to `ALL_MODULES`
+- `/app/backend/.env` — removed `ADMIN_SEED_KEY`
+- Deleted: `/app/backend/tests/test_admin_disable_2fa.py`
+
+**Verified live in preview**
+- ✅ Cookie has `Secure` flag
+- ✅ Social OAuth returns 501 + `coming_soon: True`
+- ✅ Admin endpoints return 404
+- ✅ Kickstart section renders near top
+- ✅ Annual toggle switches all plan prices (Starter €499↔€4,990, etc.)
+- ✅ All 4 test suites still green
+

@@ -441,6 +441,12 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
         if res.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Invoice not found")
         await db.finance_payments.delete_many({"invoice_id": iid, "workspace_owner": wo})
+        # Release any time_entries that were billed by this invoice so they
+        # become invoiceable again (Projects → "Bill hours").
+        await db.time_entries.update_many(
+            {"workspace_owner": wo, "invoice_id": iid},
+            {"$set": {"invoiced": False, "invoice_id": None, "updated_at": _now()}},
+        )
         return {"ok": True, "id": iid}
 
     # ---- PDF & email ------------------------------------------------------

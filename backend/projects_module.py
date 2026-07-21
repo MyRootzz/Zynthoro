@@ -23,6 +23,12 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 from pydantic import BaseModel, Field
 
 import activity_log
+# Import finance helpers so we can create a proper draft invoice.
+from finance_module import (
+    _default_settings as _finance_default_settings,
+    _totals as _finance_totals,
+    _sym as _finance_sym,
+)
 
 
 def _now() -> str:
@@ -65,6 +71,14 @@ class MilestoneIn(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     due_date: Optional[str] = None
     completed: Optional[bool] = False
+
+
+class BillHoursIn(BaseModel):
+    lead_id: str
+    hourly_rate: float = Field(gt=0, le=100000)
+    currency: Optional[Literal["EUR", "USD", "GBP"]] = "EUR"
+    due_in_days: Optional[int] = Field(default=14, ge=0, le=365)
+    tax_rate: Optional[float] = Field(default=21.0, ge=0, le=100)
 
 
 # ---- router ---------------------------------------------------------------
@@ -294,5 +308,193 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
         if res.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Milestone not found")
         return {"ok": True, "id": mid}
+
+    # ---- Bill unbilled billable time → draft invoice ---------------------
+    @router.get("/{pid}/billable-summary")
+    async def billable_summary(pid: str, user=Depends(get_user)):
+        """Return billable unbilled time for a project, grouped by task,
+        so the UI can preview line items before creating the invoice.
+        """
+        wo = _wo(user)
+        p = await db.projects.find_one({"id": pid, "workspace_owner": wo})
+        if not p:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        entries = await db.time_entries.find(
+            {"workspace_owner": wo, "project_id": pid,
+             "billable": True,
+             "$or": [{"invoiced": {"$exists": False}}, {"invoiced": False}]},
+            {"_id": 0},
+        ).to_list(5000)
+
+        # Group by task_id.
+        by_task: dict = {}
+        tids = list({e.get("task_id") for e in entries if e.get("task_id")})
+        titles: dict = {}
+        if tids:
+            async for t in db.project_tasks.find(
+                {"workspace_owner": wo, "id": {"$in": tids}},
+                {"_id": 0, "id": 1, "title": 1},
+            ):
+                titles[t["id"]] = t["title"]
+        for e in entries:
+            tid = e.get("task_id") or "_no_task_"
+            key = tid
+            if key not in by_task:
+                by_task[key] = {
+                    "task_id": e.get("task_id"),
+                    "task_title": titles.get(tid, "General work"),
+                    "hours": 0.0,
+                    "entry_count": 0,
+                }
+            by_task[key]["hours"] += float(e.get("hours") or 0)
+            by_task[key]["entry_count"] += 1
+        for b in by_task.values():
+            b["hours"] = round(b["hours"], 2)
+
+        total_hours = round(sum(b["hours"] for b in by_task.values()), 2)
+        return {
+            "project": {"id": p["id"], "name": p["name"], "color": p.get("color", "#1A4FFF")},
+            "unbilled_lines": sorted(by_task.values(), key=lambda x: -x["hours"]),
+            "unbilled_hours": total_hours,
+            "unbilled_entry_count": len(entries),
+        }
+
+    @router.post("/{pid}/invoice-billable-time", status_code=201)
+    async def invoice_billable_time(pid: str, payload: BillHoursIn, user=Depends(get_user)):
+        """Create a draft invoice from a project's unbilled billable hours.
+
+        - Client comes from a Sales lead (must be stage='won').
+        - Line items are grouped by task (title = task, qty = hours, price = rate).
+        - Time entries used are marked `invoiced=True` + `invoice_id=<new>` so
+          they cannot be double-billed.
+        """
+        wo = _wo(user)
+        p = await db.projects.find_one({"id": pid, "workspace_owner": wo})
+        if not p:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        lead = await db.sales_leads.find_one({"id": payload.lead_id, "workspace_owner": wo})
+        if not lead:
+            raise HTTPException(status_code=404, detail="Sales lead not found in your workspace")
+        if lead.get("stage") != "won":
+            raise HTTPException(
+                status_code=400,
+                detail="Only 'won' leads can be used as invoice clients. Move the lead to Won first.",
+            )
+
+        # Grab unbilled billable entries + group by task.
+        entries = await db.time_entries.find(
+            {"workspace_owner": wo, "project_id": pid,
+             "billable": True,
+             "$or": [{"invoiced": {"$exists": False}}, {"invoiced": False}]},
+        ).to_list(5000)
+        if not entries:
+            raise HTTPException(status_code=400, detail="No unbilled billable time entries for this project.")
+
+        tids = list({e.get("task_id") for e in entries if e.get("task_id")})
+        titles: dict = {}
+        if tids:
+            async for t in db.project_tasks.find(
+                {"workspace_owner": wo, "id": {"$in": tids}},
+                {"_id": 0, "id": 1, "title": 1},
+            ):
+                titles[t["id"]] = t["title"]
+
+        buckets: dict = {}
+        for e in entries:
+            tid = e.get("task_id") or "_no_task_"
+            if tid not in buckets:
+                buckets[tid] = {"title": titles.get(tid, "General work"), "hours": 0.0}
+            buckets[tid]["hours"] += float(e.get("hours") or 0)
+
+        # Build line items.
+        items: List[dict] = []
+        for tid, b in buckets.items():
+            if b["hours"] <= 0:
+                continue
+            items.append({
+                "description": f"{b['title']} ({p['name']}) — {round(b['hours'], 2)}h",
+                "quantity": round(b["hours"], 2),
+                "unit_price": float(payload.hourly_rate),
+                "tax_rate": float(payload.tax_rate or 0),
+            })
+        if not items:
+            raise HTTPException(status_code=400, detail="Nothing to invoice (zero total hours).")
+
+        # Ensure finance_settings exists (idempotent) and grab an invoice number.
+        settings = await db.finance_settings.find_one({"workspace_owner": wo}, {"_id": 0})
+        if not settings:
+            settings = _finance_default_settings(wo)
+            settings["created_at"] = _now()
+            await db.finance_settings.insert_one(dict(settings))
+
+        # Atomic sequence bump — same logic as finance_module.
+        res = await db.finance_settings.find_one_and_update(
+            {"workspace_owner": wo}, {"$inc": {"next_invoice_seq": 1}},
+            return_document=True,
+        )
+        seq = max(1, int((res or settings).get("next_invoice_seq", 1)) - 1)
+        prefix = settings.get("invoice_prefix") or "INV-"
+        from datetime import date as _date
+        number = f"{prefix}{_date.today().year}-{seq:04d}"
+
+        subtotal, tax_total, total = _finance_totals(items)
+
+        today = datetime.now(timezone.utc).date().isoformat()
+        due_date = None
+        if payload.due_in_days is not None:
+            from datetime import timedelta
+            due_date = (datetime.now(timezone.utc).date() + timedelta(days=int(payload.due_in_days))).isoformat()
+
+        invoice_id = str(uuid.uuid4())
+        invoice = {
+            "id": invoice_id,
+            "workspace_owner": wo,
+            "number": number,
+            "client_name": lead["name"] + (f" · {lead['company']}" if lead.get("company") else ""),
+            "client_email": lead.get("email"),
+            "client_address": "",
+            "issue_date": today,
+            "due_date": due_date,
+            "currency": payload.currency or settings.get("currency") or "EUR",
+            "items": items,
+            "subtotal": subtotal, "tax_total": tax_total, "total": total,
+            "status": "draft",
+            "payment_terms": settings.get("default_payment_terms", ""),
+            "bank_details": settings.get("default_bank_details", ""),
+            "notes": f"Billed from time tracking for project “{p['name']}”.",
+            "sent_at": None, "paid_at": None,
+            "created_at": _now(), "updated_at": _now(),
+            "source_project_id": pid,
+            "source_lead_id": lead["id"],
+        }
+        await db.finance_invoices.insert_one(invoice)
+
+        # Mark the billed entries so they can't be re-billed.
+        entry_ids = [e["id"] for e in entries]
+        await db.time_entries.update_many(
+            {"id": {"$in": entry_ids}, "workspace_owner": wo},
+            {"$set": {"invoiced": True, "invoice_id": invoice_id, "updated_at": _now()}},
+        )
+
+        try:
+            await activity_log.log_event(
+                db, workspace_owner=wo, actor_email=user.get("email"),
+                event_type="invoice_from_hours",
+                icon="receipt",
+                title=f"Invoice {number} drafted from {round(sum(e['hours'] for e in entries), 2)}h billable",
+                subtitle=f"{p['name']} → {lead['name']} · {_finance_sym(invoice['currency'])}{total:,.2f}",
+                href="/dashboard/finance",
+            )
+        except Exception:
+            pass
+
+        invoice.pop("_id", None)
+        return {
+            "invoice": invoice,
+            "entries_marked": len(entry_ids),
+            "hours_billed": round(sum(float(e.get("hours") or 0) for e in entries), 2),
+        }
 
     return router

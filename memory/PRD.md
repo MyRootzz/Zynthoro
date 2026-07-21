@@ -942,3 +942,39 @@ Compliance: 12 checklist items + 6 policy templates seeded
 - Accounting bank statement CSV auto-ingestion + journal drafting
 - BLOCKED: Website builder custom-domain routing (awaiting Emergent Support)
 
+
+### 2026-02-15 (later) — Time Tracking → Finance: "Bill hours" shortcut
+
+**Purpose**: One-click conversion of a project's unbilled billable time into a draft invoice — closes the end-to-end loop between Time Tracking and Finance.
+
+**User choices**:
+- Client comes from **existing Sales leads at Won stage** (dropdown in the modal)
+- Line items grouped **one per task** (task title × hours × rate)
+- After invoicing, entries are marked `invoiced=True` + store `invoice_id` — deleting the resulting invoice releases them back to the unbilled pool
+
+**Backend** (`/app/backend/projects_module.py`)
+- `GET /api/projects/{pid}/billable-summary` — returns unbilled billable hours grouped by task (used by the UI to preview the line items before creation)
+- `POST /api/projects/{pid}/invoice-billable-time` — body `{lead_id, hourly_rate, currency?, due_in_days?, tax_rate?}`. Validates the lead belongs to the workspace AND has `stage="won"`, groups entries by task, creates a `finance_invoices` doc using the existing finance settings + auto-numbered sequence, marks the used entries as `invoiced=True, invoice_id=<new>`, and logs an activity event.
+
+**Finance delete cascade** (`/app/backend/finance_module.py`)
+- `DELETE /api/finance/invoices/{id}` now also un-marks any time_entries with `invoice_id={id}` (sets `invoiced=false, invoice_id=null`) so the hours become invoiceable again — reversible workflow.
+
+**Frontend** (`ProjectsModule.jsx` — Project detail drawer)
+- Green banner card "€ 10.5h of unbilled billable time · Across 3 tasks" with a **"Bill hours → invoice draft"** button
+- Modal shows:
+  - Won-lead dropdown (auto-selects first)
+  - Rate + currency + tax + due-days inputs
+  - Live preview table of line items grouped by task with running subtotal + VAT total
+  - After creation, toast with "View" action navigates directly to `/dashboard/finance`
+- If no won leads exist, shows a friendly prompt to move a lead to Won first.
+
+**Testing**
+- Backend regression tests: `/app/backend/tests/test_bill_hours_20260215.py` (2/2 pass) — verifies non-billable + already-invoiced entries are correctly excluded, and delete-invoice releases entries.
+- E2E manual verification: jury workspace 10.5h across 3 tasks → invoice `ZY-2026-0007` for €1,905.75 (10.5h × €150 + 21% VAT). Deleting the invoice restored 10.5h to unbilled pool.
+
+**Files touched**
+- `/app/backend/projects_module.py` — 2 new endpoints (billable-summary, invoice-billable-time) + BillHoursIn schema + finance_module helper imports
+- `/app/backend/finance_module.py` — delete-invoice cascade updated to release time entries
+- `/app/frontend/src/pages/dashboard/ProjectsModule.jsx` — new BillHoursModal + green banner card in the project detail drawer + useNavigate import
+- `/app/backend/tests/test_bill_hours_20260215.py` — new regression test
+

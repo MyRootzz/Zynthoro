@@ -137,6 +137,9 @@ class AssistChatIn(BaseModel):
     assistant: Literal["zynthoro_assist", "zyntha", "thoro", "zyona"]
     session_id: Optional[str] = None
     message: str = Field(min_length=1, max_length=4000)
+    # Optional list of ai_uploads.file_id values (from POST /api/ai/upload)
+    # whose extracted text should be injected as context for this turn.
+    file_ids: Optional[List[str]] = None
 
 
 class CaptionIn(BaseModel):
@@ -1118,10 +1121,131 @@ async def _consume_ai_credit(user: dict) -> None:
     )
 
 
+# ------------------------------------------------------------------
+# AI Assistant file uploads (PDF / DOCX / XLSX / PPTX / CSV)
+# ------------------------------------------------------------------
+AI_UPLOAD_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+AI_UPLOAD_ALLOWED_EXTS = {".pdf", ".docx", ".xlsx", ".pptx", ".csv"}
+
+
+async def _load_ai_file_context(user_id: str, file_ids: Optional[List[str]]) -> str:
+    """Fetch extracted text for the given uploads (owner-scoped) and format
+    it as a single context block ready to prepend to the user message.
+    Returns "" if no files or none matched.
+    """
+    if not file_ids:
+        return ""
+    # Cap the number of attachments per turn to avoid pathological prompts.
+    ids = [str(f) for f in file_ids if f][:6]
+    if not ids:
+        return ""
+    rows = await db.ai_uploads.find(
+        {"file_id": {"$in": ids}, "user_id": user_id},
+        {"_id": 0, "filename": 1, "text": 1, "truncated": 1},
+    ).to_list(length=len(ids))
+    if not rows:
+        return ""
+    blocks = []
+    for r in rows:
+        name = r.get("filename") or "attachment"
+        text = r.get("text") or ""
+        if not text:
+            continue
+        trunc_note = " (truncated)" if r.get("truncated") else ""
+        blocks.append(f"===== FILE: {name}{trunc_note} =====\n{text}")
+    if not blocks:
+        return ""
+    return (
+        "The user attached the following file(s). Use them as authoritative "
+        "context for this turn; refer to them by filename when relevant.\n\n"
+        + "\n\n".join(blocks)
+    )
+
+
+@api_router.post("/ai/upload")
+async def ai_upload(
+    file: UploadFile = File(...),
+    user=Depends(get_current_user_full),
+):
+    """Accept a single PDF/DOCX/XLSX/PPTX/CSV (≤10 MB), extract its text,
+    and store it in `ai_uploads` for use as chat context. Records auto-expire
+    after 24h via a TTL index — this is session-temporary storage, not a
+    document library.
+    """
+    filename = (file.filename or "upload").strip()
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower()
+    if ext not in AI_UPLOAD_ALLOWED_EXTS:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type. Allowed: PDF, DOCX, XLSX, PPTX, CSV.",
+        )
+
+    # Read with an explicit ceiling — protects against memory exhaustion.
+    data = await file.read(AI_UPLOAD_MAX_BYTES + 1)
+    if len(data) == 0:
+        raise HTTPException(status_code=400, detail="File is empty.")
+    if len(data) > AI_UPLOAD_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 10 MB).")
+
+    # Local import keeps server.py cold-start light.
+    import file_extract  # noqa: WPS433
+
+    try:
+        text, truncated, mime = await asyncio.to_thread(
+            file_extract.extract_text, filename, data
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+    if not text.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="No text could be extracted from this file. It may be a scan / image-only document.",
+        )
+
+    file_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    doc = {
+        "file_id": file_id,
+        "user_id": user["id"],
+        "filename": filename,
+        "mime": mime,
+        "size": len(data),
+        "text": text,
+        "text_chars": len(text),
+        "truncated": truncated,
+        "created_at": now,  # datetime (not iso) so the TTL index expires it
+    }
+    await db.ai_uploads.insert_one(doc)
+
+    return {
+        "file_id": file_id,
+        "filename": filename,
+        "size": len(data),
+        "mime": mime,
+        "chars_extracted": len(text),
+        "truncated": truncated,
+        "preview": text[:400],
+    }
+
+
+@api_router.delete("/ai/upload/{file_id}")
+async def ai_upload_delete(file_id: str, user=Depends(get_current_user_full)):
+    res = await db.ai_uploads.delete_one({"file_id": file_id, "user_id": user["id"]})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Upload not found.")
+    return {"ok": True, "file_id": file_id}
+
+
+
 @api_router.post("/ai/chat")
 async def ai_chat(payload: AssistChatIn, user=Depends(get_current_user_full)):
     await _consume_ai_credit(user)
     session_id = payload.session_id or f"{user['id']}:{payload.assistant}:{uuid.uuid4()}"
+    file_context = await _load_ai_file_context(user["id"], payload.file_ids)
     try:
         result = await ai_assistants.chat_complete(
             db,
@@ -1131,6 +1255,7 @@ async def ai_chat(payload: AssistChatIn, user=Depends(get_current_user_full)):
             payload.message,
             subscription_plan=user.get("subscription_plan"),
             user_context=user,
+            file_context=file_context,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
@@ -1159,6 +1284,7 @@ async def ai_stream(payload: AssistChatIn, user=Depends(get_current_user_full)):
     await _consume_ai_credit(user)
     session_id = payload.session_id or f"{user['id']}:{payload.assistant}:{uuid.uuid4()}"
     plan = user.get("subscription_plan")
+    file_context = await _load_ai_file_context(user["id"], payload.file_ids)
 
     async def event_generator():
         try:
@@ -1166,6 +1292,7 @@ async def ai_stream(payload: AssistChatIn, user=Depends(get_current_user_full)):
                 db, payload.assistant, session_id, user["id"], payload.message,
                 subscription_plan=plan,
                 user_context=user,
+                file_context=file_context,
             ):
                 ev = frame.pop("type", "delta")
                 yield f"event: {ev}\ndata: {_json.dumps(frame)}\n\n"
@@ -2765,6 +2892,10 @@ async def startup():
     await db.ai_logs.create_index([("assistant", 1), ("timestamp", -1)])
     await db.activity_events.create_index([("workspace_owner", 1), ("timestamp", -1)])
     await db.payment_transactions.create_index("session_id", unique=True)
+    # ai_uploads is session-temporary — TTL index auto-purges after 24h
+    await db.ai_uploads.create_index("file_id", unique=True)
+    await db.ai_uploads.create_index("user_id")
+    await db.ai_uploads.create_index("created_at", expireAfterSeconds=60 * 60 * 24)
     await seed_founder()
     await seed_jury_demo()
     # Validate Stripe tier catalog against live Stripe account.

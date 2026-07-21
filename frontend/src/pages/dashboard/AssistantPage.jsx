@@ -1,12 +1,19 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
-import { Send, Loader2, Sparkles, BrainCircuit, TrendingUp } from "lucide-react";
+import { Send, Loader2, Sparkles, BrainCircuit, TrendingUp, Paperclip } from "lucide-react";
 import { API, formatApiError } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import AssistantActions from "@/components/dashboard/AssistantActions";
 import VoiceButton from "@/components/dashboard/VoiceButton";
 import AISeesIndicator from "@/components/dashboard/AISeesIndicator";
+import AttachmentChip from "@/components/dashboard/AttachmentChip";
 import { streamAssistantChat } from "@/lib/aiStream";
+import {
+  uploadAiFile,
+  deleteAiFile,
+  validateUpload,
+  AI_UPLOAD_ACCEPT_ATTR,
+} from "@/lib/aiUpload";
 
 const CONFIGS = {
   zyntha: {
@@ -61,6 +68,10 @@ export default function AssistantPage({ assistantKey }) {
   const [sessionId, setSessionId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [poweredBy, setPoweredBy] = useState(null);
+  // Pending attachments — cleared after successful send.
+  // Shape: { local_id, file_id?, filename, size, status: "uploading"|"ready"|"error" }
+  const [attachments, setAttachments] = useState([]);
+  const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -100,10 +111,30 @@ export default function AssistantPage({ assistantKey }) {
   const send = async (text) => {
     const value = (text ?? input).trim();
     if (!value || busy) return;
+    // Wait for any in-flight upload — do not send a message with a
+    // half-uploaded file, the server won't know about it yet.
+    if (attachments.some((a) => a.status === "uploading")) {
+      toast.info("Please wait for the file upload to finish.");
+      return;
+    }
     if (!text) setInput("");
 
-    // Append the user message, then an empty assistant message we will fill via stream
-    setMessages((m) => [...m, { role: "user", content: value }, { role: "assistant", content: "", streaming: true }]);
+    const readyAttachments = attachments.filter((a) => a.status === "ready" && a.file_id);
+    const fileIds = readyAttachments.map((a) => a.file_id);
+    // Snapshot attachments to render inside the user bubble, then clear the composer
+    const bubbleAttachments = readyAttachments.map((a) => ({
+      file_id: a.file_id,
+      filename: a.filename,
+      size: a.size,
+    }));
+    setAttachments([]);
+
+    // Append the user message (with attachment metadata), then an empty assistant message
+    setMessages((m) => [
+      ...m,
+      { role: "user", content: value, attachments: bubbleAttachments },
+      { role: "assistant", content: "", streaming: true },
+    ]);
     setBusy(true);
 
     let localSession = sessionId;
@@ -113,6 +144,7 @@ export default function AssistantPage({ assistantKey }) {
       assistant: assistantKey,
       session_id: sessionId || undefined,
       message: value,
+      file_ids: fileIds.length ? fileIds : undefined,
       onMeta: (meta) => {
         if (meta?.session_id && !localSession) {
           localSession = meta.session_id;
@@ -162,6 +194,53 @@ export default function AssistantPage({ assistantKey }) {
     if (hadError && !localSession) setSessionId(null);
   };
 
+  // ---- Attachment handlers -------------------------------------------------
+  const handleAttachClick = () => {
+    if (busy) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e) => {
+    const files = Array.from(e.target.files || []);
+    // Reset the input immediately so selecting the same file twice still fires change.
+    e.target.value = "";
+    for (const file of files) {
+      const err = validateUpload(file);
+      if (err) {
+        toast.error(err);
+        continue;
+      }
+      const local_id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setAttachments((prev) => [
+        ...prev,
+        { local_id, filename: file.name, size: file.size, status: "uploading" },
+      ]);
+      try {
+        const res = await uploadAiFile(file);
+        setAttachments((prev) =>
+          prev.map((a) =>
+            a.local_id === local_id
+              ? { ...a, file_id: res.file_id, size: res.size, status: "ready" }
+              : a
+          )
+        );
+      } catch (uploadErr) {
+        const msg = formatApiError(uploadErr?.response?.data?.detail) || uploadErr?.message || "Upload failed.";
+        toast.error(msg);
+        setAttachments((prev) => prev.filter((a) => a.local_id !== local_id));
+      }
+    }
+  };
+
+  const removeAttachment = async (local_id) => {
+    const target = attachments.find((a) => a.local_id === local_id);
+    setAttachments((prev) => prev.filter((a) => a.local_id !== local_id));
+    if (target?.file_id) {
+      // Best-effort server-side purge — TTL will handle it either way.
+      deleteAiFile(target.file_id).catch(() => {});
+    }
+  };
+
   return (
     <div data-testid={`assistant-page-${assistantKey}`} className="max-w-4xl">
       <div className="flex items-start gap-4">
@@ -201,10 +280,27 @@ export default function AssistantPage({ assistantKey }) {
             m.role === "user" ? (
               <div
                 key={i}
-                className="max-w-[80%] ml-auto text-[14px] leading-relaxed px-4 py-2.5 rounded-lg rounded-tr-sm text-white whitespace-pre-wrap"
-                style={{ background: "#1A4FFF" }}
+                className="max-w-[80%] ml-auto flex flex-col items-end gap-1.5"
               >
-                {m.content}
+                {m.attachments && m.attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 justify-end" data-testid={`${assistantKey}-msg-${i}-attachments`}>
+                    {m.attachments.map((a) => (
+                      <AttachmentChip
+                        key={a.file_id}
+                        filename={a.filename}
+                        size={a.size}
+                        compact
+                        testId={`${assistantKey}-msg-${i}-attachment-${a.file_id}`}
+                      />
+                    ))}
+                  </div>
+                )}
+                <div
+                  className="text-[14px] leading-relaxed px-4 py-2.5 rounded-lg rounded-tr-sm text-white whitespace-pre-wrap"
+                  style={{ background: "#1A4FFF" }}
+                >
+                  {m.content}
+                </div>
               </div>
             ) : (
               <div key={i} className="flex items-start gap-2.5 max-w-[88%]">
@@ -268,31 +364,70 @@ export default function AssistantPage({ assistantKey }) {
 
         <form
           onSubmit={(e) => { e.preventDefault(); send(); }}
-          className="p-3 border-t border-[#eee] flex items-end gap-2"
+          className="p-3 border-t border-[#eee] flex flex-col gap-2"
         >
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter sends; Shift+Enter adds a newline.
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                send();
-              }
-            }}
-            placeholder={`Message ${cfg.name}…  (Shift+Enter for newline)`}
-            data-testid={`${assistantKey}-input`}
-            rows={2}
-            className="flex-1 text-[14px] leading-relaxed outline-none px-3 py-2.5 rounded-md border border-[#eee] focus:border-[#1A4FFF] resize-y min-h-[52px] max-h-[240px] whitespace-pre-wrap break-words"
-          />
-          <VoiceButton
-            testId={`${assistantKey}-voice-btn`}
-            onInterim={(t) => setInput(t)}
-            onFinal={(t) => { setInput(""); send(t); }}
-          />
-          <button type="submit" disabled={busy || !input.trim()} className="zy-btn-primary px-3.5 py-2.5 disabled:opacity-50 shrink-0" data-testid={`${assistantKey}-send`}>
-            <Send size={15} />
-          </button>
+          {attachments.length > 0 && (
+            <div
+              className="flex flex-wrap gap-1.5"
+              data-testid={`${assistantKey}-pending-attachments`}
+            >
+              {attachments.map((a) => (
+                <AttachmentChip
+                  key={a.local_id}
+                  filename={a.filename}
+                  size={a.size}
+                  status={a.status}
+                  onRemove={() => removeAttachment(a.local_id)}
+                  testId={`${assistantKey}-pending-${a.local_id}`}
+                />
+              ))}
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={AI_UPLOAD_ACCEPT_ATTR}
+              multiple
+              onChange={handleFileSelected}
+              className="hidden"
+              data-testid={`${assistantKey}-file-input`}
+            />
+            <button
+              type="button"
+              onClick={handleAttachClick}
+              disabled={busy}
+              title="Attach a file (PDF, DOCX, XLSX, PPTX, CSV — up to 10 MB)"
+              aria-label="Attach a file"
+              className="shrink-0 h-[44px] w-[44px] inline-flex items-center justify-center rounded-md border border-[#eee] text-[#555] hover:border-[#1A4FFF] hover:text-[#1A4FFF] disabled:opacity-40 disabled:cursor-not-allowed"
+              data-testid={`${assistantKey}-attach-btn`}
+            >
+              <Paperclip size={17} />
+            </button>
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter sends; Shift+Enter adds a newline.
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              placeholder={`Message ${cfg.name}…  (Shift+Enter for newline)`}
+              data-testid={`${assistantKey}-input`}
+              rows={2}
+              className="flex-1 text-[14px] leading-relaxed outline-none px-3 py-2.5 rounded-md border border-[#eee] focus:border-[#1A4FFF] resize-y min-h-[52px] max-h-[240px] whitespace-pre-wrap break-words"
+            />
+            <VoiceButton
+              testId={`${assistantKey}-voice-btn`}
+              onInterim={(t) => setInput(t)}
+              onFinal={(t) => { setInput(""); send(t); }}
+            />
+            <button type="submit" disabled={busy || !input.trim()} className="zy-btn-primary px-3.5 py-2.5 disabled:opacity-50 shrink-0" data-testid={`${assistantKey}-send`}>
+              <Send size={15} />
+            </button>
+          </div>
         </form>
       </div>
     </div>

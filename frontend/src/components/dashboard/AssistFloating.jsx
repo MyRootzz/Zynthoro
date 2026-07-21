@@ -1,13 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
-import { Sparkles, X, Send, Loader2 } from "lucide-react";
+import { Sparkles, X, Send, Loader2, Paperclip } from "lucide-react";
 import { ZyLogo } from "@/components/ZyLogo";
 import { API, formatApiError } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import AssistantActions from "@/components/dashboard/AssistantActions";
 import VoiceButton from "@/components/dashboard/VoiceButton";
 import AISeesIndicator from "@/components/dashboard/AISeesIndicator";
+import AttachmentChip from "@/components/dashboard/AttachmentChip";
 import { streamAssistantChat } from "@/lib/aiStream";
+import {
+  uploadAiFile,
+  deleteAiFile,
+  validateUpload,
+  AI_UPLOAD_ACCEPT_ATTR,
+} from "@/lib/aiUpload";
 
 export default function AssistFloating() {
   const [open, setOpen] = useState(false);
@@ -21,6 +28,8 @@ export default function AssistFloating() {
   const [sessionId, setSessionId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [poweredBy, setPoweredBy] = useState(null);
+  const [attachments, setAttachments] = useState([]);
+  const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
 
   // Resume last conversation when the user opens the panel for the first time
@@ -52,10 +61,22 @@ export default function AssistFloating() {
     e?.preventDefault?.();
     const text = (typeof override === "string" ? override : input).trim();
     if (!text || busy) return;
+    if (attachments.some((a) => a.status === "uploading")) {
+      toast.info("Please wait for the file upload to finish.");
+      return;
+    }
     setInput("");
+
+    const readyAttachments = attachments.filter((a) => a.status === "ready" && a.file_id);
+    const fileIds = readyAttachments.map((a) => a.file_id);
+    const bubbleAttachments = readyAttachments.map((a) => ({
+      file_id: a.file_id, filename: a.filename, size: a.size,
+    }));
+    setAttachments([]);
+
     setMessages((m) => [
       ...m,
-      { role: "user", content: text },
+      { role: "user", content: text, attachments: bubbleAttachments },
       { role: "assistant", content: "", streaming: true },
     ]);
     setBusy(true);
@@ -67,6 +88,7 @@ export default function AssistFloating() {
       assistant: "zynthoro_assist",
       session_id: sessionId || undefined,
       message: text,
+      file_ids: fileIds.length ? fileIds : undefined,
       onMeta: (meta) => {
         if (meta?.session_id && !localSession) {
           localSession = meta.session_id;
@@ -114,6 +136,46 @@ export default function AssistFloating() {
     if (hadError && !localSession) setSessionId(null);
   };
 
+  // ---- Attachment handlers -------------------------------------------------
+  const handleAttachClick = () => {
+    if (busy) return;
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    for (const file of files) {
+      const err = validateUpload(file);
+      if (err) { toast.error(err); continue; }
+      const local_id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setAttachments((prev) => [
+        ...prev,
+        { local_id, filename: file.name, size: file.size, status: "uploading" },
+      ]);
+      try {
+        const res = await uploadAiFile(file);
+        setAttachments((prev) =>
+          prev.map((a) =>
+            a.local_id === local_id
+              ? { ...a, file_id: res.file_id, size: res.size, status: "ready" }
+              : a
+          )
+        );
+      } catch (uploadErr) {
+        const msg = formatApiError(uploadErr?.response?.data?.detail) || uploadErr?.message || "Upload failed.";
+        toast.error(msg);
+        setAttachments((prev) => prev.filter((a) => a.local_id !== local_id));
+      }
+    }
+  };
+
+  const removeAttachment = async (local_id) => {
+    const target = attachments.find((a) => a.local_id === local_id);
+    setAttachments((prev) => prev.filter((a) => a.local_id !== local_id));
+    if (target?.file_id) deleteAiFile(target.file_id).catch(() => {});
+  };
+
   return (
     <>
       <button
@@ -151,12 +213,26 @@ export default function AssistFloating() {
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3.5" data-testid="assist-messages">
           {messages.map((m, i) => (
             m.role === "user" ? (
-              <div
-                key={i}
-                className="max-w-[85%] ml-auto text-[13.5px] leading-relaxed px-3.5 py-2.5 rounded-lg rounded-tr-sm text-white whitespace-pre-wrap"
-                style={{ background: "#1A4FFF" }}
-              >
-                {m.content}
+              <div key={i} className="max-w-[85%] ml-auto flex flex-col items-end gap-1.5">
+                {m.attachments && m.attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 justify-end" data-testid={`assist-msg-${i}-attachments`}>
+                    {m.attachments.map((a) => (
+                      <AttachmentChip
+                        key={a.file_id}
+                        filename={a.filename}
+                        size={a.size}
+                        compact
+                        testId={`assist-msg-${i}-attachment-${a.file_id}`}
+                      />
+                    ))}
+                  </div>
+                )}
+                <div
+                  className="text-[13.5px] leading-relaxed px-3.5 py-2.5 rounded-lg rounded-tr-sm text-white whitespace-pre-wrap"
+                  style={{ background: "#1A4FFF" }}
+                >
+                  {m.content}
+                </div>
               </div>
             ) : (
               <div key={i} className="flex items-start gap-2 max-w-[92%]">
@@ -205,23 +281,59 @@ export default function AssistFloating() {
           )}
         </div>
 
-        <form onSubmit={send} className="p-3 border-t border-[#eee] flex items-center gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Zynthoro anything…"
-            data-testid="assist-input"
-            className="flex-1 text-[13.5px] outline-none px-3 py-2 rounded-md border border-[#eee] focus:border-[#1A4FFF]"
-          />
-          <VoiceButton
-            testId="assist-voice-btn"
-            size={14}
-            onInterim={(t) => setInput(t)}
-            onFinal={(t) => { setInput(""); send(null, t); }}
-          />
-          <button type="submit" disabled={busy || !input.trim()} className="zy-btn-primary px-3 py-2 disabled:opacity-50" data-testid="assist-send">
-            <Send size={15} />
-          </button>
+        <form onSubmit={send} className="p-3 border-t border-[#eee] flex flex-col gap-2">
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5" data-testid="assist-pending-attachments">
+              {attachments.map((a) => (
+                <AttachmentChip
+                  key={a.local_id}
+                  filename={a.filename}
+                  size={a.size}
+                  status={a.status}
+                  onRemove={() => removeAttachment(a.local_id)}
+                  testId={`assist-pending-${a.local_id}`}
+                />
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={AI_UPLOAD_ACCEPT_ATTR}
+              multiple
+              onChange={handleFileSelected}
+              className="hidden"
+              data-testid="assist-file-input"
+            />
+            <button
+              type="button"
+              onClick={handleAttachClick}
+              disabled={busy}
+              title="Attach a file (PDF, DOCX, XLSX, PPTX, CSV — up to 10 MB)"
+              aria-label="Attach a file"
+              className="shrink-0 h-[38px] w-[38px] inline-flex items-center justify-center rounded-md border border-[#eee] text-[#555] hover:border-[#1A4FFF] hover:text-[#1A4FFF] disabled:opacity-40 disabled:cursor-not-allowed"
+              data-testid="assist-attach-btn"
+            >
+              <Paperclip size={15} />
+            </button>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask Zynthoro anything…"
+              data-testid="assist-input"
+              className="flex-1 text-[13.5px] outline-none px-3 py-2 rounded-md border border-[#eee] focus:border-[#1A4FFF]"
+            />
+            <VoiceButton
+              testId="assist-voice-btn"
+              size={14}
+              onInterim={(t) => setInput(t)}
+              onFinal={(t) => { setInput(""); send(null, t); }}
+            />
+            <button type="submit" disabled={busy || !input.trim()} className="zy-btn-primary px-3 py-2 disabled:opacity-50" data-testid="assist-send">
+              <Send size={15} />
+            </button>
+          </div>
         </form>
       </div>
     </>

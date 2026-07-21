@@ -15,6 +15,7 @@ export async function streamAssistantChat({
   assistant,
   session_id,
   message,
+  file_ids,
   onMeta,
   onDelta,
   onError,
@@ -27,7 +28,7 @@ export async function streamAssistantChat({
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-      body: JSON.stringify({ assistant, session_id, message }),
+      body: JSON.stringify({ assistant, session_id, message, file_ids }),
       signal,
     });
   } catch (e) {

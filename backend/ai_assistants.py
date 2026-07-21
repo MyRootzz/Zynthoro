@@ -359,6 +359,7 @@ async def chat_complete(
     message: str,
     subscription_plan: Optional[str] = None,
     user_context: Optional[Dict] = None,
+    file_context: Optional[str] = None,
 ) -> Dict:
     cfg = ASSISTANTS.get(assistant_key)
     if not cfg:
@@ -376,6 +377,8 @@ async def chat_complete(
             rendered.append(f"{who}: {m['content']}")
         history_text = "\n\nPrior conversation:\n" + "\n".join(rendered)
     system = system_prompt + _build_user_context(user_context) + history_text
+    if file_context:
+        system += "\n\n## Attached files\n" + file_context
 
     chat = LlmChat(
         api_key=api_key,
@@ -428,6 +431,7 @@ async def chat_stream(
     message: str,
     subscription_plan: Optional[str] = None,
     user_context: Optional[Dict] = None,
+    file_context: Optional[str] = None,
 ):
     """Async generator that yields token deltas as strings.
 
@@ -450,6 +454,8 @@ async def chat_stream(
             rendered.append(f"{who}: {m['content']}")
         history_text = "\n\nPrior conversation:\n" + "\n".join(rendered)
     system = system_prompt + _build_user_context(user_context) + history_text
+    if file_context:
+        system += "\n\n## Attached files\n" + file_context
 
     # Persist the user message up-front so history is consistent even if the
     # client disconnects mid-stream.

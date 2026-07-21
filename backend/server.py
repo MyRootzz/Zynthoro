@@ -2899,6 +2899,191 @@ async def seed_founder():
         )
 
 
+async def _seed_finance_and_sales_demo(workspace_owner: str, now_iso: str) -> None:
+    """Session C1 (2026-02-15) — seed realistic invoices + leads for the
+    XPRIZE jury demo workspace so the Finance & Sales modules show
+    populated data on first click. Idempotent: only inserts if empty.
+    """
+    from datetime import date, timedelta
+
+    today = date.today()
+
+    # ---- Finance settings (branding on PDFs) --------------------------
+    if not await db.finance_settings.find_one({"workspace_owner": workspace_owner}):
+        await db.finance_settings.insert_one({
+            "workspace_owner": workspace_owner,
+            "company_name": "Zynthoro Demo Workspace",
+            "company_address": "Prinsengracht 263\n1016 GV Amsterdam\nNetherlands",
+            "company_email": "billing@zynthoro-demo.ai",
+            "company_vat": "NL 8590.12.345.B01",
+            "logo_url": "",
+            "default_payment_terms": "Payment due within 14 days of the invoice date. Late payments accrue 1.5% interest per month. Please reference the invoice number on your bank transfer.",
+            "default_bank_details": "IBAN: NL91 ABNA 0417 1643 00\nBIC: ABNANL2A\nAccount name: Casa Haya International BV",
+            "invoice_prefix": "ZY-",
+            "next_invoice_seq": 1,
+            "currency": "EUR",
+            "created_at": now_iso,
+        })
+
+    # ---- Invoices ------------------------------------------------------
+    if await db.finance_invoices.count_documents({"workspace_owner": workspace_owner}) == 0:
+        def _mk_invoice(number, client, email, items, issued, due, status):
+            subtotal = round(sum(it["quantity"] * it["unit_price"] for it in items), 2)
+            tax = round(sum(it["quantity"] * it["unit_price"] * (it["tax_rate"] / 100.0) for it in items), 2)
+            total = round(subtotal + tax, 2)
+            return {
+                "id": str(uuid.uuid4()),
+                "workspace_owner": workspace_owner,
+                "number": number,
+                "client_name": client,
+                "client_email": email,
+                "client_address": "",
+                "issue_date": issued,
+                "due_date": due,
+                "currency": "EUR",
+                "items": items,
+                "subtotal": subtotal, "tax_total": tax, "total": total,
+                "status": status,
+                "payment_terms": "Payment due within 14 days.",
+                "bank_details": "IBAN: NL91 ABNA 0417 1643 00\nBIC: ABNANL2A",
+                "notes": "",
+                "sent_at": now_iso if status in ("sent", "paid", "overdue") else None,
+                "paid_at": now_iso if status == "paid" else None,
+                "created_at": now_iso, "updated_at": now_iso,
+                "is_demo": True,
+            }
+
+        demo_invoices = [
+            _mk_invoice(
+                "ZY-2026-0001", "Aurora Studios B.V.", "finance@aurorastudios.demo",
+                [
+                    {"description": "Zynthoro Enterprise · Q1 subscription", "quantity": 3, "unit_price": 990, "tax_rate": 21},
+                    {"description": "Onboarding & training workshop (2 days)", "quantity": 1, "unit_price": 2500, "tax_rate": 21},
+                ],
+                (today - timedelta(days=45)).isoformat(),
+                (today - timedelta(days=15)).isoformat(),
+                "paid",
+            ),
+            _mk_invoice(
+                "ZY-2026-0002", "Helix Robotics GmbH", "accounts@helix-robotics.demo",
+                [
+                    {"description": "AI workflow automation setup", "quantity": 1, "unit_price": 5500, "tax_rate": 21},
+                    {"description": "Custom integration hours", "quantity": 20, "unit_price": 145, "tax_rate": 21},
+                ],
+                (today - timedelta(days=30)).isoformat(),
+                (today - timedelta(days=1)).isoformat(),
+                "paid",
+            ),
+            _mk_invoice(
+                "ZY-2026-0003", "Lumen Therapeutics PLC", "ap@lumen-therapeutics.demo",
+                [
+                    {"description": "Compliance & GDPR audit module — annual", "quantity": 1, "unit_price": 8990, "tax_rate": 21},
+                    {"description": "SOC 2 evidence gathering support", "quantity": 12, "unit_price": 175, "tax_rate": 21},
+                ],
+                (today - timedelta(days=10)).isoformat(),
+                (today + timedelta(days=20)).isoformat(),
+                "sent",
+            ),
+            _mk_invoice(
+                "ZY-2026-0004", "Sable & Co. Architects", "billing@sable-architects.demo",
+                [
+                    {"description": "Zynthoro Compleet · monthly (Feb 2026)", "quantity": 1, "unit_price": 79.99, "tax_rate": 21},
+                    {"description": "AI+Social credit top-up (150 credits)", "quantity": 1, "unit_price": 59.99, "tax_rate": 21},
+                ],
+                (today - timedelta(days=5)).isoformat(),
+                (today + timedelta(days=25)).isoformat(),
+                "sent",
+            ),
+            _mk_invoice(
+                "ZY-2026-0005", "Verdant Foods Co-op", "hello@verdant-foods.demo",
+                [
+                    {"description": "Marketing & Content Studio · 1-month pilot", "quantity": 1, "unit_price": 2490, "tax_rate": 21},
+                ],
+                today.isoformat(),
+                (today + timedelta(days=30)).isoformat(),
+                "draft",
+            ),
+            _mk_invoice(
+                "ZY-2026-0006", "Northwind Capital Partners", "controller@northwind-capital.demo",
+                [
+                    {"description": "Zynthoro Enterprise Unlimited · Q4 2025 subscription", "quantity": 1, "unit_price": 24990, "tax_rate": 21},
+                ],
+                (today - timedelta(days=60)).isoformat(),
+                (today - timedelta(days=30)).isoformat(),
+                "overdue",
+            ),
+        ]
+        await db.finance_invoices.insert_many(demo_invoices)
+
+        # Payment history for the two paid invoices.
+        paid_ids = [inv["id"] for inv in demo_invoices if inv["status"] == "paid"]
+        payment_docs = []
+        for iid in paid_ids:
+            inv = next(x for x in demo_invoices if x["id"] == iid)
+            payment_docs.append({
+                "id": str(uuid.uuid4()),
+                "workspace_owner": workspace_owner,
+                "invoice_id": iid,
+                "amount": inv["total"],
+                "method": "bank_transfer",
+                "date": inv["due_date"],
+                "notes": "Received via SEPA",
+                "created_at": now_iso,
+                "is_demo": True,
+            })
+        if payment_docs:
+            await db.finance_payments.insert_many(payment_docs)
+
+        # Bump the invoice seq so the next real invoice starts at 0007.
+        await db.finance_settings.update_one(
+            {"workspace_owner": workspace_owner},
+            {"$set": {"next_invoice_seq": 7}},
+        )
+        logger.info(
+            "Seeded %d real finance_invoices (+ %d payments) for jury workspace",
+            len(demo_invoices), len(payment_docs),
+        )
+
+    # ---- Sales leads across all 5 pipeline stages ---------------------
+    if await db.sales_leads.count_documents({"workspace_owner": workspace_owner}) == 0:
+        def _mk_lead(name, company, email, phone, source, stage, value, close_offset, notes):
+            return {
+                "id": str(uuid.uuid4()),
+                "workspace_owner": workspace_owner,
+                "name": name, "company": company,
+                "email": email, "phone": phone,
+                "source": source, "stage": stage,
+                "value": float(value), "currency": "EUR",
+                "expected_close": (today + timedelta(days=close_offset)).isoformat() if close_offset else None,
+                "notes": notes,
+                "stage_history": [
+                    {"stage": "new", "at": now_iso, "by": "demo@zynthoro"},
+                ] + (
+                    [{"stage": stage, "at": now_iso, "by": "demo@zynthoro"}]
+                    if stage != "new" else []
+                ),
+                "created_at": now_iso, "updated_at": now_iso,
+                "is_demo": True,
+            }
+
+        demo_leads = [
+            _mk_lead("Sophie Laurent", "Élégance Paris SAS",       "s.laurent@elegance-paris.demo", "+33 1 42 60 30 30", "Website form",     "new",       12500, 60,  "Boutique fashion chain — 8 stores across France. Interested in Compleet + AI+Social."),
+            _mk_lead("Marco Bianchi",   "Bianchi Automotive S.p.A.","marco@bianchi-auto.demo",       "+39 02 5555 1234",  "LinkedIn outreach","new",       48000, 90,  "Mid-size car dealership group, needs full ERP replacement."),
+            _mk_lead("Emma van der Berg","GreenGrocer B.V.",         "emma@greengrocer.demo",        "+31 20 555 0142",   "Referral",         "contacted", 8990,  30,  "Amsterdam organic grocery — 3 locations. Call scheduled next Tuesday 10:00."),
+            _mk_lead("James O'Connor",  "Dublin Digital Studio",     "james@dublindigital.demo",     "+353 1 555 0198",   "Cold email",       "contacted", 15600, 45,  "Creative agency, 12 people. Booked a demo for Thursday."),
+            _mk_lead("Isabella Rossi",  "Rossi Interiors Milano",    "isabella@rossi-interiors.demo","+39 02 5555 6789",  "Trade show",       "proposal",  22400, 21,  "Sent Enterprise Advanced proposal on Feb 8. Waiting on final sign-off from CFO."),
+            _mk_lead("David Nakamura",  "Kyoto Sake Exports KK",     "d.nakamura@kyotosake.demo",    "+81 75 555 4321",   "Referral · partner","proposal", 34500, 30,  "Multi-country shipping compliance requirement. Proposal includes bespoke module."),
+            _mk_lead("Fatima Al-Rashid", "Desert Bloom Cosmetics",   "fatima@desertbloom.demo",      "+971 4 555 8765",   "Website form",     "won",       18990, -10, "Signed! Kickoff scheduled next Monday. Enterprise Advanced + Marketing add-on."),
+            _mk_lead("Klaus Weber",     "Weber Präzision GmbH",       "k.weber@weber-praezision.demo","+49 89 5555 9876", "Cold call",        "won",       27500, -5,  "Signed 3-year deal. Onboarding starts next week with priority support."),
+            _mk_lead("Priya Menon",     "Bengaluru Textiles Pvt Ltd", "priya@bengaluru-textiles.demo","+91 80 5555 3210",  "LinkedIn Ads",     "lost",      9500,  None,"Went with a cheaper local competitor. Follow up in Q3."),
+        ]
+        await db.sales_leads.insert_many(demo_leads)
+        logger.info(
+            "Seeded %d real sales_leads across all 5 stages for jury workspace",
+            len(demo_leads),
+        )
+
+
 async def seed_jury_demo():
     """XPRIZE / investor demo account, pre-populated with realistic sample data.
 
@@ -3017,6 +3202,12 @@ async def seed_jury_demo():
             for inv in demo_invoices
         ])
         logger.info("Seeded %d demo invoices for jury workspace", len(demo_invoices))
+
+    # ----- Session C1 demo seed: real finance_invoices + sales_leads -----
+    # These populate the actual production modules the jury will interact
+    # with (unlike `demo_invoices` above which only feeds the legacy
+    # `/api/demo/invoices` read-only route).
+    await _seed_finance_and_sales_demo(workspace_owner, now_iso)
 
     # ----- Operations & Production demo data -----
     if await db.recipes.count_documents({"workspace_owner": workspace_owner}) == 0:

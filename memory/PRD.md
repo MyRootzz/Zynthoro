@@ -838,3 +838,31 @@ Compliance: 12 checklist items + 6 policy templates seeded
 - **P2** — Photo/Video AI generation (fal.ai) — replace 'Coming soon' stubs
 - **P2** — Accounting bank statement CSV auto-ingestion + journal drafting
 - **BLOCKED** — Website builder custom-domain routing (awaiting Emergent Support)
+
+
+### 2026-02-15 (later) — Jury demo workspace seeded for Finance & Sales
+
+**Purpose**: When the XPRIZE jury logs into `jury@zynthoro.ai`, both Finance and Sales modules must show populated data on first click (no empty states during the walkthrough).
+
+**Added** (`server.py` — new helper `_seed_finance_and_sales_demo`, called from `seed_jury_demo()`; idempotent, only inserts if collections empty):
+- **finance_settings** — Zynthoro Demo Workspace branding (Amsterdam address, IBAN, VAT, 14-day terms, `ZY-` prefix)
+- **6 finance_invoices** (all with realistic line items + tax):
+  - `ZY-2026-0001` Aurora Studios — **PAID** €6,618.70
+  - `ZY-2026-0002` Helix Robotics — **PAID** €10,164.00
+  - `ZY-2026-0003` Lumen Therapeutics — **SENT** €13,418.90
+  - `ZY-2026-0004` Sable & Co. Architects — **SENT** €169.38
+  - `ZY-2026-0005` Verdant Foods — **DRAFT** €3,012.90
+  - `ZY-2026-0006` Northwind Capital — **OVERDUE** €30,237.90
+  - Totals: €63,621 invoiced · €16,782 paid · €43,826 outstanding
+- **2 finance_payments** (auto-linked to the 2 paid invoices)
+- **9 sales_leads** distributed across all 5 kanban stages:
+  - **New** (2): Sophie Laurent · Élégance Paris, Marco Bianchi · Bianchi Automotive
+  - **Contacted** (2): Emma van der Berg · GreenGrocer, James O'Connor · Dublin Digital
+  - **Proposal** (2): Isabella Rossi · Rossi Interiors, David Nakamura · Kyoto Sake
+  - **Won** (2): Fatima Al-Rashid · Desert Bloom, Klaus Weber · Weber Präzision
+  - **Lost** (1): Priya Menon · Bengaluru Textiles
+  - Totals: 9 leads · €142K open · €46K won · 1 lost
+- All records flagged `is_demo: true` for future cleanup filtering.
+- Bumped `next_invoice_seq` to 7 so the jury's first manually-created invoice is `ZY-2026-0007`.
+
+**Verified**: Jury login → `/dashboard/sales` shows populated kanban with correct totals and Jury Tour overlay firing on top.

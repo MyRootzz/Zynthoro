@@ -1690,6 +1690,13 @@ async def checkout_tier_session(
         )
 
     consent_at = datetime.now(timezone.utc).isoformat()
+    # SECURITY (SEC-003) — promo codes are only offered on Stripe Checkout
+    # for QA test accounts. Real customers never see the "Add promotion
+    # code" input, so the ZYNTHORO-QA 100%-off coupon can't be used against
+    # a live tier by a normal user. Defense-in-depth: even if a promo does
+    # slip through, `_provision_tier_purchase` refuses to grant entitlement
+    # when amount_paid < 50% of list.
+    allow_promo = bool(user.get("is_qa_test"))
     try:
         session = await tier_catalog.create_tier_checkout_session(
             tier_key=payload.tier_key,
@@ -1697,6 +1704,7 @@ async def checkout_tier_session(
             user_id=user["id"],
             user_email=user["email"],
             consent_at=consent_at,
+            allow_promo=allow_promo,
         )
     except ValueError as e:
         # Unknown tier_key (defensive — Pydantic Literal usually catches
@@ -1803,6 +1811,7 @@ async def checkout_tier_status(
                         stripe_customer=session.get("customer"),
                         event_type="status_self_heal",
                         session_id=session_id,
+                        amount_total_cents=session.get("amount_total"),
                     )
                     await db.payment_transactions.update_one(
                         {"session_id": session_id},
@@ -2052,10 +2061,19 @@ async def _provision_tier_purchase(
     stripe_customer: Optional[str],
     event_type: str,
     session_id: str,
+    amount_total_cents: Optional[int] = None,
 ) -> None:
     """Idempotent provisioning for tier_purchase Stripe sessions.
     Called from the webhook AND from the status endpoint as a self-heal
-    fallback (e.g. when a webhook was missed or dropped)."""
+    fallback (e.g. when a webhook was missed or dropped).
+
+    Guarantees (bugfixes 2026-07-21):
+      • Top-ups (AI+Social Week/Month) NEVER overwrite subscription_plan
+        or is_lifetime — they only grant/replace credit fields.
+      • Amount-tamper guard: if the amount actually charged is <50% of the
+        tier's list price AND the buyer is not an internal QA/founder
+        account, refuse to provision (blocks promo abuse via ZYNTHORO-QA
+        or any other unrestricted 100%-off coupon)."""
     tier_key = meta.get("tier_key") or ""
     plan_key = meta.get("plan_key") or ""
     tier_def = tier_catalog.get_tier(tier_key)
@@ -2065,12 +2083,67 @@ async def _provision_tier_purchase(
     # where every tier provisioned with ai_credits_limit=None (unlimited).
     features = tier_catalog.TIER_FEATURES.get(plan_key) or {}
     billing = (tier_def or {}).get("billing", "lifetime")
+    top_up = tier_catalog.is_top_up(tier_key)
 
     prev_doc = await db.users.find_one(
-        {"id": user_id}, {"subscription_plan": 1, "email": 1}
+        {"id": user_id},
+        {
+            "subscription_plan": 1, "email": 1, "is_lifetime": 1,
+            "is_qa_test": 1, "is_founder": 1, "is_demo": 1, "billing_exempt": 1,
+        },
     )
     prev_plan = (prev_doc or {}).get("subscription_plan") or "Presale"
+    prev_is_lifetime = bool((prev_doc or {}).get("is_lifetime"))
     user_email_x = (prev_doc or {}).get("email")
+    is_internal = any(
+        (prev_doc or {}).get(k) for k in ("is_qa_test", "is_founder", "is_demo", "billing_exempt")
+    )
+
+    # ---- SEC-003 defense-in-depth: amount-tamper guard ------------------
+    # If the amount actually captured by Stripe is materially below the
+    # tier's list price and the buyer is not an internal account, refuse
+    # to provision. Records the incident + emails ops so someone can
+    # investigate + refund if needed.
+    expected_cents = int(round(float((tier_def or {}).get("amount_eur") or 0) * 100))
+    if (
+        not is_internal
+        and amount_total_cents is not None
+        and expected_cents > 0
+        and amount_total_cents < expected_cents // 2  # <50 % of list price
+    ):
+        logger.critical(
+            "SECURITY: refusing to provision tier=%s user=%s session=%s — "
+            "amount_paid=%s cents < 50%% of expected=%s cents (possible promo abuse)",
+            tier_key, user_id, session_id, amount_total_cents, expected_cents,
+        )
+        await db.security_incidents.insert_one({
+            "id": str(uuid.uuid4()),
+            "type": "promo_abuse_blocked",
+            "user_id": user_id,
+            "user_email": user_email_x,
+            "tier_key": tier_key,
+            "plan_key": plan_key,
+            "expected_cents": expected_cents,
+            "amount_paid_cents": amount_total_cents,
+            "session_id": session_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        asyncio.create_task(email_service.send_stripe_alert(
+            kind="alert",
+            event_type="promo_abuse_blocked",
+            user_email=user_email_x,
+            user_id=user_id,
+            plan_key=plan_key,
+            amount_eur=amount_total_cents / 100 if amount_total_cents is not None else None,
+            stripe_session_id=session_id,
+            stripe_subscription_id=stripe_subscription,
+            extra={
+                "Tier": tier_key,
+                "Expected EUR": expected_cents / 100,
+                "Reason": "Amount paid <50% of list — coupon likely misused. Entitlement NOT granted.",
+            },
+        ))
+        return
 
     credits_limit = features.get("ai_credits_limit")
     credits_period = features.get("ai_credits_period", "month")
@@ -2082,30 +2155,64 @@ async def _provision_tier_purchase(
     elif billing == "one_time_month":
         period_end = (now_dt + timedelta(days=30)).isoformat()
 
-    update_fields = {
-        "subscription_plan": plan_key,
-        "subscription_status": "active",
-        "subscription_started_at": now_iso,
-        "is_lifetime": billing == "lifetime",
-        "billing_model": billing,
-        "consent_waiver": True,
-        "consent_waiver_at": meta.get("consent_at") or now_iso,
-        "ai_credits_limit": credits_limit,
-        "ai_credits_period": credits_period,
-        "ai_credits_used_this_period": 0,
-        "ai_credits_period_started_at": now_iso,
-        "ai_credits_period_ends_at": period_end,
-    }
-    if billing == "monthly":
-        update_fields["stripe_subscription_id"] = stripe_subscription
-        update_fields["stripe_customer_id"] = stripe_customer
+    if top_up:
+        # Bugfix 2026-07-21 — a top-up must not overwrite a paying
+        # customer's lifetime or subscription plan. `prev_is_paying`
+        # detects any pre-existing paid entitlement (Kickstart lifetime,
+        # Compleet subscription, Starter/etc.). If the user has no paying
+        # plan (Presale or brand-new), we fall through to the full
+        # overwrite path so the top-up becomes their effective plan.
+        prev_is_paying = prev_is_lifetime or (prev_plan not in (None, "", "Presale"))
+    else:
+        prev_is_paying = False
+
+    if top_up and prev_is_paying:
+        # ---- Top-up over paid plan: additive credits only --------------
+        update_fields = {
+            "ai_credits_limit": credits_limit,
+            "ai_credits_period": credits_period,
+            "ai_credits_used_this_period": 0,
+            "ai_credits_period_started_at": now_iso,
+            "ai_credits_period_ends_at": period_end,
+            "consent_waiver": True,
+            "consent_waiver_at": meta.get("consent_at") or now_iso,
+            "active_top_up": {
+                "tier_key": tier_key,
+                "plan_key": plan_key,
+                "started_at": now_iso,
+                "ends_at": period_end,
+            },
+        }
+    else:
+        # ---- Regular plan purchase OR top-up-as-first-plan --------------
+        update_fields = {
+            "subscription_plan": plan_key,
+            "subscription_status": "active",
+            "subscription_started_at": now_iso,
+            "is_lifetime": billing == "lifetime",
+            "billing_model": billing,
+            "consent_waiver": True,
+            "consent_waiver_at": meta.get("consent_at") or now_iso,
+            "ai_credits_limit": credits_limit,
+            "ai_credits_period": credits_period,
+            "ai_credits_used_this_period": 0,
+            "ai_credits_period_started_at": now_iso,
+            "ai_credits_period_ends_at": period_end,
+        }
+        if billing == "monthly":
+            update_fields["stripe_subscription_id"] = stripe_subscription
+            update_fields["stripe_customer_id"] = stripe_customer
 
     await db.users.update_one({"id": user_id}, {"$set": update_fields})
 
-    feed_verb = "🎉 Purchased" if billing != "monthly" else "🎉 Subscribed to"
-    feed_sub = "Lifetime access" if billing == "lifetime" else (
-        f"From {prev_plan}" if prev_plan and prev_plan != plan_key else "New subscription"
-    )
+    if top_up and prev_is_paying:
+        feed_verb = "⚡ Activated"
+        feed_sub = f"On top of your {prev_plan}"
+    else:
+        feed_verb = "🎉 Purchased" if billing != "monthly" else "🎉 Subscribed to"
+        feed_sub = "Lifetime access" if billing == "lifetime" else (
+            f"From {prev_plan}" if prev_plan and prev_plan != plan_key else "New subscription"
+        )
     asyncio.create_task(activity_log.log_event(
         db,
         workspace_owner=user_id,
@@ -2116,7 +2223,10 @@ async def _provision_tier_purchase(
         subtitle=feed_sub,
         href="/dashboard/settings",
     ))
-    alert_kind_tier = "subscribe" if prev_plan in (None, "Presale", "") else "upgrade"
+    alert_kind_tier = (
+        "topup" if (top_up and prev_is_paying)
+        else ("subscribe" if prev_plan in (None, "Presale", "") else "upgrade")
+    )
     asyncio.create_task(email_service.send_stripe_alert(
         kind=alert_kind_tier,
         event_type=event_type,
@@ -2126,7 +2236,7 @@ async def _provision_tier_purchase(
         amount_eur=float(meta.get("amount_eur") or 0) or None,
         stripe_session_id=session_id,
         stripe_subscription_id=stripe_subscription,
-        extra={"Tier": tier_key, "Billing": billing},
+        extra={"Tier": tier_key, "Billing": billing, "Top-up": top_up},
     ))
     logger.info(
         "User %s activated tier %s (plan=%s billing=%s) via %s",
@@ -2363,6 +2473,7 @@ async def stripe_webhook(request: Request):
                     stripe_customer=obj.get("customer"),
                     event_type=event_type,
                     session_id=session_id,
+                    amount_total_cents=obj.get("amount_total"),
                 )
 
             await db.payment_transactions.update_one(

@@ -574,3 +574,30 @@ Users can now attach files to any AI assistant (Zyntha, Thoro, Zyona, Zynthoro A
 
 **Test-drive**
 Log in as founder → `/dashboard/zyona` → paperclip → upload a CSV with sales data → ask "Which product has the highest revenue?" → Zyona reads the file and answers.
+
+### 2026-07-21 — P0 Bug Fixes: Top-up preservation, Month expiry, Promo abuse
+Fixed three P0 defects surfaced in the code review + security audit.
+
+**Bug 1 — Top-up must not overwrite a paying customer's plan**
+- `_provision_tier_purchase` used to unconditionally `$set` `subscription_plan` / `is_lifetime` / module fields for every purchase, including AI+Social Week/Month top-ups. Buying a €59 add-on would downgrade a Kickstart 3 (€199) lifetime customer to AI+Social Month's limited feature set.
+- Fix: top-ups now take an additive-only code path. When the user has a paying plan (`is_lifetime` OR `subscription_plan not in [None, "", "Presale"]`), we only update credit fields + record `active_top_up`. When the user has no paying plan yet (Presale), the top-up becomes their effective plan (unchanged behaviour). Applies to `ai_social_week` and `ai_social_month`.
+
+**Bug 2 — AI+Social Month never expired**
+- `tier_catalog.TIER_FEATURES["AI+Social Month"]["ai_credits_period"]` was `"month"` — this hit the monthly-RESET branch in `_consume_ai_credit`, so the `ai_credits_period_ends_at` (30d) was never checked. A single €59.99 payment refilled 150 credits every 30 days forever.
+- Fix: changed to `"one_time"` (matching AI+Social Week), so the elif expiry branch fires. `_provision_tier_purchase` was already setting `period_ends_at` correctly; only the period label was wrong.
+
+**Bug 3 — ZYNTHORO-QA promo abuse (defense-in-depth)**
+- Two layers of protection:
+  1. `create_tier_checkout_session` now takes `allow_promo: bool` (default False). `checkout_tier_session` sets it to `True` only for `is_qa_test` users. Real customers no longer see the "Add promotion code" input on Stripe Checkout.
+  2. `_provision_tier_purchase` now accepts `amount_total_cents` and refuses to grant entitlement when the amount actually charged is <50% of the tier list price AND the buyer is not internal (`is_qa_test`/`is_founder`/`is_demo`/`billing_exempt`). Blocked incidents are logged to a new `security_incidents` collection and emailed to ops via `send_stripe_alert(kind="alert")`.
+- 100%-off provisioning still works for founders / QA / demo users, so nothing breaks for internal accounts.
+
+**Testing**
+- 15 new regression tests in `/app/backend/tests/test_p0_fixes_20260721.py` — top-up preserves Kickstart 3 lifetime + Compleet subscription; Month/Week both `one_time`; expiry raises 402; amount<50% blocks non-internal; QA/founder still provision at €0; partial legitimate discount still works; `allow_promo` off by default at checkout creation.
+- All 15 pass. Existing tier-provisioning suite (14 tests) still passes. File-extract unit tests (11) still pass.
+
+**Files touched**
+- `/app/backend/tier_catalog.py` — AI+Social Month period → `one_time`; added `TOP_UP_TIER_KEYS` + `is_top_up()`; `create_tier_checkout_session` gained `allow_promo` kwarg.
+- `/app/backend/server.py` — `checkout_tier_session` passes `allow_promo=bool(user.get("is_qa_test"))`. `_provision_tier_purchase` rewritten with `amount_total_cents` param, top-up branch, and amount-tamper guard. Both callers (webhook + status self-heal) now forward `session.amount_total`.
+- `/app/backend/tests/test_p0_fixes_20260721.py` — new (15 tests).
+

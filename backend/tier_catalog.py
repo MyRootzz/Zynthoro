@@ -92,7 +92,11 @@ TIER_FEATURES = {
     "AI+Social Month": {
         "modules": BASE_MODULES + ["zyntha", "thoro", "zyona", "marketing", "canva"],
         "workspaces": 1, "seats": 1,
-        "ai_credits_limit": 150, "ai_credits_period": "month",
+        # NOTE: period MUST be "one_time" for a one-off top-up so
+        # _consume_ai_credit uses the `ai_credits_period_ends_at` expiry
+        # branch instead of resetting monthly (which would let a single
+        # €59.99 payment refill 150 credits forever). Bugfix 2026-07-21.
+        "ai_credits_limit": 150, "ai_credits_period": "one_time",
     },
     # Legacy / full monthly Starter — everything unlocked
     "Starter": {
@@ -195,6 +199,16 @@ def get_tier(tier_key: str) -> dict | None:
     return TIER_CATALOG.get(tier_key)
 
 
+# Top-up tiers do NOT unlock modules and MUST NOT overwrite the user's
+# existing subscription_plan / is_lifetime. Provisioning is additive-only.
+TOP_UP_TIER_KEYS: frozenset[str] = frozenset({"ai_social_week", "ai_social_month"})
+
+
+def is_top_up(tier_key: str) -> bool:
+    """True if the tier is a credit-only top-up (AI+Social Week/Month)."""
+    return tier_key in TOP_UP_TIER_KEYS
+
+
 def _api_key() -> str:
     key = os.environ.get("STRIPE_SECRET_KEY")
     if not key:
@@ -209,6 +223,7 @@ async def create_tier_checkout_session(
     user_id: str,
     user_email: str,
     consent_at: str,
+    allow_promo: bool = False,
 ) -> dict:
     """Create a Stripe Checkout Session for the chosen tier.
 
@@ -218,6 +233,12 @@ async def create_tier_checkout_session(
     Consent (herroepingsrecht) timestamp is written into the session metadata
     so it survives to the webhook and is stored on the payment_transactions
     row for legal audit.
+
+    `allow_promo` controls whether the Stripe Checkout page offers a "Add
+    promotion code" input. This is a SECURITY control — the ZYNTHORO-QA
+    100%-off code exists in Stripe for internal QA and must not appear on
+    real customer checkouts. Callers should set this True only for
+    is_qa_test / staff accounts.
     """
     stripe.api_key = _api_key()
 
@@ -239,6 +260,7 @@ async def create_tier_checkout_session(
         "consent_waiver":  "true",
         "consent_at":      consent_at,
         "amount_eur":      str(tier["amount_eur"]),
+        "promo_allowed":   "true" if allow_promo else "false",
     }
 
     session_kwargs = dict(
@@ -249,7 +271,7 @@ async def create_tier_checkout_session(
         client_reference_id=user_id,
         customer_email=user_email,
         metadata=metadata,
-        allow_promotion_codes=True,
+        allow_promotion_codes=allow_promo,
     )
     if tier["mode"] == "subscription":
         session_kwargs["subscription_data"] = {"metadata": metadata}

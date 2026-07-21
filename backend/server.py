@@ -339,10 +339,11 @@ async def founder_voice_tryouts(user=Depends(get_founder_user)):
 
 @api_router.post("/founder/digest/send")
 async def founder_send_digest(user=Depends(get_founder_user), force: bool = False):
-    """Manually trigger the daily pipeline digest email.
+    """Manually trigger the weekly pipeline digest email.
 
-    By default, dedupes once per UTC day (matching the scheduler). Pass
-    ``?force=true`` to re-send even if today's digest already went out.
+    By default, dedupes once per ISO week (matching the scheduler) and skips
+    the send entirely if there is no activity in the window. Pass
+    ``?force=true`` to bypass both the ISO-week and no-activity guards.
     """
     import daily_digest  # noqa: WPS433
     return await daily_digest.send_digest_now(db, force=force)
@@ -355,9 +356,14 @@ async def founder_digest_preview(user=Depends(get_founder_user)):
     data = await daily_digest._collect(db)
     return {
         "html": daily_digest.render_html(data),
+        "has_activity": daily_digest._has_activity(data),
         "presale_count": len(data["presale"]),
         "voice_lead_count": len(data["voice_leads"]),
         "voice_anonymous_count": data["voice_anonymous_count"],
+        "purchase_count": len(data["purchases"]),
+        "ai_messages_count": data["ai_messages_count"],
+        "new_users_count": data["new_users_count"],
+        "window_days": data["window_days"],
     }
 
 
@@ -3140,7 +3146,10 @@ async def startup():
     await seed_jury_demo()
     # Validate Stripe tier catalog against live Stripe account.
     await _validate_stripe_catalog_on_startup()
-    # Background scheduler: daily digest to info@zynthoro.ai at 07:00 UTC.
+    # Background scheduler: weekly digest to info@zynthoro.ai — fires
+    # once per week on Monday at 07:00 UTC (configurable via
+    # DIGEST_WEEKDAY / DIGEST_HOUR_UTC env vars). Skips the email if
+    # there's no activity in the 7-day window.
     import daily_digest  # noqa: WPS433
     app.state.digest_task = daily_digest.start_scheduler(db)
 

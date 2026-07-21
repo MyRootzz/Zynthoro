@@ -547,3 +547,30 @@ User's Resend daily quota (100/day) was being exhausted by test traffic (QA seed
 Verified with 5 direct calls: QA user, founder, demo, zero-euro → all correctly return None (skipped, logged at INFO). Real customer with real amount → email sent (Resend returned an ID). 41-test regression suite still passes.
 
 **Estimated quota savings:** ≥90% of prior test-traffic sends now filtered. Every subsequent QA checkout via `ZYNTHORO-QA` will be silent from an email perspective (still logs in activity feed via `db.activity_events`).
+
+
+### 2026-07-21 — AI Assistant File Uploads (P1 SHIPPED)
+Users can now attach files to any AI assistant (Zyntha, Thoro, Zyona, Zynthoro Assist) so the assistant can answer using the file's contents.
+
+**Backend**
+- New route `POST /api/ai/upload` (multipart) — accepts PDF, DOCX, XLSX, PPTX, CSV, max 10 MB. Extracts text, stores in `ai_uploads` collection, returns `{file_id, filename, size, mime, chars_extracted, truncated, preview}`.
+- New route `DELETE /api/ai/upload/{file_id}` — owner-scoped removal.
+- Extended `AssistChatIn` with optional `file_ids: List[str]`. `/api/ai/chat` and `/api/ai/stream` now fetch the extracted text for each `file_id` (owner-scoped) and inject it into the assistant's system prompt under a "## Attached files" section.
+- New module `/app/backend/file_extract.py` — synchronous extractors for all 5 formats, dispatched by extension. Output capped at `MAX_CHARS = 200_000` with a truncation note. Called via `asyncio.to_thread(...)`.
+- Storage strategy: MongoDB `ai_uploads` collection with a **TTL index on `created_at` (expireAfterSeconds=86_400)** — files auto-purge after 24h. This is deliberately session-temporary storage, not a document library.
+- Dependencies added: `python-docx`, `openpyxl`, `python-pptx` (pypdf already present, CSV is stdlib).
+
+**Frontend**
+- New helper `/app/frontend/src/lib/aiUpload.js` — `uploadAiFile`, `deleteAiFile`, `validateUpload`, `AI_UPLOAD_ACCEPT_ATTR`, `formatBytes`.
+- New reusable component `AttachmentChip.jsx` — supports `uploading` / `ready` / `error` states, `compact` mode for in-bubble rendering.
+- `AssistantPage.jsx` (Zyntha/Thoro/Zyona) and `AssistFloating.jsx` (Zynthoro Assist) now render a paperclip button + hidden multi-file `<input type="file">` + pending-chip row above the composer. Attachments upload immediately, block Send while in-flight, and are stamped onto the user message bubble after send.
+- `aiStream.js` forwards the `file_ids` array in the SSE POST body.
+- Client-side validation mirrors the server: extension whitelist + 10 MB cap + empty-file check.
+
+**Testing**
+- 11 unit tests in `/app/backend/tests/test_file_extract.py` (all pass — CSV/DOCX/XLSX/PPTX/PDF extraction, truncation, error paths).
+- 22-test E2E suite in `/app/backend/tests/test_ai_upload_e2e.py` (100% pass) — validation paths, owner isolation, cross-user isolation, file-context injection across all 4 assistants, streaming path, TTL index verified.
+- Frontend E2E verified via testing_agent (100% pass) — paperclip renders, upload chip flow, unsupported/oversize file toasts, multi-file, `Gadget` answered correctly from uploaded sales CSV, floating panel mirror.
+
+**Test-drive**
+Log in as founder → `/dashboard/zyona` → paperclip → upload a CSV with sales data → ask "Which product has the highest revenue?" → Zyona reads the file and answers.

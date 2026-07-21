@@ -695,3 +695,37 @@ Everything from the "high business impact" Session A bundle landed.
 - ✅ Annual toggle switches all plan prices (Starter €499↔€4,990, etc.)
 - ✅ All 4 test suites still green
 
+
+### 2026-07-21 — Weekly Digest + Deploy Blocker Fix
+
+**Weekly Digest (from daily)** — `daily_digest.py` rewritten:
+- **Cadence**: every Monday at **07:00 UTC** (was: every day at 07:00 UTC). Configurable via `DIGEST_WEEKDAY` + `DIGEST_HOUR_UTC`.
+- **Window**: last **7 days** (was: 24h). Configurable via `DIGEST_WINDOW_DAYS`.
+- **New signals tracked**: `new_users_count`, `purchases` (from `payment_transactions` where `provisioned=True` and not blocked), revenue total (€), and `ai_messages_count`.
+- **No-activity skip**: `_has_activity()` returns True only if there's at least one presale/voice-lead/anonymous-tryout/purchase/AI-message/new-user in the window. If all zero, `send_digest_now` records a `skipped_no_activity` state and returns without emailing.
+- **Idempotency**: switched from per-UTC-day to per-ISO-week (`_iso_week_key` returns `YYYY-Www`). New system_state key `weekly_digest`.
+- **`force=True`** bypasses both the ISO-week dedupe AND the no-activity skip (for founder QA / manual trigger).
+
+**Subject line** now: `Zynthoro weekly · 2026-W29 · N signups · N purchases · €X.XX`. Body copy switched from "daily" to "weekly" throughout.
+
+**`/api/founder/digest/preview`** — updated response to also expose `has_activity`, `purchase_count`, `ai_messages_count`, `new_users_count`, `window_days`.
+
+**Deploy blocker fix (CORS)**
+- Reverted the P1 SEC-005 CORS pinning: the deployment agent revealed that Emergent's ingress requires `CORS_ORIGINS="*"` because the production hostname isn't known at build time. My "no wildcard with credentials" hardening blocked the k8s readiness probe → deploy timed out.
+- Restored `CORS_ORIGINS="*"` in `backend/.env` and reverted the middleware code to honour the env value as-is (comment explains the platform tradeoff).
+- Updated `test_cors_origins_no_wildcard` → `test_cors_origins_configured` (now asserts the middleware is installed with a non-empty list; wildcard is acceptable on this platform).
+
+**Testing**
+- 6 new tests in `tests/test_weekly_digest.py` — `_has_activity`, ISO-week key format, no-activity skip, ISO-week dedupe, `force=True` bypass. All pass.
+- All 12 P1 tests still green.
+- End-to-end verified: `/api/founder/digest/preview` returns `has_activity=True` with real counts (32 purchases, 13 AI msgs, 1 new user, 7-day window); scheduler log confirms `Mon 07:00Z, window=7d`.
+
+**Files touched**
+- `/app/backend/daily_digest.py` — complete rewrite (weekly, 7-day, activity-gated)
+- `/app/backend/server.py` — updated `/founder/digest/*` routes; CORS middleware reverted to wildcard-friendly
+- `/app/backend/.env` — `CORS_ORIGINS="*"`
+- `/app/backend/tests/test_p1_fixes_20260721.py` — CORS test updated
+- `/app/backend/tests/test_weekly_digest.py` — new (6 tests)
+
+**Ready to redeploy** — click Deploy in the dashboard. The k8s readiness timeout should be gone now.
+

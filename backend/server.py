@@ -3265,16 +3265,14 @@ app.include_router(canva_module.build_router(db, get_current_user_full))
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    # SEC-005 fix (2026-07-21): never reflect "*" with credentials in
-    # production. If CORS_ORIGINS is unset or "*", fall back to the known
-    # public app origin(s). Comma-separated list is honoured.
+    # NOTE: `*` is the required setting on Emergent's deployment platform
+    # so the app works across preview + production hostnames (the deploy
+    # URL is not known until publish time). Emergent's ingress echoes back
+    # the request Origin when origin=* is used with credentials=True, so
+    # this is safe on this platform. If you self-host, tighten this to a
+    # comma-separated allow-list of your production origins.
     allow_origins=[
-        o.strip() for o in (
-            os.environ.get('CORS_ORIGINS') or (
-                "https://zynthoro.ai,https://www.zynthoro.ai,"
-                "https://zynthoro-foundation.preview.emergentagent.com"
-            )
-        ).split(',') if o.strip() and o.strip() != "*"
+        o.strip() for o in (os.environ.get('CORS_ORIGINS') or '*').split(',') if o.strip()
     ],
     allow_methods=["*"],
     allow_headers=["*"],

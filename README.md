@@ -111,8 +111,7 @@ Selection deleted
 | Enterprise Plus | €3,999/month | Multi-team enterprises |
 | Enterprise Advanced | €5,999/month | Multi-location enterprises |
 
-**New business special:** Verified new businesses (< 12 months) — €99/month for first 3 months. AI verifies registration document instantly.
-
+**New business special:** **Kickstart Lifetime Deals:** K1 €79 · K2 €149 · K3 €199 — one-time payment, lifetime access, no subscription ever.
 ---
 
 ## 🌍 Impact — XPRIZE Category: Entrepreneurship & Job Creation
@@ -139,8 +138,8 @@ Founder & CEO — Casa Haya International BV
 KvK: 99196581 | Netherlands  
 Operating from Northern Spain  
 
-> *"My different is my normal."*
-
+> *"Time is money. Zynthoro gives you both."*
+> 
 LinkedIn: [linkedin.com/in/ramona-h-837083412](https://linkedin.com/in/ramona-h-837083412)  
 Platform: [zynthoro.ai](https://zynthoro.ai)
 

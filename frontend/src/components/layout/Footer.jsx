@@ -72,21 +72,40 @@ export default function Footer() {
                 publicly reachable on the homepage for their crawler to
                 verify the Zynthoro listing. Do not remove or nofollow the
                 link; TAAFT-required exact href/query params below. */}
-            <a
-              href="https://theresanaiforthat.com/ai/zynthoro/?ref=featured&v=11900095"
-              target="_blank"
-              rel="nofollow noopener noreferrer"
-              className="inline-block mt-5 hover:opacity-90 transition-opacity"
-              data-testid="footer-taaft-badge"
-              aria-label="Featured on There's An AI For That"
-            >
-              <img
-                src="https://media.theresanaiforthat.com/social/icon_full.svg"
-                alt="Featured on TAAFT"
-                loading="lazy"
-                style={{ display: "block", height: 64, width: "auto" }}
-              />
-            </a>
+            <div className="flex flex-wrap items-center gap-4 mt-5">
+              <a
+                href="https://theresanaiforthat.com/ai/zynthoro/?ref=featured&v=11900095"
+                target="_blank"
+                rel="nofollow noopener noreferrer"
+                className="inline-block hover:opacity-90 transition-opacity"
+                data-testid="footer-taaft-badge"
+                aria-label="Featured on There's An AI For That"
+              >
+                <img
+                  src="https://media.theresanaiforthat.com/social/icon_full.svg"
+                  alt="Featured on TAAFT"
+                  loading="lazy"
+                  style={{ display: "block", height: 64, width: "auto" }}
+                />
+              </a>
+              <a
+                href="https://www.producthunt.com/products/zynthoro-the-next?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-zynthoro-the-next"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block hover:opacity-90 transition-opacity"
+                data-testid="footer-producthunt-badge"
+                aria-label="Featured on Product Hunt"
+              >
+                <img
+                  src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1202551&theme=light&t=1784786507425"
+                  alt="Zynthoro — The Next - Replace 15+ business tools with one AI-native ERP | Product Hunt"
+                  width="250"
+                  height="54"
+                  loading="lazy"
+                  style={{ display: "block" }}
+                />
+              </a>
+            </div>
           </div>
 
           {cols.map((c) => (

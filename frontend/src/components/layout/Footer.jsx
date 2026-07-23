@@ -68,6 +68,25 @@ export default function Footer() {
                 <Instagram size={18} />
               </a>
             </div>
+            {/* TAAFT (There's An AI For That) verification badge — must be
+                publicly reachable on the homepage for their crawler to
+                verify the Zynthoro listing. Do not remove or nofollow the
+                link; TAAFT-required exact href/query params below. */}
+            <a
+              href="https://theresanaiforthat.com/ai/zynthoro/?ref=social-icon&v=11900095"
+              target="_blank"
+              rel="nofollow noopener noreferrer"
+              className="inline-block mt-5 hover:opacity-90 transition-opacity"
+              data-testid="footer-taaft-badge"
+              aria-label="Featured on There's An AI For That"
+            >
+              <img
+                src="https://media.theresanaiforthat.com/social/icon_full.svg"
+                alt="Featured on TAAFT"
+                loading="lazy"
+                style={{ display: "block", height: 64, width: "auto" }}
+              />
+            </a>
           </div>
 
           {cols.map((c) => (

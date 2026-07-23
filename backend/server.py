@@ -1737,6 +1737,53 @@ class TierCheckoutIn(BaseModel):
     ]
     origin_url: str
     consent_waiver: bool  # herroepingsrecht — must be True to proceed
+    promo_code: Optional[str] = None  # customer-typed Stripe promotion code
+
+
+class TierPromoValidateIn(BaseModel):
+    tier_key: Literal[
+        "kickstart_1", "kickstart_2", "kickstart_3",
+        "compleet", "ai_social_week", "ai_social_month",
+    ]
+    code: str
+
+
+@api_router.post("/checkout/tier/validate-promo")
+async def validate_tier_promo(
+    payload: TierPromoValidateIn,
+    user=Depends(get_current_user_full),
+):
+    """Validate a customer-typed promotion code and return a discount preview.
+
+    Called live from the /subscribe/:tierKey page when the user clicks "Apply".
+    Internal / QA-only codes (e.g. ZYNTHORO-QA) are refused on the server
+    side for non-QA accounts.
+    """
+    try:
+        preview = await tier_catalog.resolve_promotion_code(
+            payload.code,
+            tier_key=payload.tier_key,
+            is_qa_test=bool(user.get("is_qa_test")),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Stripe reageert traag. Probeer het opnieuw.")
+    except stripe_sdk.error.StripeError as e:
+        logger.exception("validate-promo Stripe error")
+        raise HTTPException(status_code=400, detail=f"Stripe fout: {getattr(e, 'user_message', None) or 'onbekend'}")
+    # Never expose the promotion_code_id to the client — client cannot use
+    # it to bypass server-side re-validation.
+    return {
+        "ok": True,
+        "code": preview["code"],
+        "percent_off": preview["percent_off"],
+        "amount_off_eur": preview["amount_off_eur"],
+        "discount_eur": preview["discount_eur"],
+        "original_total_eur": preview["original_total_eur"],
+        "discounted_total_eur": preview["discounted_total_eur"],
+        "currency": preview["currency"],
+    }
 
 
 @api_router.get("/tier/catalog")
@@ -1785,13 +1832,35 @@ async def checkout_tier_session(
         )
 
     consent_at = datetime.now(timezone.utc).isoformat()
-    # SECURITY (SEC-003) — promo codes are only offered on Stripe Checkout
-    # for QA test accounts. Real customers never see the "Add promotion
-    # code" input, so the ZYNTHORO-QA 100%-off coupon can't be used against
-    # a live tier by a normal user. Defense-in-depth: even if a promo does
-    # slip through, `_provision_tier_purchase` refuses to grant entitlement
-    # when amount_paid < 50% of list.
+    # SECURITY (SEC-003) — the "Add promotion code" input on Stripe's own
+    # checkout page is still gated to QA accounts (would let a user try any
+    # code including ZYNTHORO-QA). Customers use our OWN promo field on
+    # /subscribe/:tierKey → we validate server-side, then pre-apply via
+    # `discounts=[{promotion_code}]`.
     allow_promo = bool(user.get("is_qa_test"))
+
+    # Re-validate the customer-supplied code (never trust the client — a user
+    # could bypass the "Apply" step and inject a code directly here).
+    promotion_code_id: Optional[str] = None
+    promotion_code_label: Optional[str] = None
+    if payload.promo_code and payload.promo_code.strip():
+        try:
+            preview = await tier_catalog.resolve_promotion_code(
+                payload.promo_code,
+                tier_key=payload.tier_key,
+                is_qa_test=bool(user.get("is_qa_test")),
+            )
+            promotion_code_id = preview["promotion_code_id"]
+            promotion_code_label = preview["code"]
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except stripe_sdk.error.StripeError as e:
+            logger.exception("Tier checkout: promo revalidation failed")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Promocode kon niet toegepast worden: {getattr(e, 'user_message', None) or 'onbekend'}",
+            )
+
     try:
         session = await tier_catalog.create_tier_checkout_session(
             tier_key=payload.tier_key,
@@ -1800,6 +1869,8 @@ async def checkout_tier_session(
             user_email=user["email"],
             consent_at=consent_at,
             allow_promo=allow_promo,
+            promotion_code_id=promotion_code_id,
+            promotion_code_label=promotion_code_label,
         )
     except ValueError as e:
         # Unknown tier_key (defensive — Pydantic Literal usually catches

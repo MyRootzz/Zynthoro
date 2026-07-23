@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, ArrowLeft, Loader2, ShieldCheck, Check } from "lucide-react";
+import { ArrowRight, ArrowLeft, Loader2, ShieldCheck, Check, Tag, X } from "lucide-react";
 import { API, formatApiError, useAuth } from "@/contexts/AuthContext";
 import { ZyLogo } from "@/components/ZyLogo";
 
@@ -68,6 +68,11 @@ export default function SubscribeTier() {
   const [tierError, setTierError] = useState(null);
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Promo code state
+  const [promoInput, setPromoInput] = useState("");
+  const [promoApplying, setPromoApplying] = useState(false);
+  const [promo, setPromo] = useState(null);       // { code, discount_eur, discounted_total_eur, percent_off, amount_off_eur }
+  const [promoError, setPromoError] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -115,12 +120,43 @@ export default function SubscribeTier() {
         tier_key: tier.tier_key,
         origin_url: window.location.origin,
         consent_waiver: true,
+        promo_code: promo ? promo.code : null,
       });
       window.location.href = data.url;
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || "Kon checkout niet starten.");
       setSubmitting(false);
     }
+  };
+
+  const applyPromo = async () => {
+    const code = promoInput.trim();
+    if (!code) return;
+    setPromoApplying(true);
+    setPromoError("");
+    try {
+      const { data } = await axios.post(`${API}/checkout/tier/validate-promo`, {
+        tier_key: tier.tier_key,
+        code,
+      });
+      setPromo({
+        code: data.code,
+        percent_off: data.percent_off,
+        amount_off_eur: data.amount_off_eur,
+        discount_eur: data.discount_eur,
+        discounted_total_eur: data.discounted_total_eur,
+      });
+    } catch (e) {
+      setPromo(null);
+      setPromoError(formatApiError(e?.response?.data?.detail) || "Ongeldige promocode.");
+    }
+    setPromoApplying(false);
+  };
+
+  const removePromo = () => {
+    setPromo(null);
+    setPromoInput("");
+    setPromoError("");
   };
 
   const features = FEATURE_MATRIX[tier.tier_key] || [];
@@ -162,6 +198,72 @@ export default function SubscribeTier() {
                 </li>
               ))}
             </ul>
+
+            {/* Promo code ----------------------------------------------- */}
+            <div className="mt-7">
+              {!promo ? (
+                <>
+                  <label className="block text-[11.5px] uppercase font-bold text-[#888] tracking-wider mb-1.5">
+                    Promotiecode (optioneel)
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Tag size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#999] pointer-events-none" />
+                      <input
+                        value={promoInput}
+                        onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoError(""); }}
+                        onKeyDown={(e) => e.key === "Enter" && applyPromo()}
+                        placeholder="Bijv. PH2026"
+                        maxLength={60}
+                        className="w-full pl-9 pr-3 py-2.5 border border-[#e5e5e5] rounded-lg text-[14px] outline-none focus:border-[#1A4FFF] focus:ring-2 focus:ring-[#1A4FFF]/10 uppercase tracking-wider"
+                        data-testid="promo-code-input"
+                      />
+                    </div>
+                    <button
+                      onClick={applyPromo}
+                      disabled={!promoInput.trim() || promoApplying}
+                      className="zy-btn-outline text-[13px] px-4 disabled:opacity-50"
+                      data-testid="promo-code-apply-btn"
+                    >
+                      {promoApplying ? <Loader2 size={13} className="animate-spin" /> : "Toepassen"}
+                    </button>
+                  </div>
+                  {promoError && (
+                    <p className="mt-2 text-[12.5px]" style={{ color: "#c00" }} data-testid="promo-code-error">
+                      {promoError}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div
+                  className="rounded-lg border p-3 flex items-start justify-between gap-3"
+                  style={{ borderColor: "#16a34a", background: "rgba(34,197,94,0.06)" }}
+                  data-testid="promo-code-applied"
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "#16a34a", color: "#fff" }}>
+                      <Check size={15} />
+                    </div>
+                    <div className="text-[12.5px]">
+                      <div className="font-semibold text-[#0A1628]">
+                        Code <span className="font-mono">{promo.code}</span> toegepast
+                      </div>
+                      <div className="text-[#555]">
+                        {promo.percent_off ? `${promo.percent_off}% korting` :
+                         promo.amount_off_eur ? `€${promo.amount_off_eur.toFixed(2)} korting` : "Korting toegepast"}
+                        {" · "}
+                        Nieuwe totaal: <b>€{promo.discounted_total_eur.toFixed(2)}</b>
+                        {" "}
+                        <span className="text-[#888] line-through">€{tier.amount_eur}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={removePromo} className="text-[#888] hover:text-[#c00]" data-testid="promo-code-remove-btn" aria-label="Verwijder promocode">
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Herroepingsrecht — mandatory, unchecked by default */}
             <label

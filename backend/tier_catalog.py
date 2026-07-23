@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Literal
+from typing import Literal, Optional
 
 import stripe
 
@@ -217,6 +217,108 @@ def _api_key() -> str:
     return key
 
 
+# ---- Promotion code validation --------------------------------------------
+# Blocklist for internal / staff-only codes that must never be usable on
+# public-customer checkouts. Defense-in-depth: also check coupon.metadata
+# `internal_only`=true and any inactive/archived state.
+_INTERNAL_ONLY_CODES = {"ZYNTHORO-QA", "STAFF-ONLY", "INTERNAL"}
+
+
+async def resolve_promotion_code(
+    code: str,
+    *,
+    tier_key: str,
+    is_qa_test: bool = False,
+) -> dict:
+    """Validate a customer-typed promotion code against Stripe.
+
+    Returns a dict with `promotion_code_id`, `coupon_id`, `percent_off`,
+    `amount_off_eur`, `discounted_total_eur`, `restrictions` — OR raises
+    `ValueError` with a user-facing message.
+
+    Internal-only codes (ZYNTHORO-QA etc.) are refused unless the caller is
+    a QA-flagged account. This is enforced on the SERVER (never trust the
+    client to be honest about is_qa_test).
+    """
+    stripe.api_key = _api_key()
+
+    tier = get_tier(tier_key)
+    if not tier:
+        raise ValueError("Unknown tier.")
+
+    code_norm = (code or "").strip().upper()
+    if not code_norm:
+        raise ValueError("Voer een promocode in.")
+    if len(code_norm) > 60:
+        raise ValueError("Ongeldige promocode.")
+
+    # Reject internal codes for non-QA users up-front (fast path, no Stripe roundtrip).
+    if code_norm in _INTERNAL_ONLY_CODES and not is_qa_test:
+        raise ValueError("Deze code is niet geldig voor dit aanbod.")
+
+    # Look up the promotion code in Stripe (case-insensitive per Stripe docs).
+    try:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                stripe.PromotionCode.list,
+                code=code_norm, active=True, limit=1,
+            ),
+            timeout=8.0,
+        )
+    except asyncio.TimeoutError:
+        raise ValueError("Stripe reageert traag. Probeer het opnieuw.")
+
+    if not result.data:
+        raise ValueError("Deze promocode bestaat niet of is verlopen.")
+
+    promo = result.data[0]
+    coupon = promo.coupon
+
+    # Metadata check: `internal_only=true` on either the promo OR the coupon.
+    meta_promo = getattr(promo, "metadata", None) or {}
+    meta_coupon = getattr(coupon, "metadata", None) or {}
+    is_internal = (
+        str(meta_promo.get("internal_only", "")).lower() == "true"
+        or str(meta_coupon.get("internal_only", "")).lower() == "true"
+    )
+    if is_internal and not is_qa_test:
+        raise ValueError("Deze code is niet geldig voor dit aanbod.")
+
+    if not coupon.valid:
+        raise ValueError("Deze promocode is niet meer geldig.")
+
+    # Compute preview.
+    base_cents = int(round(float(tier["amount_eur"]) * 100))
+    discount_cents = 0
+    if coupon.percent_off:
+        discount_cents = int(round(base_cents * (float(coupon.percent_off) / 100.0)))
+    elif coupon.amount_off:
+        # Stripe stores amount_off in the currency's minor unit.
+        if (coupon.currency or "").lower() != tier["currency"].lower():
+            raise ValueError("Deze promocode is in een andere valuta.")
+        discount_cents = int(coupon.amount_off)
+
+    # Guard-rail: even valid public codes should not trigger the >50% off
+    # anti-abuse block in `_provision_tier_purchase`. Refuse >90% off here
+    # with a friendly message so the customer isn't confused later.
+    if discount_cents > base_cents * 0.9 and not is_qa_test:
+        raise ValueError("Deze code geeft een te grote korting voor dit plan.")
+
+    discounted_cents = max(0, base_cents - discount_cents)
+
+    return {
+        "promotion_code_id": promo.id,
+        "code": promo.code,
+        "coupon_id": coupon.id,
+        "percent_off": float(coupon.percent_off) if coupon.percent_off else None,
+        "amount_off_eur": (float(coupon.amount_off) / 100.0) if coupon.amount_off else None,
+        "discount_eur": discount_cents / 100.0,
+        "original_total_eur": base_cents / 100.0,
+        "discounted_total_eur": discounted_cents / 100.0,
+        "currency": tier["currency"],
+    }
+
+
 async def create_tier_checkout_session(
     *,
     tier_key: str,
@@ -225,6 +327,8 @@ async def create_tier_checkout_session(
     user_email: str,
     consent_at: str,
     allow_promo: bool = False,
+    promotion_code_id: Optional[str] = None,
+    promotion_code_label: Optional[str] = None,
 ) -> dict:
     """Create a Stripe Checkout Session for the chosen tier.
 
@@ -263,6 +367,8 @@ async def create_tier_checkout_session(
         "amount_eur":      str(tier["amount_eur"]),
         "promo_allowed":   "true" if allow_promo else "false",
     }
+    if promotion_code_label:
+        metadata["promo_code"] = promotion_code_label
 
     session_kwargs = dict(
         mode=tier["mode"],
@@ -272,8 +378,13 @@ async def create_tier_checkout_session(
         client_reference_id=user_id,
         customer_email=user_email,
         metadata=metadata,
-        allow_promotion_codes=allow_promo,
     )
+    # Stripe forbids passing BOTH allow_promotion_codes AND discounts on the
+    # same session. Pre-applied code (from our own field) wins.
+    if promotion_code_id:
+        session_kwargs["discounts"] = [{"promotion_code": promotion_code_id}]
+    else:
+        session_kwargs["allow_promotion_codes"] = allow_promo
     if tier["mode"] == "subscription":
         session_kwargs["subscription_data"] = {"metadata": metadata}
     else:

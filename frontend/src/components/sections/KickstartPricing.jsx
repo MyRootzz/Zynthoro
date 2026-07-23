@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
-import { ArrowRight, Check, Infinity as InfinityIcon, Zap, Sparkles } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { API } from "@/contexts/AuthContext";
 
 const KICKSTART_HIGHLIGHTS = {
@@ -25,25 +25,6 @@ const KICKSTART_HIGHLIGHTS = {
   ],
 };
 
-const TOPUP_HIGHLIGHTS = {
-  compleet: [
-    "Onbeperkte AI credits",
-    "Onbeperkt Social posts",
-    "Document upload & voice input",
-    "Extra workspace",
-  ],
-  ai_social_week: [
-    "30 AI credits · 7 dagen",
-    "Social posts top-up",
-    "Zyntha, Thoro, Zyona",
-  ],
-  ai_social_month: [
-    "150 AI credits · 30 dagen",
-    "Social posts top-up",
-    "Zyntha, Thoro, Zyona",
-  ],
-};
-
 export default function KickstartPricing() {
   const [plans, setPlans] = useState([]);
 
@@ -59,9 +40,6 @@ export default function KickstartPricing() {
   }, []);
 
   const kick = plans.filter((p) => p.tier_key.startsWith("kickstart_"));
-  const compleet = plans.find((p) => p.tier_key === "compleet");
-  const week = plans.find((p) => p.tier_key === "ai_social_week");
-  const month = plans.find((p) => p.tier_key === "ai_social_month");
 
   return (
     <section id="kickstart" className="py-24 border-t border-[#eee]" data-testid="kickstart-section">
@@ -129,108 +107,6 @@ export default function KickstartPricing() {
           Kickstart plans zijn levenslange licenties. Kickstart 3 evenaart nooit een volledig Starter-abonnement (€499/maand) — voor volledige functionaliteit kies je{" "}
           <a href="#pricing" className="underline">Starter of hoger</a>.
         </p>
-
-        {/* Compleet + top-ups */}
-        <div className="mt-20">
-          <p className="zy-eyebrow">Add-ons · Maandelijks & top-ups</p>
-          <h3 className="text-[24px] font-bold tracking-tight mt-3">Meer AI nodig? Combineer een top-up of ga onbeperkt.</h3>
-        </div>
-
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-5">
-          {/* Compleet */}
-          {compleet && (
-            <div
-              className="rounded-2xl p-7 text-white flex flex-col"
-              style={{ background: "linear-gradient(135deg, #0A1628 0%, #1A4FFF 130%)" }}
-              data-testid="compleet-card"
-            >
-              <div className="flex items-center gap-2">
-                <InfinityIcon size={16} />
-                <p className="text-[13px] font-semibold uppercase tracking-wider">Compleet</p>
-              </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-[36px] font-bold tracking-tight">€{compleet.amount_eur}</span>
-                <span className="text-[13.5px] opacity-80">/maand</span>
-              </div>
-              <p className="text-[13px] opacity-80 mt-1">Zelf-verlengend · opzegbaar</p>
-
-              <ul className="mt-6 space-y-2.5 flex-1">
-                {(TOPUP_HIGHLIGHTS.compleet || []).map((f, i) => (
-                  <li key={i} className="flex items-start gap-2 text-[13.5px]">
-                    <Check size={14} className="mt-1 shrink-0" />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Link
-                to="/subscribe/compleet"
-                data-testid="compleet-cta"
-                className="mt-8 w-full inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-[13.5px] font-semibold bg-white text-[#0A1628] hover:bg-[#F5F8FF]"
-              >
-                Start Compleet <ArrowRight size={14} />
-              </Link>
-            </div>
-          )}
-
-          {week && (
-            <div className="bg-white border border-[#eee] rounded-2xl p-7 flex flex-col" data-testid="week-card">
-              <div className="flex items-center gap-2 text-[#1A4FFF]">
-                <Zap size={16} />
-                <p className="text-[13px] font-semibold uppercase tracking-wider">1 week</p>
-              </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-[36px] font-bold tracking-tight">€{week.amount_eur}</span>
-                <span className="text-[13.5px] text-[#666]">eenmalig</span>
-              </div>
-              <p className="text-[13px] text-[#666] mt-1">{week.tagline}</p>
-              <ul className="mt-6 space-y-2.5 flex-1">
-                {(TOPUP_HIGHLIGHTS.ai_social_week || []).map((f, i) => (
-                  <li key={i} className="flex items-start gap-2 text-[13.5px] text-[#333]">
-                    <Check size={14} className="mt-1 shrink-0" style={{ color: "#1A4FFF" }} />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link
-                to="/subscribe/ai_social_week"
-                data-testid="week-cta"
-                className="zy-btn-outline mt-8 w-full justify-center"
-              >
-                Kies 1 week <ArrowRight size={14} />
-              </Link>
-            </div>
-          )}
-
-          {month && (
-            <div className="bg-white border border-[#eee] rounded-2xl p-7 flex flex-col" data-testid="month-card">
-              <div className="flex items-center gap-2 text-[#1A4FFF]">
-                <Sparkles size={16} />
-                <p className="text-[13px] font-semibold uppercase tracking-wider">1 maand</p>
-              </div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-[36px] font-bold tracking-tight">€{month.amount_eur}</span>
-                <span className="text-[13.5px] text-[#666]">eenmalig</span>
-              </div>
-              <p className="text-[13px] text-[#666] mt-1">{month.tagline}</p>
-              <ul className="mt-6 space-y-2.5 flex-1">
-                {(TOPUP_HIGHLIGHTS.ai_social_month || []).map((f, i) => (
-                  <li key={i} className="flex items-start gap-2 text-[13.5px] text-[#333]">
-                    <Check size={14} className="mt-1 shrink-0" style={{ color: "#1A4FFF" }} />
-                    <span>{f}</span>
-                  </li>
-                ))}
-              </ul>
-              <Link
-                to="/subscribe/ai_social_month"
-                data-testid="month-cta"
-                className="zy-btn-outline mt-8 w-full justify-center"
-              >
-                Kies 1 maand <ArrowRight size={14} />
-              </Link>
-            </div>
-          )}
-        </div>
       </div>
     </section>
   );

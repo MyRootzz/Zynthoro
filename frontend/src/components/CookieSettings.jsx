@@ -34,6 +34,15 @@ export function CookieSettingsProvider({ children }) {
     try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignored */ }
     setBannerVisible(false);
     setOpen(false);
+    // Propagate the analytics choice to Google Analytics (Consent Mode v2).
+    // GA is loaded from public/index.html with all storage denied by default;
+    // this call upgrades or downgrades in real time when the user changes
+    // their cookie preference.
+    if (typeof window !== "undefined" && typeof window.gtag === "function") {
+      window.gtag("consent", "update", {
+        analytics_storage: next.analytics ? "granted" : "denied",
+      });
+    }
   }, []);
 
   return (

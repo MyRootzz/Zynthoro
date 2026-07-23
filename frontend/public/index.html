@@ -88,6 +88,44 @@
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+        <!--
+        Google Analytics 4 (gtag.js) with Consent Mode v2.
+        Default consent = DENIED for all storage. The site's cookie banner
+        (see /app/frontend/src/components/CookieSettings.jsx) writes an
+        `analytics` boolean into localStorage under `zy_cookie_prefs_v1`.
+        On page load we upgrade consent to `granted` ONLY if the visitor
+        has already opted in. When they change their preference later, the
+        cookie banner calls `window.gtag('consent', 'update', ...)` too.
+        This keeps GA GDPR-compliant by default.
+        -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-EPCKD52XKL"></script>
+        <script>
+          window.dataLayer = window.dataLayer || [];
+          function gtag() { dataLayer.push(arguments); }
+          window.gtag = gtag;
+          // 1) Set consent defaults BEFORE any GA hit is sent.
+          gtag('consent', 'default', {
+            'ad_storage': 'denied',
+            'ad_user_data': 'denied',
+            'ad_personalization': 'denied',
+            'analytics_storage': 'denied',
+            'wait_for_update': 500
+          });
+          gtag('js', new Date());
+          gtag('config', 'G-EPCKD52XKL', { anonymize_ip: true });
+          // 2) If the visitor already accepted analytics on a prior visit,
+          //    upgrade consent to granted so GA can start collecting.
+          try {
+            var raw = localStorage.getItem('zy_cookie_prefs_v1');
+            if (raw) {
+              var prefs = JSON.parse(raw);
+              if (prefs && prefs.analytics === true) {
+                gtag('consent', 'update', { 'analytics_storage': 'granted' });
+              }
+            }
+          } catch (e) { /* localStorage unavailable — leave consent denied */ }
+        </script>
         <!--
         manifest.json provides metadata used when your web app is installed on a
         user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/

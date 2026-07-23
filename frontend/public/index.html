@@ -65,7 +65,7 @@
               "value": "99196581"
             },
             "sameAs": [
-              "https://theresanaiforthat.com/ai/zynthoro/"
+              "https://theresanaiforthat.com/ai/zynthoro/?ref=featured&v=11900095"
             ]
           },
           "creator": {
@@ -105,6 +105,30 @@
     </head>
     <body>
         <noscript>You need to enable JavaScript to run this app.</noscript>
+
+        <!--
+        TAAFT (There's An AI For That) verification anchor.
+        Placed in the initial HTML (outside the React root) so the TAAFT
+        crawler — which does NOT execute JavaScript — can detect the listing
+        on first fetch of https://zynthoro.ai/. The href, ref=featured, and
+        v=11900095 query params are all mandatory for verification.
+        The anchor is visually hidden but present in the DOM and semantic HTML.
+        -->
+        <a
+          id="taaft-verification"
+          href="https://theresanaiforthat.com/ai/zynthoro/?ref=featured&amp;v=11900095"
+          rel="nofollow"
+          aria-label="Featured on There's An AI For That"
+          style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;"
+        >
+          <img
+            src="https://media.theresanaiforthat.com/featured-on-taaft.svg"
+            alt="Featured on TAAFT"
+            width="200"
+            height="54"
+          />
+        </a>
+
         <div id="root"></div>
         <!--
       This HTML file is a template.

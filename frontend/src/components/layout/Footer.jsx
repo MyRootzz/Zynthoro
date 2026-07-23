@@ -73,7 +73,7 @@ export default function Footer() {
                 verify the Zynthoro listing. Do not remove or nofollow the
                 link; TAAFT-required exact href/query params below. */}
             <a
-              href="https://theresanaiforthat.com/ai/zynthoro/?ref=social-icon&v=11900095"
+              href="https://theresanaiforthat.com/ai/zynthoro/?ref=featured&v=11900095"
               target="_blank"
               rel="nofollow noopener noreferrer"
               className="inline-block mt-5 hover:opacity-90 transition-opacity"

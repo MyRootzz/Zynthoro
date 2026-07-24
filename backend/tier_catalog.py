@@ -272,7 +272,11 @@ async def resolve_promotion_code(
         raise ValueError("Deze promocode bestaat niet of is verlopen.")
 
     promo = result.data[0]
-    coupon = promo.coupon
+    coupon = getattr(promo, "coupon", None)
+    if coupon is None:
+        # Stripe returned a promotion code with no coupon attached — treat
+        # as invalid rather than crashing with an AttributeError → 500.
+        raise ValueError("Deze promocode is niet meer geldig.")
 
     # Metadata check: `internal_only=true` on either the promo OR the coupon.
     meta_promo = getattr(promo, "metadata", None) or {}

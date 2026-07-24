@@ -129,8 +129,8 @@ export default function SubscribeTier() {
     }
   };
 
-  const applyPromo = async () => {
-    const code = promoInput.trim();
+  const applyPromo = async (overrideCode) => {
+    const code = ((overrideCode ?? promoInput) || "").trim().toUpperCase();
     if (!code) return;
     setPromoApplying(true);
     setPromoError("");
@@ -151,6 +151,12 @@ export default function SubscribeTier() {
       setPromoError(formatApiError(e?.response?.data?.detail) || "Ongeldige promocode.");
     }
     setPromoApplying(false);
+  };
+
+  const applySuggestedPromo = (code) => {
+    setPromoInput(code);
+    setPromoError("");
+    applyPromo(code);
   };
 
   const removePromo = () => {
@@ -233,6 +239,21 @@ export default function SubscribeTier() {
                       {promoError}
                     </p>
                   )}
+
+                  {/* Suggested promo hint — one-click apply. Currently
+                      featured code for TAAFT reviewers / launch traffic. */}
+                  <button
+                    type="button"
+                    onClick={() => applySuggestedPromo("TAAFT10")}
+                    disabled={promoApplying}
+                    className="mt-2.5 inline-flex items-center gap-1.5 text-[12.5px] text-[#1A4FFF] hover:underline disabled:opacity-50"
+                    data-testid="promo-code-suggested-taaft10"
+                    aria-label="Apply promo code TAAFT10"
+                  >
+                    <Tag size={11} />
+                    <span>Try code:</span>
+                    <span className="font-mono font-semibold tracking-wider">TAAFT10</span>
+                  </button>
                 </>
               ) : (
                 <div

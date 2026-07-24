@@ -16,6 +16,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 from typing import List, Dict, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage, TextDelta, StreamDone
 
@@ -351,6 +352,32 @@ def _build_user_context(user: Optional[Dict]) -> str:
     )
 
 
+# Zynthoro HQ is in the Netherlands — anchor local time here so every
+# assistant references the same "today" regardless of server region.
+_ASSISTANT_TZ = ZoneInfo("Europe/Amsterdam")
+
+
+def _build_datetime_context() -> str:
+    """Render an auto-injected 'current date & time' block for the system
+    prompt. Ensures every assistant always knows today's exact date/time
+    at the start of every turn — so they never anchor to stale training
+    data when the user asks about deadlines, "this week", "today", etc.
+    """
+    now_utc = datetime.now(timezone.utc)
+    now_local = now_utc.astimezone(_ASSISTANT_TZ)
+    local_str = now_local.strftime("%A, %d %B %Y, %H:%M %Z")
+    iso_utc = now_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (
+        "\n\n## Session clock (auto-injected — updated at the start of every turn)\n"
+        f"Current date & time (Europe/Amsterdam): {local_str}\n"
+        f"UTC: {iso_utc}\n"
+        "Treat this as the source of truth for 'today', 'this week', 'this month', "
+        "'current year', deadlines and any time-sensitive reasoning. Do NOT rely on "
+        "your training-data cutoff for the current date. If the user asks 'what is "
+        "today's date?' or similar, answer from this block.\n"
+    )
+
+
 async def chat_complete(
     db,
     assistant_key: str,
@@ -376,7 +403,7 @@ async def chat_complete(
             who = "User" if m["role"] == "user" else "Assistant"
             rendered.append(f"{who}: {m['content']}")
         history_text = "\n\nPrior conversation:\n" + "\n".join(rendered)
-    system = system_prompt + _build_user_context(user_context) + history_text
+    system = system_prompt + _build_datetime_context() + _build_user_context(user_context) + history_text
     if file_context:
         system += "\n\n## Attached files\n" + file_context
 
@@ -453,7 +480,7 @@ async def chat_stream(
             who = "User" if m["role"] == "user" else "Assistant"
             rendered.append(f"{who}: {m['content']}")
         history_text = "\n\nPrior conversation:\n" + "\n".join(rendered)
-    system = system_prompt + _build_user_context(user_context) + history_text
+    system = system_prompt + _build_datetime_context() + _build_user_context(user_context) + history_text
     if file_context:
         system += "\n\n## Attached files\n" + file_context
 
@@ -608,6 +635,7 @@ async def generate_caption(
 
     system = (
         CAPTION_SYSTEM_PROMPT
+        + _build_datetime_context()
         + _build_user_context(user_context)
         + f"\n\nTarget platform: {platform}."
         + (f"\nRequested tone: {tone}." if tone else "")

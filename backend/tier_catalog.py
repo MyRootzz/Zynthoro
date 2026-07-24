@@ -272,10 +272,25 @@ async def resolve_promotion_code(
         raise ValueError("Deze promocode bestaat niet of is verlopen.")
 
     promo = result.data[0]
+
+    # Extract the coupon. Stripe now nests it under `promotion.coupon` as
+    # an ID string (new API structure); legacy responses still expose it
+    # directly as `promo.coupon`. Support both.
     coupon = getattr(promo, "coupon", None)
     if coupon is None:
-        # Stripe returned a promotion code with no coupon attached — treat
-        # as invalid rather than crashing with an AttributeError → 500.
+        promotion_obj = getattr(promo, "promotion", None)
+        coupon_id = getattr(promotion_obj, "coupon", None) if promotion_obj else None
+        if coupon_id:
+            try:
+                coupon = await asyncio.wait_for(
+                    asyncio.to_thread(stripe.Coupon.retrieve, coupon_id),
+                    timeout=8.0,
+                )
+            except asyncio.TimeoutError:
+                raise ValueError("Stripe reageert traag. Probeer het opnieuw.")
+
+    if coupon is None:
+        # Promotion code exists but has no linked coupon.
         raise ValueError("Deze promocode is niet meer geldig.")
 
     # Metadata check: `internal_only=true` on either the promo OR the coupon.

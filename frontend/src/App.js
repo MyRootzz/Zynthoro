@@ -37,6 +37,8 @@ import TermsOfService from "@/pages/legal/TermsOfService";
 import CookiePolicy from "@/pages/legal/CookiePolicy";
 import DPA from "@/pages/legal/DPA";
 import SLA from "@/pages/legal/SLA";
+import BlogIndex from "@/pages/blog/BlogIndex";
+import BlogPost from "@/pages/blog/BlogPost";
 
 function App() {
   return (
@@ -65,6 +67,10 @@ function App() {
             <Route path="/legal/privacy" element={<Navigate to="/legal/privacy-policy" replace />} />
             <Route path="/legal/terms" element={<Navigate to="/legal/terms-of-service" replace />} />
             <Route path="/legal/cookies" element={<Navigate to="/legal/cookie-policy" replace />} />
+
+            {/* Blog (public — articles ingested from Outrank webhook) */}
+            <Route path="/blog" element={<BlogIndex />} />
+            <Route path="/blog/:slug" element={<BlogPost />} />
             <Route
               path="/onboarding"
               element={

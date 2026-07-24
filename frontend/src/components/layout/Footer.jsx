@@ -105,6 +105,22 @@ export default function Footer() {
                   style={{ display: "block" }}
                 />
               </a>
+              <a
+                href="https://www.uneed.best/tool/zynthoro"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block hover:opacity-90 transition-opacity"
+                data-testid="footer-uneed-badge"
+                aria-label="Featured on Uneed"
+              >
+                <img
+                  src="https://www.uneed.best/EMBED1A.png"
+                  alt="Featured on Uneed"
+                  width="250"
+                  loading="lazy"
+                  style={{ display: "block" }}
+                />
+              </a>
             </div>
           </div>
 

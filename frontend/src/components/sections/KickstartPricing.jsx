@@ -6,21 +6,21 @@ import { API } from "@/contexts/AuthContext";
 
 const KICKSTART_HIGHLIGHTS = {
   kickstart_1: [
-    "AI Assistenten · 50 credits/mnd",
+    "AI Assistants · 50 credits/month",
     "Planning & Time Tracking",
-    "Communicatie module",
+    "Communication module",
     "Canva Studio",
   ],
   kickstart_2: [
-    "Alles uit K1 · 150 credits/mnd",
-    "Finance & Facturatie",
+    "Everything in K1 · 150 credits/month",
+    "Finance & Invoicing",
     "Sales module",
-    "AI foto/video suite",
+    "AI photo/video suite",
   ],
   kickstart_3: [
-    "Alles uit K2 · 300 credits/mnd",
+    "Everything in K2 · 300 credits/month",
     "Accounting & Operations",
-    "Projectmanagement",
+    "Project management",
     "Marketing & Content",
   ],
 };
@@ -46,13 +46,13 @@ export default function KickstartPricing() {
       <div className="zy-container">
         {/* Header */}
         <div className="max-w-3xl">
-          <p className="zy-eyebrow">Kickstart · Levenslang</p>
+          <p className="zy-eyebrow">Kickstart · Lifetime</p>
           <h2 className="zy-h2 mt-3">
-            Betaal één keer. Gebruik Zynthoro voor altijd.
+            Pay once. Use Zynthoro forever.
           </h2>
           <p className="text-[15.5px] text-[#555] mt-4 leading-relaxed max-w-2xl">
-            Onze lifetime deals geven je toegang tot een groeiende AI-ERP voor een fractie van de maandprijs.
-            Herroepingsrecht wettelijk uitgesloten na directe activatie.
+            Our lifetime deals give you access to a growing AI-ERP for a fraction of the monthly price.
+            Right of withdrawal legally excluded after immediate activation.
           </p>
         </div>
 
@@ -73,13 +73,13 @@ export default function KickstartPricing() {
                   className="absolute -top-3 left-6 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider"
                   style={{ background: "#1A4FFF", color: "white" }}
                 >
-                  Populairste keuze
+                  Most popular
                 </span>
               )}
               <p className="text-[13px] font-semibold uppercase tracking-wider text-[#666]">{p.label}</p>
               <div className="mt-3 flex items-baseline gap-2">
                 <span className="text-[38px] font-bold tracking-tight">€{p.amount_eur}</span>
-                <span className="text-[13.5px] text-[#666]">eenmalig</span>
+                <span className="text-[13.5px] text-[#666]">one-time</span>
               </div>
               <p className="text-[13px] text-[#666] mt-1">{p.tagline}</p>
 
@@ -97,15 +97,15 @@ export default function KickstartPricing() {
                 data-testid={`kickstart-cta-${p.tier_key}`}
                 className={p.tier_key === "kickstart_3" ? "zy-btn-primary mt-8 w-full justify-center" : "zy-btn-outline mt-8 w-full justify-center"}
               >
-                Kies {p.label} <ArrowRight size={14} />
+                Choose {p.label} <ArrowRight size={14} />
               </Link>
             </div>
           ))}
         </div>
 
         <p className="mt-6 text-[12px] text-[#888]">
-          Kickstart plans zijn levenslange licenties. Kickstart 3 evenaart nooit een volledig Starter-abonnement (€499/maand) — voor volledige functionaliteit kies je{" "}
-          <a href="#pricing" className="underline">Starter of hoger</a>.
+          Kickstart plans are lifetime licenses. Kickstart 3 will never match a full Starter subscription (€499/month) — for full functionality choose{" "}
+          <a href="#pricing" className="underline">Starter or higher</a>.
         </p>
       </div>
     </section>

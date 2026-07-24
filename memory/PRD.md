@@ -1036,3 +1036,15 @@ Following an internal code review of Sessions B/C1/C2 modules, fixed the 3 most 
 - `/app/backend/projects_module.py` — atomic claim-then-commit for `invoice-billable-time`
 - `/app/backend/tests/test_code_review_fixes_20260215.py` — new regression suite (5 tests)
 
+
+
+### 2026-02-24 — Footer social proof: "As seen on" strip (shipped)
+Consolidated the TAAFT / Product Hunt / Uneed badges (previously stacked inside the brand column of the footer) into a **dedicated horizontal "As seen on" strip** placed just above the copyright bar. Cleaner hierarchy, consistent badge height (48–54px), and gives the social-proof block its own row so it reads as a credibility signal rather than clutter next to the tagline.
+
+- Kept all three original `data-testid`s (`footer-taaft-badge`, `footer-producthunt-badge`, `footer-uneed-badge`) — no test breakage.
+- New wrapper `data-testid="footer-as-seen-on"` for the strip.
+- Static `<a>` anchors in `/app/frontend/public/index.html` **untouched** — TAAFT/PH/Uneed crawlers keep verifying via those non-JS anchors.
+- JSON-LD `sameAs` block untouched.
+
+**Files touched**
+- `/app/frontend/src/components/layout/Footer.jsx` — removed inline badges from brand column, added `footer-as-seen-on` strip section.

@@ -68,60 +68,6 @@ export default function Footer() {
                 <Instagram size={18} />
               </a>
             </div>
-            {/* TAAFT (There's An AI For That) verification badge — must be
-                publicly reachable on the homepage for their crawler to
-                verify the Zynthoro listing. Do not remove or nofollow the
-                link; TAAFT-required exact href/query params below. */}
-            <div className="flex flex-wrap items-center gap-4 mt-5">
-              <a
-                href="https://theresanaiforthat.com/ai/zynthoro/?ref=featured&v=11900095"
-                target="_blank"
-                rel="nofollow noopener noreferrer"
-                className="inline-block hover:opacity-90 transition-opacity"
-                data-testid="footer-taaft-badge"
-                aria-label="Featured on There's An AI For That"
-              >
-                <img
-                  src="https://media.theresanaiforthat.com/social/icon_full.svg"
-                  alt="Featured on TAAFT"
-                  loading="lazy"
-                  style={{ display: "block", height: 64, width: "auto" }}
-                />
-              </a>
-              <a
-                href="https://www.producthunt.com/products/zynthoro-the-next?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-zynthoro-the-next"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block hover:opacity-90 transition-opacity"
-                data-testid="footer-producthunt-badge"
-                aria-label="Featured on Product Hunt"
-              >
-                <img
-                  src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1202551&theme=light&t=1784786507425"
-                  alt="Zynthoro — The Next - Replace 15+ business tools with one AI-native ERP | Product Hunt"
-                  width="250"
-                  height="54"
-                  loading="lazy"
-                  style={{ display: "block" }}
-                />
-              </a>
-              <a
-                href="https://www.uneed.best/tool/zynthoro"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block hover:opacity-90 transition-opacity"
-                data-testid="footer-uneed-badge"
-                aria-label="Featured on Uneed"
-              >
-                <img
-                  src="https://www.uneed.best/EMBED1A.png"
-                  alt="Featured on Uneed"
-                  width="250"
-                  loading="lazy"
-                  style={{ display: "block" }}
-                />
-              </a>
-            </div>
           </div>
 
           {cols.map((c) => (
@@ -151,7 +97,77 @@ export default function Footer() {
           ))}
         </div>
 
-        <div className="mt-14 pt-6 border-t border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+        {/* "As seen on" — consolidated social proof strip. TAAFT/PH/Uneed
+            badges live here as the canonical, user-visible React version.
+            Static <a> anchors also exist in public/index.html so non-JS
+            crawlers (TAAFT verifier, etc.) can discover them. Do not
+            remove those static anchors. */}
+        <div
+          data-testid="footer-as-seen-on"
+          className="mt-16 pt-8 border-t border-white/10"
+        >
+          <div className="flex flex-col md:flex-row md:items-center gap-6 md:gap-10">
+            <div className="flex items-center gap-3 md:min-w-[140px]">
+              <span
+                className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50"
+              >
+                As seen on
+              </span>
+              <span className="hidden md:block h-px w-8 bg-white/15" />
+            </div>
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-5">
+              <a
+                href="https://theresanaiforthat.com/ai/zynthoro/?ref=featured&v=11900095"
+                target="_blank"
+                rel="nofollow noopener noreferrer"
+                className="inline-flex items-center opacity-80 hover:opacity-100 transition-opacity"
+                data-testid="footer-taaft-badge"
+                aria-label="Featured on There's An AI For That"
+              >
+                <img
+                  src="https://media.theresanaiforthat.com/social/icon_full.svg"
+                  alt="Featured on TAAFT"
+                  loading="lazy"
+                  style={{ display: "block", height: 54, width: "auto" }}
+                />
+              </a>
+              <a
+                href="https://www.producthunt.com/products/zynthoro-the-next?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-zynthoro-the-next"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center opacity-80 hover:opacity-100 transition-opacity"
+                data-testid="footer-producthunt-badge"
+                aria-label="Featured on Product Hunt"
+              >
+                <img
+                  src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1202551&theme=light&t=1784786507425"
+                  alt="Zynthoro — The Next - Replace 15+ business tools with one AI-native ERP | Product Hunt"
+                  width="220"
+                  height="48"
+                  loading="lazy"
+                  style={{ display: "block", height: 48, width: "auto" }}
+                />
+              </a>
+              <a
+                href="https://www.uneed.best/tool/zynthoro"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center opacity-80 hover:opacity-100 transition-opacity"
+                data-testid="footer-uneed-badge"
+                aria-label="Featured on Uneed"
+              >
+                <img
+                  src="https://www.uneed.best/EMBED1A.png"
+                  alt="Featured on Uneed"
+                  loading="lazy"
+                  style={{ display: "block", height: 48, width: "auto" }}
+                />
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-10 pt-6 border-t border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
           <p className="text-white/55 text-[13px]">
             © 2026 Zynthoro — Casa Haya International BV (KvK 99196581). All rights reserved.
           </p>

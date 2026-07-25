@@ -4,7 +4,7 @@ import { ZyLogo } from "@/components/ZyLogo";
 import {
   Home, CalendarClock, Timer, ShoppingCart, ReceiptEuro, Calculator,
   KanbanSquare, Users, Workflow, Megaphone, MessagesSquare, ShieldCheck,
-  Settings, ToggleLeft, ToggleRight, Sparkles, BrainCircuit, TrendingUp, ChevronLeft, Lock,
+  Settings, ToggleLeft, ToggleRight, Sparkles, BrainCircuit, TrendingUp, ChevronLeft, Lock, Wand2,
 } from "lucide-react";
 
 const MODULES = [
@@ -18,6 +18,7 @@ const MODULES = [
   { to: "/dashboard/hr", label: "HR & Personnel", icon: Users, slug: "hr" },
   { to: "/dashboard/operations", label: "Operations", icon: Workflow, slug: "operations" },
   { to: "/dashboard/marketing", label: "Marketing & Content", icon: Megaphone, slug: "marketing" },
+  { to: "/dashboard/ai-studio", label: "AI Studio", icon: Wand2, slug: "ai_studio" },
   { to: "/dashboard/communication", label: "Communication", icon: MessagesSquare, slug: "communication" },
   { to: "/dashboard/compliance", label: "Compliance", icon: ShieldCheck, slug: "compliance" },
 ];

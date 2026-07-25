@@ -3819,6 +3819,8 @@ import projects_module  # noqa: E402
 import planning_module  # noqa: E402
 import time_tracking_module  # noqa: E402
 import blog_module  # noqa: E402
+import meta_oauth_module  # noqa: E402
+import ai_studio_module  # noqa: E402
 app.include_router(hr_module.build_router(db, get_current_user_full))
 app.include_router(accounting_module.build_router(db, get_current_user_full))
 app.include_router(accounting_csv_module.build_router(db, get_current_user_full))
@@ -3830,6 +3832,8 @@ app.include_router(projects_module.build_router(db, get_current_user_full))
 app.include_router(planning_module.build_router(db, get_current_user_full))
 app.include_router(time_tracking_module.build_router(db, get_current_user_full))
 app.include_router(blog_module.build_router(db))
+app.include_router(meta_oauth_module.build_router(db, get_current_user_full))
+app.include_router(ai_studio_module.build_router(db, get_current_user_full))
 
 app.add_middleware(
     CORSMiddleware,

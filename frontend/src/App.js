@@ -39,6 +39,7 @@ import DPA from "@/pages/legal/DPA";
 import SLA from "@/pages/legal/SLA";
 import BlogIndex from "@/pages/blog/BlogIndex";
 import BlogPost from "@/pages/blog/BlogPost";
+import AIStudio from "@/pages/dashboard/AIStudio";
 
 function App() {
   return (
@@ -103,6 +104,7 @@ function App() {
               <Route path="projects" element={<ProjectsModule />} />
               <Route path="planning" element={<PlanningModule />} />
               <Route path="time-tracking" element={<TimeTrackingModule />} />
+              <Route path="ai-studio" element={<AIStudio />} />
               <Route path=":slug" element={<ModulePlaceholder />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

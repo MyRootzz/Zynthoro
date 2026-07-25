@@ -3810,6 +3810,7 @@ app.include_router(canva_module.build_router(db, get_current_user_full))
 # Session B modules (2026-07-21) — HR, Accounting, Communication, Compliance
 import hr_module  # noqa: E402
 import accounting_module  # noqa: E402
+import accounting_csv_module  # noqa: E402
 import communication_module  # noqa: E402
 import compliance_module  # noqa: E402
 import finance_module  # noqa: E402
@@ -3820,6 +3821,7 @@ import time_tracking_module  # noqa: E402
 import blog_module  # noqa: E402
 app.include_router(hr_module.build_router(db, get_current_user_full))
 app.include_router(accounting_module.build_router(db, get_current_user_full))
+app.include_router(accounting_csv_module.build_router(db, get_current_user_full))
 app.include_router(communication_module.build_router(db, get_current_user_full))
 app.include_router(compliance_module.build_router(db, get_current_user_full))
 app.include_router(finance_module.build_router(db, get_current_user_full))

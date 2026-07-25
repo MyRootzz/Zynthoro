@@ -6,12 +6,14 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { API, formatApiError } from "@/contexts/AuthContext";
-import { BookOpen, Scale, TrendingUp, Plus, Trash2, Loader2 } from "lucide-react";
+import { BookOpen, Scale, TrendingUp, Plus, Trash2, Loader2, Upload } from "lucide-react";
+import BankStatementImport from "@/components/accounting/BankStatementImport";
 
 const TABS = [
   { id: "journal", label: "Journal", icon: BookOpen },
   { id: "trial",   label: "Trial balance", icon: Scale },
   { id: "pnl",     label: "Profit & Loss", icon: TrendingUp },
+  { id: "import",  label: "Import bank",  icon: Upload },
 ];
 
 const fmt = (n) => Number(n || 0).toLocaleString("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -43,6 +45,7 @@ export default function AccountingModule() {
         {tab === "journal" && <JournalPanel accounts={accounts} />}
         {tab === "trial" && <TrialBalancePanel />}
         {tab === "pnl" && <PnLPanel />}
+        {tab === "import" && <BankStatementImport accounts={accounts} />}
       </div>
     </div>
   );

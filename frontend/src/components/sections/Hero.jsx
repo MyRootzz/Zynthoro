@@ -57,17 +57,24 @@ export default function Hero() {
             style={{ transitionDelay: "240ms" }}
           >
             <Link
-              to="/signup"
+              to="/signup?trial=1"
               data-testid={HOME.heroPrimaryCta}
               className="zy-btn-primary"
             >
-              Get started
+              Start free 24h trial
               <ArrowRight size={18} />
+            </Link>
+            <Link
+              to="/signup"
+              data-testid="hero-cta-get-started"
+              className="zy-btn-outline"
+            >
+              Get started
             </Link>
           </div>
 
-          <p className="mt-7 text-sm text-[#666] zy-reveal" style={{ transitionDelay: "320ms" }}>
-            Starting at €499/month · No risk · Cancel anytime
+          <p className="mt-4 text-[13px] text-[#888] zy-reveal" style={{ transitionDelay: "300ms" }}>
+            No credit card · Cancel anytime · Full AI access for 24 hours
           </p>
         </div>
 

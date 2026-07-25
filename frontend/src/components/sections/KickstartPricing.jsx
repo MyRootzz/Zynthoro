@@ -56,8 +56,40 @@ export default function KickstartPricing() {
           </p>
         </div>
 
+        {/* Free trial CTA — sits between the intro and the price cards.
+            Cheap credibility builder: "not ready to commit? try it free". */}
+        <div
+          data-testid="kickstart-trial-cta"
+          className="mt-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-2xl border border-[#1A4FFF]/25 bg-gradient-to-r from-[#1A4FFF]/[0.05] to-transparent px-5 sm:px-6 py-4 sm:py-5"
+        >
+          <div className="flex items-start sm:items-center gap-3">
+            <span
+              className="inline-flex items-center justify-center rounded-full text-white text-[13px] font-bold shrink-0"
+              style={{ width: 36, height: 36, background: "var(--zy-blue)" }}
+            >
+              24h
+            </span>
+            <div>
+              <p className="text-[14.5px] font-semibold text-[#0A1628]">
+                Not sure yet? Try Zynthoro free for 24 hours.
+              </p>
+              <p className="text-[13px] text-[#555] mt-0.5">
+                Full access to all 4 AI assistants — no credit card required.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/signup?trial=1"
+            data-testid="kickstart-trial-cta-btn"
+            className="inline-flex items-center gap-1.5 rounded-full px-5 py-2.5 text-[13.5px] font-semibold text-white hover:opacity-90 transition-opacity whitespace-nowrap"
+            style={{ background: "var(--zy-blue)" }}
+          >
+            Start free trial <ArrowRight size={15} />
+          </Link>
+        </div>
+
         {/* Kickstart 3 cards */}
-        <div className="mt-14 grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div className="mt-10 grid grid-cols-1 md:grid-cols-3 gap-5">
           {kick.map((p) => (
             <div
               key={p.tier_key}

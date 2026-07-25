@@ -22,6 +22,7 @@ export default function Signup() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const returnTo = searchParams.get("return") || "";
+  const isTrial = searchParams.get("trial") === "1";
   const [form, setForm] = useState({
     first_name: "", last_name: "", email: "", password: "", company: "",
   });
@@ -46,11 +47,17 @@ export default function Signup() {
     }
     setSubmitting(true);
     try {
-      const { data } = await axios.post(`${API}/auth/signup`, form);
-      toast.success("Account created. Check your inbox to verify your email.");
+      const payload = isTrial ? { ...form, is_trial: true } : form;
+      const { data } = await axios.post(`${API}/auth/signup`, payload);
+      toast.success(
+        isTrial
+          ? "Trial account created! Check your inbox to verify your email and start the 24-hour clock."
+          : "Account created. Check your inbox to verify your email."
+      );
       // No email service: pass the dev token so user can verify instantly.
       const retParam = returnTo ? `&return=${encodeURIComponent(returnTo)}` : "";
-      navigate(`/verify-email?token=${encodeURIComponent(data.dev_verification_token || "")}&email=${encodeURIComponent(form.email)}${retParam}`);
+      const trialParam = isTrial ? "&trial=1" : "";
+      navigate(`/verify-email?token=${encodeURIComponent(data.dev_verification_token || "")}&email=${encodeURIComponent(form.email)}${retParam}${trialParam}`);
     } catch (err) {
       toast.error(formatApiError(err?.response?.data?.detail) || "Signup failed.");
     } finally {
@@ -60,10 +67,23 @@ export default function Signup() {
 
   return (
     <AuthLayout
-      eyebrow="Create your workspace"
-      title="Start your Zynthoro account"
-      subtitle="One platform. One AI. One truth. Founding member pricing locked for life."
+      eyebrow={isTrial ? "24-hour free trial" : "Create your workspace"}
+      title={isTrial ? "Start your 24-hour free trial" : "Start your Zynthoro account"}
+      subtitle={
+        isTrial
+          ? "Full AI-assistant access for 24 hours. No credit card. Cancel anytime."
+          : "One platform. One AI. One truth. Founding member pricing locked for life."
+      }
     >
+      {isTrial && (
+        <div
+          data-testid="signup-trial-banner"
+          className="mb-5 rounded-lg border border-[#1A4FFF]/25 bg-[#1A4FFF]/[0.06] px-4 py-3 text-[13px] text-[#0A1628] leading-relaxed"
+        >
+          <span className="font-semibold text-[var(--zy-blue)]">You're starting a 24h free trial.</span>{" "}
+          Access all 4 AI assistants (Zyntha, Thoro, Zyona, Zynthoro Assist) — up to 10 messages per assistant per day. After 24 hours, pick a Kickstart tier to unlock the full platform.
+        </div>
+      )}
       <form onSubmit={onSubmit} className="space-y-4" data-testid="signup-form">
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">

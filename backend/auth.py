@@ -14,6 +14,76 @@ LOCKOUT_ATTEMPTS = 5
 LOCKOUT_WINDOW_MIN = 15
 
 
+# ---- Trial-mode path gating ------------------------------------------------
+# For users who signed up via the 24-hour free-trial flow (is_trial=True),
+# we lock the app to the AI assistants only during the trial and hard-block
+# EVERYTHING once trial_expires_at has passed. These allowlists are matched
+# by path prefix on the incoming Request URL.
+#
+# The narrower "expired" allowlist is intentional — expired-trial users must
+# be able to upgrade, but nothing else.
+_TRIAL_ALWAYS_ALLOWED_PREFIXES = (
+    "/api/auth/",         # login/logout/verify/2fa
+    "/api/account/me",    # profile self-read (used by trial banner)
+    "/api/me/tier",
+    "/api/checkout/",     # Stripe checkout flow
+    "/api/subscribe/",
+    "/api/onboarding",
+)
+_TRIAL_ACTIVE_EXTRA_PREFIXES = (
+    "/api/ai/",           # AI assistants (chat, upload, caption, etc.)
+)
+
+
+def _trial_state(user: dict) -> str:
+    """Return one of: 'not_trial', 'active', 'expired'."""
+    if not user.get("is_trial"):
+        return "not_trial"
+    exp = user.get("trial_expires_at")
+    if not exp:
+        return "expired"
+    try:
+        exp_dt = datetime.fromisoformat(exp.replace("Z", "+00:00")) if isinstance(exp, str) else exp
+        if exp_dt.tzinfo is None:
+            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return "expired"
+    return "active" if datetime.now(timezone.utc) < exp_dt else "expired"
+
+
+def _enforce_trial_gate(user: dict, request: Request) -> None:
+    """Raise 403 if the request path is not allowed for this user's trial
+    state. No-op for non-trial users."""
+    state = _trial_state(user)
+    if state == "not_trial":
+        return
+
+    path = request.url.path or ""
+    allowed_prefixes = _TRIAL_ALWAYS_ALLOWED_PREFIXES
+    if state == "active":
+        allowed_prefixes = allowed_prefixes + _TRIAL_ACTIVE_EXTRA_PREFIXES
+
+    if any(path.startswith(p) for p in allowed_prefixes):
+        return
+
+    if state == "expired":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "TRIAL_EXPIRED",
+                "message": "Your 24-hour free trial has expired. Please choose a Kickstart tier or subscription to continue.",
+            },
+        )
+    # Active trial — path is a non-AI module.
+    raise HTTPException(
+        status_code=403,
+        detail={
+            "code": "TRIAL_LOCKED",
+            "message": "This module is locked during the 24-hour trial. Only the AI assistants are available. Upgrade to unlock everything.",
+        },
+    )
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
@@ -91,6 +161,13 @@ async def get_current_user_full(request: Request):
     if not user.get("has_company_logo"):
         exists = await db.users.find_one({"id": payload["sub"], "company_logo_mime": {"$exists": True}}, {"_id": 1})
         user["has_company_logo"] = bool(exists)
+
+    # Enforce trial-mode gating. Non-trial users pass through unchanged.
+    _enforce_trial_gate(user, request)
+
+    # Expose trial state so downstream code doesn't need to recompute it.
+    user["trial_state"] = _trial_state(user)
+
     return user
 
 

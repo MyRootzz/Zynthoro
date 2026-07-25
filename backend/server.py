@@ -103,6 +103,9 @@ class SignupIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     company: str = Field(min_length=1, max_length=200)
+    # 24-hour free trial flag — set only when the landing-page CTA
+    # deep-links to /signup?trial=1. Regular signups get is_trial=false.
+    is_trial: bool = False
 
 
 class LoginIn(BaseModel):
@@ -438,6 +441,10 @@ async def auth_signup(payload: SignupIn, response: Response):
 
     verification_token = gen_token_url_safe(24)
     user_id = str(uuid.uuid4())
+    now_utc = datetime.now(timezone.utc)
+    trial_expires_at = None
+    if payload.is_trial:
+        trial_expires_at = (now_utc + timedelta(hours=24)).isoformat()
     doc = {
         "id": user_id,
         "email": email,
@@ -456,7 +463,12 @@ async def auth_signup(payload: SignupIn, response: Response):
         "twofa_method": None,
         "totp_secret": None,
         "onboarding_completed": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": now_utc.isoformat(),
+        # Trial mode fields — only populated on `?trial=1` signups.
+        "is_trial": bool(payload.is_trial),
+        "trial_started_at": now_utc.isoformat() if payload.is_trial else None,
+        "trial_expires_at": trial_expires_at,
+        "trial_ai_daily": {},  # {"YYYY-MM-DD": {"zyntha": N, ...}}
     }
     await db.users.insert_one(doc)
 
@@ -994,14 +1006,51 @@ async def list_ai_assistants():
     return {"assistants": ai_assistants.list_assistants()}
 
 
+# 24-hour free trial — daily AI message cap per assistant.
+TRIAL_AI_DAILY_CAP = 10
+
+
+async def _check_and_bump_trial_ai_cap(user: dict, assistant_key: str) -> None:
+    """For trial users only: enforce a per-day, per-assistant message cap
+    (currently 10). No-op for non-trial users. Raises HTTP 429 when hit.
+    Increments the daily counter atomically."""
+    if not user.get("is_trial"):
+        return
+    today_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    daily = (user.get("trial_ai_daily") or {}).get(today_key) or {}
+    current = int(daily.get(assistant_key) or 0)
+    if current >= TRIAL_AI_DAILY_CAP:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "TRIAL_AI_DAILY_CAP",
+                "message": (
+                    f"You've hit today's {TRIAL_AI_DAILY_CAP}-message limit for this assistant during your free trial. "
+                    "Upgrade to a Kickstart tier for unlimited access."
+                ),
+                "cap": TRIAL_AI_DAILY_CAP,
+                "assistant": assistant_key,
+            },
+        )
+    field = f"trial_ai_daily.{today_key}.{assistant_key}"
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$inc": {field: 1}},
+    )
+
+
 async def _consume_ai_credit(user: dict) -> None:
     """Increment the user's AI credit counter and raise HTTP 402 if the
     tier's monthly / one-time limit has been reached.
 
     Bypass conditions: founder / demo / billing-exempt / is_unlimited, or
     the plan has no limit (Compleet / Starter → ai_credits_limit is None).
+    Trial users bypass the plan credit system entirely — their usage is
+    already gated by the per-assistant daily cap (`_check_and_bump_trial_ai_cap`).
     """
     if user.get("is_founder") or user.get("is_demo") or user.get("billing_exempt") or user.get("is_unlimited"):
+        return
+    if user.get("is_trial"):
         return
     ctx = _tier_context(user)
     limit = ctx.get("ai_credits_limit")
@@ -1197,6 +1246,7 @@ async def ai_upload_delete(file_id: str, user=Depends(get_current_user_full)):
 
 @api_router.post("/ai/chat")
 async def ai_chat(payload: AssistChatIn, user=Depends(get_current_user_full)):
+    await _check_and_bump_trial_ai_cap(user, payload.assistant)
     await _consume_ai_credit(user)
     session_id = payload.session_id or f"{user['id']}:{payload.assistant}:{uuid.uuid4()}"
     file_context = await _load_ai_file_context(user["id"], payload.file_ids)
@@ -1240,6 +1290,7 @@ async def ai_stream(payload: AssistChatIn, user=Depends(get_current_user_full)):
     """
     import json as _json
 
+    await _check_and_bump_trial_ai_cap(user, payload.assistant)
     await _consume_ai_credit(user)
     session_id = payload.session_id or f"{user['id']}:{payload.assistant}:{uuid.uuid4()}"
     plan = user.get("subscription_plan")

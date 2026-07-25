@@ -48,6 +48,11 @@ export default function Sidebar({ user, mode, onToggleMode }) {
     user?.billing_exempt || user?.is_demo
   );
 
+  // Trial users see lock icons next to every non-AI module (mirrors the
+  // backend gate in auth.py). Assistants + Settings stay unlocked.
+  const isTrial = !!(user?.is_trial && user?.trial_expires_at
+    && new Date(user.trial_expires_at).getTime() > Date.now());
+
   return (
     <>
       {/* Mobile open button */}
@@ -83,19 +88,32 @@ export default function Sidebar({ user, mode, onToggleMode }) {
 
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-0.5">
           {MODULES.map((m) => (
-            <SidebarItem key={m.to} {...m} allowedModules={user?.tier?.modules} isPrivileged={isPrivileged} />
+            <SidebarItem
+              key={m.to}
+              {...m}
+              allowedModules={user?.tier?.modules}
+              isPrivileged={isPrivileged}
+              isTrial={isTrial}
+            />
           ))}
 
           <div className="pt-5 pb-2 px-2">
             <p className="text-[10.5px] uppercase tracking-[0.18em] text-white/55 font-semibold">AI Assistants</p>
           </div>
           {ASSISTANTS.map((a) => (
-            <SidebarItem key={a.to} {...a} dotColor={a.color} allowedModules={user?.tier?.modules} isPrivileged={isPrivileged} />
+            <SidebarItem
+              key={a.to}
+              {...a}
+              dotColor={a.color}
+              allowedModules={user?.tier?.modules}
+              isPrivileged={isPrivileged}
+              isTrial={isTrial}
+            />
           ))}
 
           <div className="pt-5">
-            <SidebarItem to="/dashboard/team" label="Team" icon={Users} />
-            <SidebarItem to="/dashboard/settings" label="Settings" icon={Settings} />
+            <SidebarItem to="/dashboard/team" label="Team" icon={Users} isTrial={isTrial} />
+            <SidebarItem to="/dashboard/settings" label="Settings" icon={Settings} isTrial={isTrial} />
           </div>
         </nav>
 
@@ -122,12 +140,31 @@ export default function Sidebar({ user, mode, onToggleMode }) {
   );
 }
 
-function SidebarItem({ to, label, icon: Icon, end, dotColor, slug, allowedModules, isPrivileged = false }) {
-  const isLocked = !isPrivileged
+// AI assistants + Settings + Dashboard home are the only routes accessible
+// to trial users (mirrors backend `_TRIAL_ACTIVE_EXTRA_PREFIXES` + allowed
+// prefixes). Keep in sync with DashboardLayout's TRIAL_ALLOWED_ROUTES.
+const TRIAL_UNLOCKED_ROUTES = new Set([
+  "/dashboard",
+  "/dashboard/zyntha",
+  "/dashboard/thoro",
+  "/dashboard/zyona",
+  "/dashboard/assist",
+  "/dashboard/settings",
+]);
+
+function SidebarItem({ to, label, icon: Icon, end, dotColor, slug, allowedModules, isPrivileged = false, isTrial = false }) {
+  // Trial users: the sidebar lock is driven entirely by the trial
+  // allowlist. We ignore the tier-based `allowedModules` check because
+  // trial accounts sit on the Presale plan whose module list doesn't
+  // reflect what the trial actually unlocks (AI + Settings).
+  const isTrialLocked = isTrial && !TRIAL_UNLOCKED_ROUTES.has(to);
+  const isTierLocked = !isTrial
+    && !isPrivileged
     && slug
     && Array.isArray(allowedModules)
     && allowedModules.length > 0
     && !allowedModules.includes(slug);
+  const isLocked = isTierLocked || isTrialLocked;
   return (
     <NavLink
       to={to}
@@ -148,7 +185,7 @@ function SidebarItem({ to, label, icon: Icon, end, dotColor, slug, allowedModule
       )}
       <span className="truncate flex-1">{label}</span>
       {isLocked && (
-        <Lock size={11} className="shrink-0 opacity-70" data-testid={`sidebar-lock-${slug}`} />
+        <Lock size={11} className="shrink-0 opacity-70" data-testid={`sidebar-lock-${slug || to.replace(/\//g, "-").replace(/^-/, "")}`} />
       )}
     </NavLink>
   );

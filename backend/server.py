@@ -3698,6 +3698,13 @@ async def startup():
     import daily_digest  # noqa: WPS433
     app.state.digest_task = daily_digest.start_scheduler(db)
 
+    # Scheduled Meta posts — polls scheduled_posts every 60s and fires
+    # any that are due. Idempotent status-transition guard prevents
+    # double-publish.
+    app.state.meta_scheduler = meta_oauth_module.start_scheduler(db, interval_seconds=60)
+    await db.scheduled_posts.create_index([("status", 1), ("scheduled_at", 1)])
+    await db.scheduled_posts.create_index("workspace_owner")
+
 
 # Snapshot of the last catalog validation result. Set at startup and
 # consumed by GET /api/tier/catalog/health + POST /api/checkout/tier/session.

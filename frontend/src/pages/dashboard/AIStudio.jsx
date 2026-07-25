@@ -9,9 +9,16 @@ import { toast } from "sonner";
 import {
   Image as ImageIcon, Video, Sparkles, Loader2, Wand2,
   Download, Copy, Share2, Facebook, Instagram, Send,
-  Link as LinkIcon, AlertCircle, Check,
+  Link as LinkIcon, AlertCircle, Check, Clock, CalendarClock, X,
 } from "lucide-react";
 import { API, formatApiError } from "@/contexts/AuthContext";
+
+// Default schedule = 1 hour from now, formatted for <input type="datetime-local">.
+function defaultScheduleLocal() {
+  const d = new Date(Date.now() + 60 * 60 * 1000);
+  const tzOffset = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
+}
 
 const PHOTO_PRESETS = [
   { label: "Cinematic hero shot of a modern SME office at golden hour", aspect: "16:9" },
@@ -114,6 +121,17 @@ function PhotoTab({ onGenerated, metaConnected, metaPages }) {
   const [publishing, setPublishing] = useState(false);
   const [publishTargets, setPublishTargets] = useState({ fb: true, ig: true });
   const [selectedPage, setSelectedPage] = useState("");
+  const [schedule, setSchedule] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState(defaultScheduleLocal());
+  const [queue, setQueue] = useState([]);
+
+  const reloadQueue = async () => {
+    try {
+      const { data } = await axios.get(`${API}/oauth/meta/scheduled`);
+      setQueue(data.posts || []);
+    } catch { /* noop */ }
+  };
+  useEffect(() => { reloadQueue(); }, [metaConnected]);
 
   useEffect(() => {
     if (metaPages.length && !selectedPage) setSelectedPage(metaPages[0].page_id);
@@ -141,22 +159,46 @@ function PhotoTab({ onGenerated, metaConnected, metaPages }) {
     if (!gen?.output_url || !selectedPage) return;
     setPublishing(true);
     try {
-      const { data } = await axios.post(`${API}/oauth/meta/publish`, {
-        page_id: selectedPage,
-        message: prompt.trim(),
-        image_url: gen.output_url,
-        target_fb: publishTargets.fb,
-        target_ig: publishTargets.ig,
-      });
-      toast.success(
-        data.mode === "mock"
-          ? "Published (mock mode — connect real Meta app to publish for real)."
-          : `Published! FB=${data.fb_post_id || "—"} IG=${data.ig_post_id || "—"}`
-      );
+      if (schedule) {
+        const iso = new Date(scheduledAt).toISOString();
+        await axios.post(`${API}/oauth/meta/schedule`, {
+          page_id: selectedPage,
+          message: prompt.trim(),
+          image_url: gen.output_url,
+          target_fb: publishTargets.fb,
+          target_ig: publishTargets.ig,
+          scheduled_at: iso,
+        });
+        toast.success(`Scheduled for ${new Date(iso).toLocaleString()}.`);
+        await reloadQueue();
+      } else {
+        const { data } = await axios.post(`${API}/oauth/meta/publish`, {
+          page_id: selectedPage,
+          message: prompt.trim(),
+          image_url: gen.output_url,
+          target_fb: publishTargets.fb,
+          target_ig: publishTargets.ig,
+        });
+        toast.success(
+          data.mode === "mock"
+            ? "Published (mock mode — connect real Meta app to publish for real)."
+            : `Published! FB=${data.fb_post_id || "—"} IG=${data.ig_post_id || "—"}`
+        );
+      }
     } catch (e) {
       toast.error(formatApiError(e?.response?.data?.detail) || "Publish failed.");
     }
     setPublishing(false);
+  };
+
+  const cancelScheduled = async (id) => {
+    try {
+      await axios.post(`${API}/oauth/meta/scheduled/${id}/cancel`);
+      setQueue((q) => q.map((p) => (p.id === id ? { ...p, status: "cancelled" } : p)));
+      toast.success("Scheduled post cancelled.");
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || "Cancel failed.");
+    }
   };
 
   return (
@@ -287,6 +329,36 @@ function PhotoTab({ onGenerated, metaConnected, metaPages }) {
                       <Instagram size={13} className="text-[#E1306C]" /> Instagram
                     </label>
                   </div>
+
+                  <label
+                    className="flex items-center gap-2 text-[13px] cursor-pointer select-none"
+                    data-testid="ai-studio-schedule-toggle"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={schedule}
+                      onChange={(e) => setSchedule(e.target.checked)}
+                    />
+                    <CalendarClock size={14} className="text-[#0A1628]/60" />
+                    <span className="text-[#0A1628]/80">Schedule for later</span>
+                  </label>
+
+                  {schedule && (
+                    <div className="flex items-center gap-2" data-testid="ai-studio-schedule-picker">
+                      <input
+                        type="datetime-local"
+                        value={scheduledAt}
+                        onChange={(e) => setScheduledAt(e.target.value)}
+                        min={defaultScheduleLocal()}
+                        className="text-[13px] px-3 py-1.5 border border-[#0A162814] rounded-md bg-white"
+                        data-testid="ai-studio-schedule-datetime"
+                      />
+                      <span className="text-[11.5px] text-[#0A1628]/50">
+                        Your local time · runs on our server clock (UTC).
+                      </span>
+                    </div>
+                  )}
+
                   <button
                     type="button"
                     onClick={publish}
@@ -294,16 +366,87 @@ function PhotoTab({ onGenerated, metaConnected, metaPages }) {
                     className="zy-btn-primary text-[13px] inline-flex items-center gap-1.5 disabled:opacity-50"
                     data-testid="ai-studio-publish-btn"
                   >
-                    {publishing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    Publish
+                    {publishing ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : schedule ? (
+                      <CalendarClock size={14} />
+                    ) : (
+                      <Send size={14} />
+                    )}
+                    {schedule ? "Schedule post" : "Publish"}
                   </button>
                 </div>
               )}
             </div>
+
+            {queue.length > 0 && (
+              <div
+                className="rounded-xl border border-[#0A162814] p-4"
+                data-testid="ai-studio-schedule-queue"
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <CalendarClock size={14} className="text-[#0A1628]/60" />
+                  <p className="text-[13px] font-semibold text-[#0A1628]">
+                    Scheduled queue ({queue.filter((p) => p.status === "pending").length} pending)
+                  </p>
+                </div>
+                <ul className="space-y-2">
+                  {queue.slice(0, 8).map((p) => (
+                    <li
+                      key={p.id}
+                      className="flex items-center justify-between gap-3 text-[12.5px] border border-[#0A162808] rounded-md px-2.5 py-1.5"
+                      data-testid={`ai-studio-schedule-item-${p.id}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[#0A1628] truncate">
+                          {p.message || "(no message)"}
+                        </div>
+                        <div className="text-[11.5px] text-[#0A1628]/55 mt-0.5">
+                          {new Date(p.scheduled_at).toLocaleString()}
+                          {p.target_fb && <span className="ml-1.5">· FB</span>}
+                          {p.target_ig && <span className="ml-1.5">· IG</span>}
+                        </div>
+                      </div>
+                      <StatusPill status={p.status} />
+                      {p.status === "pending" && (
+                        <button
+                          type="button"
+                          onClick={() => cancelScheduled(p.id)}
+                          className="p-1 rounded-md text-[#B91C1C]/70 hover:text-[#B91C1C] hover:bg-[#FEE2E280]"
+                          title="Cancel"
+                          data-testid={`ai-studio-schedule-cancel-${p.id}`}
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+// ---- Schedule status pill --------------------------------------------------
+function StatusPill({ status }) {
+  const cfg = {
+    pending: { bg: "#FEF3C6", color: "#B45309", label: "Pending" },
+    publishing: { bg: "#DBEAFE", color: "#1E40AF", label: "Publishing…" },
+    published: { bg: "#D1FAE5", color: "#047857", label: "Published" },
+    failed: { bg: "#FEE2E2", color: "#B91C1C", label: "Failed" },
+    cancelled: { bg: "#F1F3F8", color: "#0A16288F", label: "Cancelled" },
+  }[status] || { bg: "#F1F3F8", color: "#0A162880", label: status };
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wider"
+      style={{ background: cfg.bg, color: cfg.color }}
+    >
+      {cfg.label}
+    </span>
   );
 }
 

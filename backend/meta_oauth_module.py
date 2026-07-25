@@ -112,6 +112,16 @@ class PublishIn(BaseModel):
     target_ig: bool = False
 
 
+class ScheduleIn(BaseModel):
+    page_id: str = Field(min_length=1)
+    message: str = Field(min_length=1, max_length=5000)
+    image_url: Optional[str] = None
+    target_fb: bool = True
+    target_ig: bool = False
+    # ISO-8601 datetime in the future (UTC or with timezone).
+    scheduled_at: str = Field(min_length=10, max_length=64)
+
+
 # ---- Router ----------------------------------------------------------------
 def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
     router = APIRouter(prefix="/api/oauth/meta", tags=["meta-oauth"])
@@ -257,88 +267,259 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
     # -- PUBLISH -------------------------------------------------------------
     @router.post("/publish")
     async def publish(payload: PublishIn, user=Depends(get_user)):
+        try:
+            return await publish_now(db, _wo(user), payload.model_dump())
+        except _MetaPublishError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.message)
+
+    # -- SCHEDULE ------------------------------------------------------------
+    @router.post("/schedule")
+    async def schedule_post(payload: ScheduleIn, user=Depends(get_user)):
         wo = _wo(user)
-        conn = await db.meta_connections.find_one(
-            {"workspace_owner": wo, "page_id": payload.page_id}
-        )
+        conn = await db.meta_connections.find_one({"workspace_owner": wo, "page_id": payload.page_id})
         if not conn:
             raise HTTPException(status_code=404, detail="Page not connected.")
 
-        if _mock_mode() or conn.get("source") == "mock":
-            fb_id = f"mock_fb_{uuid.uuid4().hex[:10]}" if payload.target_fb else None
-            ig_id = f"mock_ig_{uuid.uuid4().hex[:10]}" if (payload.target_ig and conn.get("ig_account_id")) else None
-            await db.meta_publishes.insert_one({
-                "id": str(uuid.uuid4()),
-                "workspace_owner": wo,
-                "page_id": payload.page_id,
-                "message": payload.message,
-                "image_url": payload.image_url,
-                "fb_post_id": fb_id,
-                "ig_post_id": ig_id,
-                "mode": "mock",
-                "created_at": _now(),
-            })
-            return {"ok": True, "mode": "mock", "fb_post_id": fb_id, "ig_post_id": ig_id}
+        try:
+            scheduled_dt = datetime.fromisoformat(payload.scheduled_at.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="scheduled_at must be an ISO-8601 datetime.")
+        if scheduled_dt.tzinfo is None:
+            scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+        if scheduled_dt <= datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="scheduled_at must be in the future.")
 
-        page_token = _decrypt(conn["encrypted_token"])
-        results = {"fb_post_id": None, "ig_post_id": None}
-
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # Facebook
-            if payload.target_fb:
-                if payload.image_url:
-                    r = await client.post(
-                        f"{GRAPH_URL}/{payload.page_id}/photos",
-                        data={"url": payload.image_url, "caption": payload.message, "access_token": page_token},
-                    )
-                else:
-                    r = await client.post(
-                        f"{GRAPH_URL}/{payload.page_id}/feed",
-                        data={"message": payload.message, "access_token": page_token},
-                    )
-                data = r.json()
-                if "error" in data:
-                    await _mark_reauth_if_needed(db, wo, payload.page_id, data["error"])
-                    raise HTTPException(status_code=400, detail=f"Facebook publish failed: {data['error'].get('message')}")
-                results["fb_post_id"] = data.get("id") or data.get("post_id")
-
-            # Instagram (two-step)
-            if payload.target_ig:
-                if not conn.get("ig_account_id"):
-                    raise HTTPException(status_code=400, detail="This Page has no linked Instagram Business account.")
-                if not payload.image_url:
-                    raise HTTPException(status_code=400, detail="Instagram requires an image_url.")
-                ig_id = conn["ig_account_id"]
-                cont = await client.post(
-                    f"{GRAPH_URL}/{ig_id}/media",
-                    data={"image_url": payload.image_url, "caption": payload.message, "access_token": page_token},
-                )
-                cont_data = cont.json()
-                if "error" in cont_data:
-                    raise HTTPException(status_code=400, detail=f"Instagram container error: {cont_data['error'].get('message')}")
-                pub = await client.post(
-                    f"{GRAPH_URL}/{ig_id}/media_publish",
-                    data={"creation_id": cont_data["id"], "access_token": page_token},
-                )
-                pub_data = pub.json()
-                if "error" in pub_data:
-                    raise HTTPException(status_code=400, detail=f"Instagram publish error: {pub_data['error'].get('message')}")
-                results["ig_post_id"] = pub_data.get("id")
-
-        await db.meta_publishes.insert_one({
+        doc = {
             "id": str(uuid.uuid4()),
             "workspace_owner": wo,
             "page_id": payload.page_id,
             "message": payload.message,
             "image_url": payload.image_url,
-            "fb_post_id": results["fb_post_id"],
-            "ig_post_id": results["ig_post_id"],
-            "mode": "live",
+            "target_fb": payload.target_fb,
+            "target_ig": payload.target_ig,
+            "scheduled_at": scheduled_dt.isoformat(),
+            "status": "pending",
+            "attempts": 0,
             "created_at": _now(),
-        })
-        return {"ok": True, "mode": "live", **results}
+            "updated_at": _now(),
+        }
+        await db.scheduled_posts.insert_one(doc)
+        doc.pop("_id", None)
+        return doc
+
+    @router.get("/scheduled")
+    async def list_scheduled(user=Depends(get_user), status: Optional[str] = None):
+        q = {"workspace_owner": _wo(user)}
+        if status:
+            q["status"] = status
+        rows = await (
+            db.scheduled_posts
+            .find(q, {"_id": 0})
+            .sort("scheduled_at", 1)
+            .to_list(200)
+        )
+        return {"posts": rows, "count": len(rows)}
+
+    @router.post("/scheduled/{sid}/cancel")
+    async def cancel_scheduled(sid: str, user=Depends(get_user)):
+        r = await db.scheduled_posts.update_one(
+            {"id": sid, "workspace_owner": _wo(user), "status": "pending"},
+            {"$set": {"status": "cancelled", "updated_at": _now()}},
+        )
+        if r.matched_count == 0:
+            raise HTTPException(status_code=404, detail="Scheduled post not found or already processed.")
+        return {"ok": True, "id": sid, "status": "cancelled"}
 
     return router
+
+
+# ---- Exception + publish helper (reused by scheduler) ---------------------
+class _MetaPublishError(Exception):
+    def __init__(self, message: str, status_code: int = 400):
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
+
+
+async def publish_now(db: AsyncIOMotorDatabase, wo: str, payload: dict) -> Dict[str, Any]:
+    """Do a Meta publish right now on behalf of a workspace.
+
+    Shared by:
+      - the /publish endpoint (interactive publish)
+      - the scheduler tick (deferred publish)
+
+    Raises _MetaPublishError on business errors (missing connection,
+    Meta API rejection, missing IG account, etc).
+    """
+    page_id = payload["page_id"]
+    message = payload["message"]
+    image_url = payload.get("image_url")
+    target_fb = bool(payload.get("target_fb", True))
+    target_ig = bool(payload.get("target_ig", False))
+
+    conn = await db.meta_connections.find_one({"workspace_owner": wo, "page_id": page_id})
+    if not conn:
+        raise _MetaPublishError("Page not connected.", 404)
+
+    if _mock_mode() or conn.get("source") == "mock":
+        fb_id = f"mock_fb_{uuid.uuid4().hex[:10]}" if target_fb else None
+        ig_id = f"mock_ig_{uuid.uuid4().hex[:10]}" if (target_ig and conn.get("ig_account_id")) else None
+        await db.meta_publishes.insert_one({
+            "id": str(uuid.uuid4()),
+            "workspace_owner": wo,
+            "page_id": page_id,
+            "message": message,
+            "image_url": image_url,
+            "fb_post_id": fb_id,
+            "ig_post_id": ig_id,
+            "mode": "mock",
+            "created_at": _now(),
+        })
+        return {"ok": True, "mode": "mock", "fb_post_id": fb_id, "ig_post_id": ig_id}
+
+    page_token = _decrypt(conn["encrypted_token"])
+    results = {"fb_post_id": None, "ig_post_id": None}
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        if target_fb:
+            if image_url:
+                r = await client.post(
+                    f"{GRAPH_URL}/{page_id}/photos",
+                    data={"url": image_url, "caption": message, "access_token": page_token},
+                )
+            else:
+                r = await client.post(
+                    f"{GRAPH_URL}/{page_id}/feed",
+                    data={"message": message, "access_token": page_token},
+                )
+            data = r.json()
+            if "error" in data:
+                await _mark_reauth_if_needed(db, wo, page_id, data["error"])
+                raise _MetaPublishError(f"Facebook publish failed: {data['error'].get('message')}", 400)
+            results["fb_post_id"] = data.get("id") or data.get("post_id")
+
+        if target_ig:
+            if not conn.get("ig_account_id"):
+                raise _MetaPublishError("This Page has no linked Instagram Business account.", 400)
+            if not image_url:
+                raise _MetaPublishError("Instagram requires an image_url.", 400)
+            ig_id = conn["ig_account_id"]
+            cont = await client.post(
+                f"{GRAPH_URL}/{ig_id}/media",
+                data={"image_url": image_url, "caption": message, "access_token": page_token},
+            )
+            cont_data = cont.json()
+            if "error" in cont_data:
+                raise _MetaPublishError(f"Instagram container error: {cont_data['error'].get('message')}", 400)
+            pub = await client.post(
+                f"{GRAPH_URL}/{ig_id}/media_publish",
+                data={"creation_id": cont_data["id"], "access_token": page_token},
+            )
+            pub_data = pub.json()
+            if "error" in pub_data:
+                raise _MetaPublishError(f"Instagram publish error: {pub_data['error'].get('message')}", 400)
+            results["ig_post_id"] = pub_data.get("id")
+
+    await db.meta_publishes.insert_one({
+        "id": str(uuid.uuid4()),
+        "workspace_owner": wo,
+        "page_id": page_id,
+        "message": message,
+        "image_url": image_url,
+        "fb_post_id": results["fb_post_id"],
+        "ig_post_id": results["ig_post_id"],
+        "mode": "live",
+        "created_at": _now(),
+    })
+    return {"ok": True, "mode": "live", **results}
+
+
+# ---- Scheduler tick --------------------------------------------------------
+async def process_due_scheduled_posts(db: AsyncIOMotorDatabase) -> Dict[str, int]:
+    """Find pending scheduled posts whose scheduled_at is now (or in the
+    past) and publish them. Idempotent via a status transition guard —
+    two ticks firing at once will not double-publish.
+
+    Returns a summary of what happened."""
+    now_iso = _now()
+    processed = 0
+    published = 0
+    failed = 0
+
+    # Grab up to 50 due posts per tick.
+    due_cursor = db.scheduled_posts.find(
+        {"status": "pending", "scheduled_at": {"$lte": now_iso}},
+        {"_id": 0},
+    ).limit(50)
+
+    async for post in due_cursor:
+        # Atomic claim: transition pending → publishing. If another worker
+        # already claimed it, `matched_count` will be 0 and we skip.
+        claim = await db.scheduled_posts.update_one(
+            {"id": post["id"], "status": "pending"},
+            {"$set": {"status": "publishing", "updated_at": _now()},
+             "$inc": {"attempts": 1}},
+        )
+        if claim.matched_count == 0:
+            continue
+        processed += 1
+
+        try:
+            result = await publish_now(db, post["workspace_owner"], post)
+            await db.scheduled_posts.update_one(
+                {"id": post["id"]},
+                {"$set": {
+                    "status": "published",
+                    "result": result,
+                    "published_at": _now(),
+                    "updated_at": _now(),
+                }},
+            )
+            published += 1
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Scheduled post %s failed: %s", post["id"], e)
+            await db.scheduled_posts.update_one(
+                {"id": post["id"]},
+                {"$set": {
+                    "status": "failed",
+                    "error": str(e)[:400],
+                    "updated_at": _now(),
+                }},
+            )
+            failed += 1
+
+    if processed:
+        logger.info("Scheduler tick %s: processed=%d published=%d failed=%d",
+                    now_iso, processed, published, failed)
+    return {"processed": processed, "published": published, "failed": failed}
+
+
+def start_scheduler(db: AsyncIOMotorDatabase, interval_seconds: int = 60) -> Any:
+    """Start an APScheduler AsyncIOScheduler that ticks
+    `process_due_scheduled_posts` every N seconds.
+
+    Idempotent: safe to call once at app startup.
+    """
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    except ImportError:  # pragma: no cover
+        logger.error("apscheduler not installed — scheduled posts will not fire.")
+        return None
+
+    scheduler = AsyncIOScheduler(timezone="UTC")
+    scheduler.add_job(
+        process_due_scheduled_posts,
+        "interval",
+        seconds=interval_seconds,
+        args=[db],
+        id="meta_scheduler_tick",
+        coalesce=True,
+        max_instances=1,
+        replace_existing=True,
+    )
+    scheduler.start()
+    logger.info("Meta scheduler started (tick every %ds).", interval_seconds)
+    return scheduler
 
 
 async def _mock_finish_connect(db: AsyncIOMotorDatabase, user: dict) -> Dict[str, Any]:

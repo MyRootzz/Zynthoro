@@ -51,6 +51,37 @@ export default function BlogPost() {
           document.head.appendChild(tag);
         }
         tag.setAttribute("content", desc);
+
+        // Inject Article JSON-LD schema — helps Google index each post as
+        // a rich result. Removed on unmount so we don't leak across posts.
+        const ldTag = document.createElement("script");
+        ldTag.type = "application/ld+json";
+        ldTag.id = "blog-article-jsonld";
+        const canonical = `${window.location.origin}/blog/${data.slug}`;
+        ldTag.textContent = JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Article",
+          headline: data.title,
+          description: desc,
+          image: data.cover_image_url ? [data.cover_image_url] : undefined,
+          datePublished: data.published_at,
+          dateModified: data.updated_at || data.published_at,
+          author: { "@type": "Organization", name: "Zynthoro" },
+          publisher: {
+            "@type": "Organization",
+            name: "Zynthoro",
+            logo: {
+              "@type": "ImageObject",
+              url: `${window.location.origin}/favicon.ico`,
+            },
+          },
+          mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
+          url: canonical,
+          keywords: Array.isArray(data.tags) ? data.tags.join(", ") : undefined,
+        });
+        // Remove any previous instance before appending.
+        document.getElementById("blog-article-jsonld")?.remove();
+        document.head.appendChild(ldTag);
       })
       .catch((e) => {
         if (e?.response?.status === 404) {
@@ -60,6 +91,11 @@ export default function BlogPost() {
           setError("Couldn't load this article. Please refresh.");
         }
       });
+
+    return () => {
+      // Cleanup: strip the JSON-LD block when navigating away.
+      document.getElementById("blog-article-jsonld")?.remove();
+    };
   }, [slug]);
 
   const readMins = post ? readTimeMinutes(post.content_html || post.content_markdown) : 0;

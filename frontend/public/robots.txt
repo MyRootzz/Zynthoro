@@ -1,0 +1,15 @@
+# robots.txt for zynthoro.ai — public site is fully crawlable.
+User-agent: *
+Allow: /
+
+# Non-indexable app surfaces
+Disallow: /dashboard
+Disallow: /subscribe
+Disallow: /verify-email
+Disallow: /login
+Disallow: /signup
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /api
+
+Sitemap: https://zynthoro.ai/api/sitemap.xml

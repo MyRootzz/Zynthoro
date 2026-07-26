@@ -208,4 +208,51 @@ def build_router(db: AsyncIOMotorDatabase) -> APIRouter:
             raise HTTPException(status_code=404, detail="Post not found.")
         return _clean(post)
 
+    # ---- SEO: dynamic sitemap --------------------------------------------
+    @router.get("/api/sitemap.xml")
+    async def sitemap():
+        from fastapi.responses import Response
+
+        base = os.environ.get("PUBLIC_SITE_URL", "https://zynthoro.ai").rstrip("/")
+
+        # Static, publicly-indexable routes. Add here when new public pages
+        # ship. Non-crawlable routes (dashboard, subscribe, auth) omitted.
+        static = [
+            ("/",              "daily",  "1.0"),
+            ("/blog",          "daily",  "0.9"),
+            ("/legal/privacy-policy",    "yearly", "0.3"),
+            ("/legal/terms-of-service",  "yearly", "0.3"),
+            ("/legal/cookie-policy",     "yearly", "0.3"),
+            ("/legal/dpa",     "yearly", "0.3"),
+            ("/legal/sla",     "yearly", "0.3"),
+        ]
+
+        posts = await db.blog_posts.find(
+            {}, {"slug": 1, "updated_at": 1, "published_at": 1}
+        ).to_list(5000)
+
+        lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+                 '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+        for loc, freq, prio in static:
+            lines.append(
+                f"  <url><loc>{base}{loc}</loc>"
+                f"<changefreq>{freq}</changefreq>"
+                f"<priority>{prio}</priority></url>"
+            )
+        for p in posts:
+            slug = p.get("slug")
+            if not slug:
+                continue
+            lastmod = (p.get("updated_at") or p.get("published_at") or "").split("T")[0]
+            lastmod_tag = f"<lastmod>{lastmod}</lastmod>" if lastmod else ""
+            lines.append(
+                f"  <url><loc>{base}/blog/{slug}</loc>"
+                f"{lastmod_tag}"
+                f"<changefreq>weekly</changefreq>"
+                f"<priority>0.7</priority></url>"
+            )
+        lines.append("</urlset>")
+
+        return Response(content="\n".join(lines), media_type="application/xml")
+
     return router

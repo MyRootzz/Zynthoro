@@ -1048,3 +1048,35 @@ Consolidated the TAAFT / Product Hunt / Uneed badges (previously stacked inside 
 
 **Files touched**
 - `/app/frontend/src/components/layout/Footer.jsx` — removed inline badges from brand column, added `footer-as-seen-on` strip section.
+
+
+### 2026-07-26 — Meta OAuth: unmock-ready (real live-mode wiring)
+The Meta OAuth code path already implemented the full live flow (code → short → long → Page tokens with IG discovery, encrypted at rest with Fernet, publish + schedule via APScheduler tick). Two gaps were preventing an actual go-live once `META_APP_ID`/`META_APP_SECRET` land:
+
+1. **No frontend landing page** for Meta's browser redirect. Meta was configured to redirect to `/dashboard/marketing/meta-callback`, but that React route didn't exist — the callback would 404.
+2. **`requires_reauth`** flag surfaced by the backend when Meta returned OAuth error code 190 was never rendered in the UI.
+
+**Fixes shipped**
+- New `/app/frontend/src/pages/dashboard/MetaCallback.jsx` — accepts `?code=…&state=…` from Meta, forwards it to `GET /api/oauth/meta/callback` with the user's JWT (auto-attached via axios interceptor since the page mounts inside `ProtectedRoute`), then toasts + redirects back to `/dashboard/ai-studio`. Handles Meta's `?error=access_denied` branch too. Testids: `meta-callback-page`, `meta-callback-title`, `meta-callback-message`.
+- Route registered in `/app/frontend/src/App.js` **before** the `:slug` catch-all so it isn't shadowed.
+- `META_REDIRECT_URI` in `/app/backend/.env` retargeted to `https://zynthoro.ai/dashboard/meta-callback` (simpler than nesting under `/marketing`, and matches the new route). Mock fallback default updated to match.
+- Reauth banner in `AIStudio.jsx` — when any connected Page returns `requires_reauth: true` from `GET /api/oauth/meta/status`, a compact yellow banner appears above the Page picker with a Reconnect button (`ai-studio-meta-reauth-banner`, `ai-studio-meta-reconnect`).
+- Housekeeping: OAuth state docs older than 15 min are cleaned up on each callback hit (`meta_oauth_module.py`).
+
+**What the user must do when Meta App is approved**
+1. Set `META_APP_ID` + `META_APP_SECRET` in `/app/backend/.env` (or via Secrets in prod).
+2. In the Meta App dashboard, register `https://zynthoro.ai/dashboard/meta-callback` as an authorized OAuth Redirect URI (Facebook Login for Business → Settings).
+3. Ensure the App has these scopes approved via App Review: `pages_show_list`, `pages_manage_posts`, `pages_read_engagement`, `instagram_basic`, `instagram_content_publish`, `business_management`.
+4. Restart backend (`sudo supervisorctl restart backend`) — the module auto-switches from mock to live mode once both env vars are present.
+
+**Verified**
+- Full mock flow via curl: `/start` → `/callback` → `/status` → `/disconnect` (all green).
+- Frontend `/dashboard/meta-callback?code=…&state=bogus` correctly renders "Connection failed · Invalid or expired OAuth state." then redirects to AI Studio.
+- No regressions in existing scheduling loop (APScheduler tick still fires every 60s).
+
+**Files touched**
+- `/app/backend/.env` — updated `META_REDIRECT_URI`
+- `/app/backend/meta_oauth_module.py` — state TTL cleanup + redirect default
+- `/app/frontend/src/App.js` — new route
+- `/app/frontend/src/pages/dashboard/MetaCallback.jsx` — created
+- `/app/frontend/src/pages/dashboard/AIStudio.jsx` — reauth banner + compact reconnect variant

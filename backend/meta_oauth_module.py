@@ -31,7 +31,7 @@ import logging
 import os
 import secrets
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
@@ -144,7 +144,7 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
 
         if _mock_mode():
             # Mock: immediately usable "connect" URL that hits our callback.
-            redirect = os.environ.get("META_REDIRECT_URI") or "https://zynthoro.ai/dashboard/marketing/meta-callback"
+            redirect = os.environ.get("META_REDIRECT_URI") or "https://zynthoro.ai/dashboard/meta-callback"
             return {
                 "mode": "mock",
                 "authorize_url": f"{redirect}?code=mock_code&state={state}",
@@ -163,6 +163,9 @@ def build_router(db: AsyncIOMotorDatabase, get_user) -> APIRouter:
     # -- CALLBACK ------------------------------------------------------------
     @router.get("/callback")
     async def callback(code: str, state: str, user=Depends(get_user)):
+        # Drop OAuth states older than 15 minutes (housekeeping, cheap).
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+        await db.meta_oauth_states.delete_many({"created_at": {"$lt": cutoff}})
         # Validate state against the stored one for this workspace.
         state_doc = await db.meta_oauth_states.find_one_and_delete(
             {"state": state, "workspace_owner": _wo(user)}

@@ -40,6 +40,7 @@ import SLA from "@/pages/legal/SLA";
 import BlogIndex from "@/pages/blog/BlogIndex";
 import BlogPost from "@/pages/blog/BlogPost";
 import AIStudio from "@/pages/dashboard/AIStudio";
+import MetaCallback from "@/pages/dashboard/MetaCallback";
 
 function App() {
   return (
@@ -105,6 +106,7 @@ function App() {
               <Route path="planning" element={<PlanningModule />} />
               <Route path="time-tracking" element={<TimeTrackingModule />} />
               <Route path="ai-studio" element={<AIStudio />} />
+              <Route path="meta-callback" element={<MetaCallback />} />
               <Route path=":slug" element={<ModulePlaceholder />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

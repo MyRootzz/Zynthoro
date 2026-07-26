@@ -307,6 +307,17 @@ function PhotoTab({ onGenerated, metaConnected, metaPages }) {
                 <MetaConnectInline />
               ) : (
                 <div className="space-y-3">
+                  {metaPages.some((p) => p.requires_reauth) && (
+                    <div
+                      className="rounded-md bg-[#FEF3C7] border border-[#F59E0B]/40 p-2.5 text-[12.5px] text-[#78350F] flex items-center justify-between gap-3"
+                      data-testid="ai-studio-meta-reauth-banner"
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <AlertCircle size={13} /> One or more Pages need to be reconnected to Meta.
+                      </span>
+                      <MetaConnectInline compact />
+                    </div>
+                  )}
                   <select
                     value={selectedPage}
                     onChange={(e) => setSelectedPage(e.target.value)}
@@ -636,7 +647,7 @@ function PromptCard({ value, onChange, placeholder, presets, onPreset, testId })
 }
 
 // ---- Meta "connect" inline banner ------------------------------------------
-function MetaConnectInline() {
+function MetaConnectInline({ compact = false }) {
   const [busy, setBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const connect = async () => {
@@ -661,6 +672,20 @@ function MetaConnectInline() {
     }
     setBusy(false);
   };
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={connect}
+        disabled={busy}
+        className="inline-flex items-center gap-1.5 rounded-full bg-[var(--zy-blue)] text-white px-3 py-1 text-[11.5px] font-semibold hover:opacity-90 disabled:opacity-50"
+        data-testid="ai-studio-meta-reconnect"
+      >
+        {busy ? <Loader2 size={11} className="animate-spin" /> : <Facebook size={11} />}
+        Reconnect
+      </button>
+    );
+  }
   return (
     <div className="rounded-lg bg-[#F7F8FA] p-3 text-[13px] text-[#0A1628]/75 flex items-center justify-between gap-3">
       <span>Connect a Facebook Page (and linked Instagram Business account) to publish.</span>

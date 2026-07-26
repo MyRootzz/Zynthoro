@@ -52,6 +52,37 @@ export default function BlogPost() {
         }
         tag.setAttribute("content", desc);
 
+        // Inject Open Graph + Twitter card tags per post. Turns every
+        // share on LinkedIn/Slack/WhatsApp/X into a rich preview card.
+        // Uses a shared id prefix so we can nuke them cleanly on unmount.
+        const canonicalUrl = `${window.location.origin}/blog/${data.slug}`;
+        const ogTags = [
+          ["property", "og:type", "article"],
+          ["property", "og:title", data.title],
+          ["property", "og:description", desc],
+          ["property", "og:url", canonicalUrl],
+          ...(data.cover_image_url ? [["property", "og:image", data.cover_image_url]] : []),
+          ["property", "article:published_time", data.published_at || ""],
+          ["property", "article:modified_time", data.updated_at || data.published_at || ""],
+          ["property", "article:author", "Zynthoro"],
+          ["name", "twitter:card", data.cover_image_url ? "summary_large_image" : "summary"],
+          ["name", "twitter:title", data.title],
+          ["name", "twitter:description", desc],
+          ...(data.cover_image_url ? [["name", "twitter:image", data.cover_image_url]] : []),
+        ];
+        // Remove any previous per-post tags first
+        document
+          .querySelectorAll('meta[data-blog-og="1"]')
+          .forEach((n) => n.remove());
+        ogTags.forEach(([attr, key, value]) => {
+          if (value === undefined || value === null) return;
+          const m = document.createElement("meta");
+          m.setAttribute(attr, key);
+          m.setAttribute("content", value);
+          m.setAttribute("data-blog-og", "1");
+          document.head.appendChild(m);
+        });
+
         // Inject Article JSON-LD schema — helps Google index each post as
         // a rich result. Removed on unmount so we don't leak across posts.
         const ldTag = document.createElement("script");
@@ -93,8 +124,12 @@ export default function BlogPost() {
       });
 
     return () => {
-      // Cleanup: strip the JSON-LD block when navigating away.
+      // Cleanup: strip the JSON-LD + per-post OG/Twitter tags when
+      // navigating away, so the next page doesn't inherit them.
       document.getElementById("blog-article-jsonld")?.remove();
+      document
+        .querySelectorAll('meta[data-blog-og="1"]')
+        .forEach((n) => n.remove());
     };
   }, [slug]);
 

@@ -15,6 +15,7 @@ import AnyDeviceSection from "@/components/sections/AnyDeviceSection";
 import ProductionSection from "@/components/sections/ProductionSection";
 import VoiceAISection from "@/components/sections/VoiceAISection";
 import KickstartPricing from "@/components/sections/KickstartPricing";
+import LatestArticles from "@/components/sections/LatestArticles";
 import { PresaleDialogProvider } from "@/components/sections/PresaleDialog";
 
 export default function Home() {
@@ -71,6 +72,7 @@ export default function Home() {
         <Assist />
         <Comparison />
         <AnyDeviceSection />
+        <LatestArticles />
       </main>
       <Footer />
     </PresaleDialogProvider>

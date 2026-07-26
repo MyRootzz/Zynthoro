@@ -7,57 +7,57 @@ import { API, formatApiError, useAuth } from "@/contexts/AuthContext";
 import { ZyLogo } from "@/components/ZyLogo";
 
 const WAIVER_TEXT =
-  "Ik ga akkoord met onmiddellijke uitvoering van de overeenkomst en doe uitdrukkelijk afstand van mijn recht op ontbinding binnen de wettelijke bedenktijd van 14 dagen (art. 6:230p BW).";
+  "I agree to the immediate performance of the agreement and expressly waive my right to withdraw within the statutory 14-day cooling-off period (art. 6:230p Dutch Civil Code).";
 
 const BILLING_LABEL = {
-  lifetime: "Eenmalig · levenslange toegang",
-  monthly: "€ per maand · opzegbaar",
-  one_time_week: "Eenmalig · 7 dagen geldig",
-  one_time_month: "Eenmalig · 30 dagen geldig",
+  lifetime: "One-time · lifetime access",
+  monthly: "€ per month · cancel anytime",
+  one_time_week: "One-time · valid for 7 days",
+  one_time_month: "One-time · valid for 30 days",
 };
 
 const FEATURE_MATRIX = {
   kickstart_1: [
-    "AI Assistenten (Zyntha, Thoro, Zyona) — 50 credits/mnd",
-    "Planning & Time Tracking (basis)",
-    "Communicatie module (basis)",
+    "AI Assistants (Zyntha, Thoro, Zyona) — 50 credits/month",
+    "Planning & Time Tracking (basic)",
+    "Communication module (basic)",
     "Canva Studio",
-    "1 workspace · 1 gebruiker",
+    "1 workspace · 1 user",
   ],
   kickstart_2: [
-    "Alles uit Kickstart 1 — 150 credits/mnd",
-    "Finance & Facturatie (basis)",
-    "Sales module (basis)",
-    "AI foto/video suite",
-    "1 workspace · 1 gebruiker",
+    "Everything in Kickstart 1 — 150 credits/month",
+    "Finance & Invoicing (basic)",
+    "Sales module (basic)",
+    "AI photo/video suite",
+    "1 workspace · 1 user",
   ],
   kickstart_3: [
-    "Alles uit Kickstart 2 — 300 credits/mnd",
-    "Volledige Time Tracking & Sales",
-    "Boekhouding & Operations (basis)",
-    "Projectmanagement (basis)",
-    "Marketing & Content (basis)",
-    "1 workspace · 2 gebruikers",
+    "Everything in Kickstart 2 — 300 credits/month",
+    "Full Time Tracking & Sales",
+    "Accounting & Operations (basic)",
+    "Project management (basic)",
+    "Marketing & Content (basic)",
+    "1 workspace · 2 users",
   ],
   compleet: [
-    "Onbeperkte AI credits",
-    "Onbeperkt Social posts",
-    "Tools: aliassen, document upload, voice input",
-    "Volledige Planning & Time Tracking",
+    "Unlimited AI credits",
+    "Unlimited social posts",
+    "Tools: aliases, document upload, voice input",
+    "Full Planning & Time Tracking",
     "Extra workspace",
-    "Maandelijks opzegbaar",
+    "Cancel monthly",
   ],
   ai_social_week: [
-    "30 AI credits — 7 dagen geldig",
+    "30 AI credits — valid for 7 days",
     "Social posts top-up",
-    "Zyntha, Thoro, Zyona toegang",
-    "Geen extra Tools",
+    "Access to Zyntha, Thoro, Zyona",
+    "No extra Tools",
   ],
   ai_social_month: [
-    "150 AI credits — 30 dagen geldig",
+    "150 AI credits — valid for 30 days",
     "Social posts top-up",
-    "Zyntha, Thoro, Zyona toegang",
-    "Geen extra Tools",
+    "Access to Zyntha, Thoro, Zyona",
+    "No extra Tools",
   ],
 };
 
@@ -80,12 +80,12 @@ export default function SubscribeTier() {
         const { data } = await axios.get(`${API}/tier/catalog`);
         const found = data.plans.find((p) => p.tier_key === tierKey);
         if (!found) {
-          setTierError("Onbekende tier.");
+          setTierError("Unknown tier.");
           return;
         }
         setTier(found);
       } catch {
-        setTierError("Kon het aanbod niet laden. Probeer opnieuw.");
+        setTierError("Couldn't load pricing. Please try again.");
       }
     })();
   }, [tierKey]);
@@ -104,14 +104,14 @@ export default function SubscribeTier() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white gap-4 p-6 text-center">
         <p className="text-[15px] text-[#555]">{tierError}</p>
-        <Link to="/" className="zy-btn-outline">Terug naar home</Link>
+        <Link to="/" className="zy-btn-outline">Back to home</Link>
       </div>
     );
   }
 
   const startCheckout = async () => {
     if (!consent) {
-      toast.error("Bevestig eerst de afstand van je herroepingsrecht.");
+      toast.error("Please confirm the waiver of your withdrawal right first.");
       return;
     }
     setSubmitting(true);
@@ -124,7 +124,7 @@ export default function SubscribeTier() {
       });
       window.location.href = data.url;
     } catch (e) {
-      toast.error(formatApiError(e?.response?.data?.detail) || "Kon checkout niet starten.");
+      toast.error(formatApiError(e?.response?.data?.detail) || "Couldn't start checkout.");
       setSubmitting(false);
     }
   };
@@ -148,7 +148,7 @@ export default function SubscribeTier() {
       });
     } catch (e) {
       setPromo(null);
-      setPromoError(formatApiError(e?.response?.data?.detail) || "Ongeldige promocode.");
+      setPromoError(formatApiError(e?.response?.data?.detail) || "Invalid promo code.");
     }
     setPromoApplying(false);
   };
@@ -174,7 +174,7 @@ export default function SubscribeTier() {
           <ZyLogo size={18} />
         </Link>
         <Link to="/#kickstart" className="text-[13px] text-[#666] hover:text-[#1A4FFF] inline-flex items-center gap-1.5">
-          <ArrowLeft size={14} /> Alle abonnementen
+          <ArrowLeft size={14} /> All plans
         </Link>
       </header>
 
@@ -191,7 +191,7 @@ export default function SubscribeTier() {
             <div className="flex items-baseline gap-2">
               <span className="text-[36px] font-bold tracking-tight">€{tier.amount_eur}</span>
               <span className="text-[15px] text-[#666]">
-                {tier.billing === "monthly" ? "/maand" : ""}
+                {tier.billing === "monthly" ? "/month" : ""}
               </span>
             </div>
             <p className="text-[13px] text-[#666] mt-1.5">{BILLING_LABEL[tier.billing]}</p>
@@ -210,7 +210,7 @@ export default function SubscribeTier() {
               {!promo ? (
                 <>
                   <label className="block text-[11.5px] uppercase font-bold text-[#888] tracking-wider mb-1.5">
-                    Promotiecode (optioneel)
+                    Promo code (optional)
                   </label>
                   <div className="flex gap-2">
                     <div className="relative flex-1">
@@ -219,7 +219,7 @@ export default function SubscribeTier() {
                         value={promoInput}
                         onChange={(e) => { setPromoInput(e.target.value.toUpperCase()); setPromoError(""); }}
                         onKeyDown={(e) => e.key === "Enter" && applyPromo()}
-                        placeholder="Bijv. PH2026"
+                        placeholder="e.g. PH2026"
                         maxLength={60}
                         className="w-full pl-9 pr-3 py-2.5 border border-[#e5e5e5] rounded-lg text-[14px] outline-none focus:border-[#1A4FFF] focus:ring-2 focus:ring-[#1A4FFF]/10 uppercase tracking-wider"
                         data-testid="promo-code-input"
@@ -231,7 +231,7 @@ export default function SubscribeTier() {
                       className="zy-btn-outline text-[13px] px-4 disabled:opacity-50"
                       data-testid="promo-code-apply-btn"
                     >
-                      {promoApplying ? <Loader2 size={13} className="animate-spin" /> : "Toepassen"}
+                      {promoApplying ? <Loader2 size={13} className="animate-spin" /> : "Apply"}
                     </button>
                   </div>
                   {promoError && (
@@ -267,26 +267,26 @@ export default function SubscribeTier() {
                     </div>
                     <div className="text-[12.5px]">
                       <div className="font-semibold text-[#0A1628]">
-                        Code <span className="font-mono">{promo.code}</span> toegepast
+                        Code <span className="font-mono">{promo.code}</span> applied
                       </div>
                       <div className="text-[#555]">
-                        {promo.percent_off ? `${promo.percent_off}% korting` :
-                         promo.amount_off_eur ? `€${promo.amount_off_eur.toFixed(2)} korting` : "Korting toegepast"}
+                        {promo.percent_off ? `${promo.percent_off}% off` :
+                         promo.amount_off_eur ? `€${promo.amount_off_eur.toFixed(2)} off` : "Discount applied"}
                         {" · "}
-                        Nieuwe totaal: <b>€{promo.discounted_total_eur.toFixed(2)}</b>
+                        New total: <b>€{promo.discounted_total_eur.toFixed(2)}</b>
                         {" "}
                         <span className="text-[#888] line-through">€{tier.amount_eur}</span>
                       </div>
                     </div>
                   </div>
-                  <button onClick={removePromo} className="text-[#888] hover:text-[#c00]" data-testid="promo-code-remove-btn" aria-label="Verwijder promocode">
+                  <button onClick={removePromo} className="text-[#888] hover:text-[#c00]" data-testid="promo-code-remove-btn" aria-label="Remove promo code">
                     <X size={14} />
                   </button>
                 </div>
               )}
             </div>
 
-            {/* Herroepingsrecht — mandatory, unchecked by default */}
+            {/* Withdrawal-right waiver — mandatory, unchecked by default */}
             <label
               className="mt-7 flex items-start gap-3 p-4 rounded-xl border cursor-pointer select-none transition-colors"
               style={{ borderColor: consent ? "#1A4FFF" : "#e5e5e5", background: consent ? "#F5F8FF" : "#FAFAFA" }}
@@ -300,7 +300,7 @@ export default function SubscribeTier() {
                 className="mt-0.5 shrink-0 w-4 h-4 accent-[#1A4FFF]"
               />
               <span className="text-[12.5px] leading-relaxed text-[#333]">
-                <b>Herroepingsrecht (verplicht):</b>{" "}
+                <b>Right of withdrawal (required):</b>{" "}
                 {WAIVER_TEXT}
               </span>
             </label>
@@ -314,16 +314,16 @@ export default function SubscribeTier() {
               {submitting ? (
                 <><Loader2 size={15} className="animate-spin" /> Redirecting to Stripe…</>
               ) : (
-                <>Verder naar veilige betaling <ArrowRight size={15} /></>
+                <>Continue to secure payment <ArrowRight size={15} /></>
               )}
             </button>
           </div>
 
           <p className="text-[12px] text-[#888] mt-6 leading-relaxed">
             <ShieldCheck size={11} className="inline mr-1 -mt-0.5" />
-            Betaling wordt veilig afgehandeld door Stripe. Je kaartgegevens komen nooit op onze servers.
-            {" "}Zie ook onze{" "}
-            <Link to="/legal/terms-of-service" className="underline">Algemene voorwaarden</Link>.
+            Payment is handled securely by Stripe. Your card details never touch our servers.
+            {" "}See also our{" "}
+            <Link to="/legal/terms-of-service" className="underline">Terms of Service</Link>.
           </p>
         </div>
       </main>

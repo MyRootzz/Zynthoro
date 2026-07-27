@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
-import { Send, Loader2, Sparkles, BrainCircuit, TrendingUp, Paperclip } from "lucide-react";
-import { API, formatApiError } from "@/contexts/AuthContext";
+import { Send, Loader2, Sparkles, BrainCircuit, TrendingUp, Paperclip, Eraser } from "lucide-react";
+import { API, formatApiError, useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import AssistantActions from "@/components/dashboard/AssistantActions";
 import VoiceButton from "@/components/dashboard/VoiceButton";
@@ -14,6 +14,10 @@ import {
   validateUpload,
   AI_UPLOAD_ACCEPT_ATTR,
 } from "@/lib/aiUpload";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const CONFIGS = {
   zyntha: {
@@ -76,6 +80,33 @@ export default function AssistantPage({ assistantKey }) {
   // Tracks whether the initial scroll-to-bottom (after a resume with N
   // historical messages) has "stuck". Reset when switching assistant.
   const didInitialScrollRef = useRef(false);
+  const { user } = useAuth();
+  const isFounder = !!user?.is_founder;
+  const [wipeOpen, setWipeOpen] = useState(false);
+  const [wiping, setWiping] = useState(false);
+
+  const wipeMemory = async () => {
+    setWiping(true);
+    try {
+      const { data } = await axios.delete(`${API}/ai/memory/${assistantKey}`);
+      // Reset local chat state so the next message opens a fresh session.
+      setSessionId(null);
+      didInitialScrollRef.current = false;
+      setMessages([{
+        role: "assistant",
+        content: `Hi! I'm ${cfg.name}, your ${cfg.specialty.toLowerCase()}. What are we working on today?`,
+      }]);
+      setInput("");
+      setAttachments([]);
+      toast.success(
+        `Memory cleared — ${data.messages_deleted} message${data.messages_deleted === 1 ? "" : "s"} wiped.`
+      );
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || "Couldn't clear memory.");
+    }
+    setWiping(false);
+    setWipeOpen(false);
+  };
 
   useEffect(() => {
     // Reset the initial-scroll latch whenever we switch assistants —
@@ -307,6 +338,19 @@ export default function AssistantPage({ assistantKey }) {
           <p className="text-[14.5px] text-[#555] mt-1">{cfg.description}</p>
           <AISeesIndicator className="mt-1.5" testId={`${assistantKey}-ai-sees`} />
         </div>
+        {isFounder && (
+          <button
+            type="button"
+            onClick={() => setWipeOpen(true)}
+            disabled={wiping}
+            title="Founder only — wipe this assistant's stored memory for your workspace"
+            data-testid={`${assistantKey}-clear-memory-btn`}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-full border border-[#0A162820] px-3 py-1.5 text-[12.5px] font-semibold text-[#0A1628] hover:bg-[#F7F8FA] transition-colors disabled:opacity-50"
+          >
+            {wiping ? <Loader2 size={13} className="animate-spin" /> : <Eraser size={13} />}
+            Clear memory
+          </button>
+        )}
       </div>
 
       <div className="mt-7 bg-white border border-[#eee] rounded-2xl flex flex-col" style={{ minHeight: 480 }}>
@@ -465,6 +509,34 @@ export default function AssistantPage({ assistantKey }) {
           </div>
         </form>
       </div>
+
+      {isFounder && (
+        <AlertDialog open={wipeOpen} onOpenChange={setWipeOpen}>
+          <AlertDialogContent data-testid={`${assistantKey}-clear-memory-dialog`}>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Clear {cfg.name}&apos;s memory?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This permanently deletes every message {cfg.name} has stored for your workspace —
+                past sessions, context, everything. Your next conversation will start from a clean slate.
+                This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid={`${assistantKey}-clear-memory-cancel`} disabled={wiping}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                data-testid={`${assistantKey}-clear-memory-confirm`}
+                onClick={(e) => { e.preventDefault(); wipeMemory(); }}
+                disabled={wiping}
+                className="bg-[#B42318] hover:bg-[#8B1A12]"
+              >
+                {wiping ? "Clearing…" : "Yes, clear memory"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }

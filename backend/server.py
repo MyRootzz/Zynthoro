@@ -1527,6 +1527,36 @@ async def ai_sessions(
     return {"assistant": assistant, "sessions": sessions}
 
 
+@api_router.delete("/ai/memory/{assistant}")
+async def ai_wipe_memory(assistant: str, user=Depends(get_founder_user)):
+    """Founder-only: wipe all stored conversation history for a given
+    assistant, for the current workspace. The next chat starts fresh —
+    no context, no memory of prior sessions.
+
+    Also purges any staged file uploads for that workspace so orphaned
+    attachments don't linger past their TTL.
+    """
+    if assistant not in {"zyntha", "thoro", "zyona", "zynthoro_assist"}:
+        raise HTTPException(status_code=400, detail="Unknown assistant.")
+
+    msg_result = await db.ai_messages.delete_many({
+        "assistant": assistant, "user_id": user["id"],
+    })
+    # ai_uploads is TTL-bound (24h) but we clear anything still linked.
+    up_result = await db.ai_uploads.delete_many({"user_id": user["id"]})
+
+    logger.info(
+        "Founder %s wiped %s memory — %d msg(s), %d upload(s)",
+        user.get("email"), assistant, msg_result.deleted_count, up_result.deleted_count,
+    )
+    return {
+        "ok": True,
+        "assistant": assistant,
+        "messages_deleted": msg_result.deleted_count,
+        "uploads_deleted": up_result.deleted_count,
+    }
+
+
 # ========================================================================
 #  Founder / Builder Mode (founder only)
 # ========================================================================

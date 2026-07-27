@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
-import { Sparkles, X, Send, Loader2, Paperclip } from "lucide-react";
+import { Sparkles, X, Send, Loader2, Paperclip, Eraser } from "lucide-react";
 import { ZyLogo } from "@/components/ZyLogo";
-import { API, formatApiError } from "@/contexts/AuthContext";
+import { API, formatApiError, useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import AssistantActions from "@/components/dashboard/AssistantActions";
 import VoiceButton from "@/components/dashboard/VoiceButton";
@@ -15,6 +15,10 @@ import {
   validateUpload,
   AI_UPLOAD_ACCEPT_ATTR,
 } from "@/lib/aiUpload";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function AssistFloating() {
   const [open, setOpen] = useState(false);
@@ -34,6 +38,32 @@ export default function AssistFloating() {
   // Tracks whether the initial scroll-to-bottom (after resume) has "stuck".
   // Reset every time the user re-opens the panel.
   const didInitialScrollRef = useRef(false);
+  const { user } = useAuth();
+  const isFounder = !!user?.is_founder;
+  const [wipeOpen, setWipeOpen] = useState(false);
+  const [wiping, setWiping] = useState(false);
+
+  const wipeMemory = async () => {
+    setWiping(true);
+    try {
+      const { data } = await axios.delete(`${API}/ai/memory/zynthoro_assist`);
+      setSessionId(null);
+      didInitialScrollRef.current = false;
+      setMessages([{
+        role: "assistant",
+        content: "Hi! I'm Zynthoro Assist. Ask me anything about the platform or your account.",
+      }]);
+      setInput("");
+      setAttachments([]);
+      toast.success(
+        `Memory cleared — ${data.messages_deleted} message${data.messages_deleted === 1 ? "" : "s"} wiped.`
+      );
+    } catch (e) {
+      toast.error(formatApiError(e?.response?.data?.detail) || "Couldn't clear memory.");
+    }
+    setWiping(false);
+    setWipeOpen(false);
+  };
 
   // Resume last conversation when the user opens the panel for the first time
   useEffect(() => {
@@ -240,6 +270,22 @@ export default function AssistFloating() {
           </button>
         </div>
 
+        {isFounder && (
+          <div className="px-4 py-2 border-b border-[#f1f1f3] bg-white flex justify-end">
+            <button
+              type="button"
+              onClick={() => setWipeOpen(true)}
+              disabled={wiping}
+              title="Founder only — wipe Zynthoro Assist's stored memory for your workspace"
+              data-testid="assist-clear-memory-btn"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#0A162820] px-2.5 py-1 text-[11.5px] font-semibold text-[#0A1628] hover:bg-[#F7F8FA] transition-colors disabled:opacity-50"
+            >
+              {wiping ? <Loader2 size={11} className="animate-spin" /> : <Eraser size={11} />}
+              Clear memory
+            </button>
+          </div>
+        )}
+
         <div className="px-4 py-1.5 border-b border-[#f1f1f3] bg-[#FAFAFB]">
           <AISeesIndicator testId="assist-ai-sees" />
         </div>
@@ -370,6 +416,34 @@ export default function AssistFloating() {
           </div>
         </form>
       </div>
+
+      {isFounder && (
+        <AlertDialog open={wipeOpen} onOpenChange={setWipeOpen}>
+          <AlertDialogContent data-testid="assist-clear-memory-dialog">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Clear Zynthoro Assist&apos;s memory?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This permanently deletes every message Zynthoro Assist has stored for your workspace —
+                past sessions, context, everything. Your next conversation will start from a clean slate.
+                This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="assist-clear-memory-cancel" disabled={wiping}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                data-testid="assist-clear-memory-confirm"
+                onClick={(e) => { e.preventDefault(); wipeMemory(); }}
+                disabled={wiping}
+                className="bg-[#B42318] hover:bg-[#8B1A12]"
+              >
+                {wiping ? "Clearing…" : "Yes, clear memory"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </>
   );
 }

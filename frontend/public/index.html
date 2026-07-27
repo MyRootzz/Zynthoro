@@ -145,7 +145,11 @@
         <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
     </head>
     <body>
-        <noscript>You need to enable JavaScript to run this app.</noscript>
+        <!-- Historical CRA <noscript> removed 2026-07-27 — the site now
+             ships prerendered HTML for all public routes (see
+             scripts/prerender.js), so the "enable JavaScript" message is
+             misleading to crawlers and to the small number of users who
+             legitimately browse with JS disabled. -->
 
         <!--
         TAAFT (There's An AI For That) verification anchor.

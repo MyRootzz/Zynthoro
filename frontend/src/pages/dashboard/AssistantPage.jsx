@@ -73,8 +73,14 @@ export default function AssistantPage({ assistantKey }) {
   const [attachments, setAttachments] = useState([]);
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
+  // Tracks whether the initial scroll-to-bottom (after a resume with N
+  // historical messages) has "stuck". Reset when switching assistant.
+  const didInitialScrollRef = useRef(false);
 
   useEffect(() => {
+    // Reset the initial-scroll latch whenever we switch assistants —
+    // the new conversation needs its own "stick to bottom" pass.
+    didInitialScrollRef.current = false;
     let cancelled = false;
     (async () => {
       // Resume the user's most recent session with this assistant
@@ -101,11 +107,40 @@ export default function AssistantPage({ assistantKey }) {
       }
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assistantKey]);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (!el || messages.length === 0) return;
+
+    const stick = () => { el.scrollTop = el.scrollHeight; };
+
+    // Post-resume, avatar <img>s inside historical messages haven't
+    // decoded yet — scrollHeight reflects a shorter, unpainted layout.
+    // On the first render after a resume, chain a rAF + short-delay
+    // retries so we re-stick to the bottom once images finish loading.
+    // Subsequent message changes (user sends, streaming replies) just
+    // need a single, immediate scroll.
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      stick();
+      const raf = requestAnimationFrame(stick);
+      const t1 = setTimeout(stick, 120);
+      const t2 = setTimeout(stick, 400);
+      // Also re-stick as each <img> inside the scroll container decodes.
+      const imgs = Array.from(el.querySelectorAll("img"));
+      const onLoad = () => stick();
+      imgs.forEach((img) => {
+        if (!img.complete) img.addEventListener("load", onLoad, { once: true });
+      });
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        imgs.forEach((img) => img.removeEventListener("load", onLoad));
+      };
+    }
+    stick();
   }, [messages]);
 
   const send = async (text) => {

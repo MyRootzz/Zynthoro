@@ -31,6 +31,9 @@ export default function AssistFloating() {
   const [attachments, setAttachments] = useState([]);
   const fileInputRef = useRef(null);
   const scrollRef = useRef(null);
+  // Tracks whether the initial scroll-to-bottom (after resume) has "stuck".
+  // Reset every time the user re-opens the panel.
+  const didInitialScrollRef = useRef(false);
 
   // Resume last conversation when the user opens the panel for the first time
   useEffect(() => {
@@ -54,7 +57,38 @@ export default function AssistFloating() {
   }, [open, sessionId]);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (!open) {
+      didInitialScrollRef.current = false;
+      return;
+    }
+    const el = scrollRef.current;
+    if (!el || messages.length === 0) return;
+
+    const stick = () => { el.scrollTop = el.scrollHeight; };
+
+    // Avatar images inside resumed messages haven't decoded yet on first
+    // render — scrollHeight is short so a naive scroll strands the user
+    // near the top. Chain rAF + short retries + per-image load listeners
+    // on the initial pass; subsequent updates just need a single scroll.
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true;
+      stick();
+      const raf = requestAnimationFrame(stick);
+      const t1 = setTimeout(stick, 120);
+      const t2 = setTimeout(stick, 400);
+      const imgs = Array.from(el.querySelectorAll("img"));
+      const onLoad = () => stick();
+      imgs.forEach((img) => {
+        if (!img.complete) img.addEventListener("load", onLoad, { once: true });
+      });
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(t1);
+        clearTimeout(t2);
+        imgs.forEach((img) => img.removeEventListener("load", onLoad));
+      };
+    }
+    stick();
   }, [messages, open]);
 
   const send = async (e, override) => {

@@ -116,6 +116,56 @@ SP_ZYNTHA = (
     + EXECUTION_PRINCIPLES
 )
 
+# ---------------------------------------------------------------------
+# THORO — process & implementation assistant (both tiers)
+# ---------------------------------------------------------------------
+# Ground-truth module inventory + capability status. This is the ONLY
+# platform context Thoro receives — no marketing, no pricing, no
+# execution mandates. It exists solely so his UOS-001 epistemic marking
+# has a factual anchor (Existing / Mock-planned / To be built).
+# Source of truth: backend routes + dashboard sidebar as of 2026-07-27.
+_THORO_PLATFORM_FACTS = (
+    "PLATFORM FACTS — use ONLY for epistemic marking (UOS-001). "
+    "Do NOT quote pricing, do NOT do marketing, do NOT invent navigation.\n\n"
+    "Zynthoro is LIVE at zynthoro.ai. Four AI assistants exist inside the platform: "
+    "Zyntha (Content & SEO), Thoro (you, Process & Implementation), "
+    "Zyona (Business & Growth), Zynthoro Assist (platform guide). "
+    "Never invent other assistant names.\n\n"
+    "Module inventory & current status:\n"
+    " 1. Planning & Organisation — Existing\n"
+    " 2. Time Tracking — Existing\n"
+    " 3. Sales — Existing\n"
+    " 4. Finance & Invoicing — Existing\n"
+    " 5. Accounting — Existing (full double-entry, CSV bank statement import with AI "
+    "categorisation, trial balance, PnL)\n"
+    " 6. Projects — Existing\n"
+    " 7. HR & Personnel — Existing\n"
+    " 8. Operations — Existing\n"
+    " 9. Marketing & Content — Existing (limited scope): caption endpoint + Outrank.so "
+    "blog ingestion; broader campaign / CRM automation not yet built\n"
+    "10. Communication & Collaboration — Existing\n"
+    "11. Compliance & Security — Existing\n"
+    "12. AI Studio — Photo generation: Existing (Nano Banana). "
+    "Video generation: To be built (Kling 2.5 Pro via fal.ai wired in code but not "
+    "running on production)\n"
+    "  — Purchase Admin — To be built (appears in marketing copy only, no dashboard "
+    "module or backend routes)\n\n"
+    "Cross-cutting capabilities:\n"
+    "- Stripe billing (LIVE mode) — Existing\n"
+    "- Blog rendering + Outrank.so webhook + sitemap.xml + JSON-LD (Article + VideoObject) — Existing\n"
+    "- 24-hour Free Trial mode (AI capped at 10 msgs/day, non-AI modules locked, hard "
+    "paywall on expiry) — Existing\n"
+    "- 4 AI assistants with session/history persistence + founder \"Clear memory\" — Existing\n"
+    "- Meta OAuth (Facebook + Instagram) social publishing & scheduled-post queue — "
+    "Mock-planned (code paths live-ready, currently running in mock mode; awaits real "
+    "META_APP_ID / META_APP_SECRET)\n"
+    "- Canva Connect API — Mock-planned (module wired, requires per-workspace user API key)\n"
+    "- Google Analytics 4 — Existing\n"
+    "- Website builder + custom-domain routing — To be built\n"
+    "- Dynamic Open Graph social-card image generation — To be built\n\n"
+    "For anything you're uncertain about, mark it \"Unknown – verify via Assist or support\"."
+)
+
 _SP_THORO_TEXT = (
     "You are Thoro, the process and implementation assistant of Zynthoro.\n\n"
     "Scope: SOPs, automation, process design and implementation architecture. "
@@ -146,11 +196,11 @@ _SP_THORO_TEXT = (
     "Language: answer in the language the user writes in."
 )
 
-# Both tiers use the same prompt — tone/rules are model-agnostic. Model
-# selection (Gemini for Starter/Creator, Claude for Business+) still
-# happens in route_model() below.
-SP_THORO_BASIC = _SP_THORO_TEXT
-SP_THORO_PRO = _SP_THORO_TEXT
+# Both tiers use the same prompt with the platform facts prepended.
+# Model selection (Gemini for Starter/Creator, Claude for Business+)
+# still happens in route_model() below.
+SP_THORO_BASIC = _THORO_PLATFORM_FACTS + "\n\n" + _SP_THORO_TEXT
+SP_THORO_PRO = _THORO_PLATFORM_FACTS + "\n\n" + _SP_THORO_TEXT
 
 SP_ZYONA = (
     ZYNTHORO_CONTEXT + "\n\n"

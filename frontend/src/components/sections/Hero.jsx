@@ -18,9 +18,9 @@ const YT_THUMB_HQ = `https://img.youtube.com/vi/${DEMO_VIDEO_ID}/hqdefault.jpg`;
 // (ISO 8601, e.g. PT2M30S). Safe defaults are used when unset so the
 // schema is always complete.
 const VIDEO_UPLOAD_DATE =
-  process.env.REACT_APP_DEMO_VIDEO_UPLOAD_DATE || "2026-01-15";
+  process.env.REACT_APP_DEMO_VIDEO_UPLOAD_DATE || "2026-06-25";
 const VIDEO_DURATION =
-  process.env.REACT_APP_DEMO_VIDEO_DURATION || "PT2M30S";
+  process.env.REACT_APP_DEMO_VIDEO_DURATION || "PT2M20S";
 
 export default function Hero() {
   const [thumbSrc, setThumbSrc] = useState(YT_THUMB_MAXRES);

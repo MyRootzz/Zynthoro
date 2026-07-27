@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Play } from "lucide-react";
 import { HOME } from "@/constants/testIds";
@@ -13,8 +13,52 @@ const DEMO_VIDEO_ID = "_5psEgtULpg";
 const YT_THUMB_MAXRES = `https://img.youtube.com/vi/${DEMO_VIDEO_ID}/maxresdefault.jpg`;
 const YT_THUMB_HQ = `https://img.youtube.com/vi/${DEMO_VIDEO_ID}/hqdefault.jpg`;
 
+// VideoObject JSON-LD — helps Google surface the demo as a rich video
+// snippet on the SERP. Upload date + duration can be overridden via env
+// (ISO 8601, e.g. PT2M30S). Safe defaults are used when unset so the
+// schema is always complete.
+const VIDEO_UPLOAD_DATE =
+  process.env.REACT_APP_DEMO_VIDEO_UPLOAD_DATE || "2026-01-15";
+const VIDEO_DURATION =
+  process.env.REACT_APP_DEMO_VIDEO_DURATION || "PT2M30S";
+
 export default function Hero() {
   const [thumbSrc, setThumbSrc] = useState(YT_THUMB_MAXRES);
+
+  // Inject VideoObject JSON-LD on mount, remove on unmount.
+  useEffect(() => {
+    const id = "home-hero-video-jsonld";
+    let tag = document.getElementById(id);
+    if (!tag) {
+      tag = document.createElement("script");
+      tag.type = "application/ld+json";
+      tag.id = id;
+      document.head.appendChild(tag);
+    }
+    tag.text = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "VideoObject",
+      name: "Zynthoro — Product Demo",
+      description:
+        "A 2-minute walkthrough of Zynthoro, the AI-native ERP for European SMEs. See how four AI specialists — Zyntha, Thoro, Zyona and Zynthoro Assist — replace 8–15 disconnected business tools with one platform.",
+      thumbnailUrl: [YT_THUMB_MAXRES, YT_THUMB_HQ],
+      uploadDate: VIDEO_UPLOAD_DATE,
+      duration: VIDEO_DURATION,
+      contentUrl: DEMO_VIDEO_URL,
+      embedUrl: `https://www.youtube.com/embed/${DEMO_VIDEO_ID}`,
+      publisher: {
+        "@type": "Organization",
+        name: "Zynthoro",
+        logo: {
+          "@type": "ImageObject",
+          url: "https://zynthoro.ai/logo.png",
+        },
+      },
+    });
+    return () => {
+      document.getElementById(id)?.remove();
+    };
+  }, []);
 
   return (
     <section

@@ -3838,7 +3838,7 @@ app.include_router(sales_module.build_router(db, get_current_user_full))
 app.include_router(projects_module.build_router(db, get_current_user_full))
 app.include_router(planning_module.build_router(db, get_current_user_full))
 app.include_router(time_tracking_module.build_router(db, get_current_user_full))
-app.include_router(blog_module.build_router(db))
+app.include_router(blog_module.build_router(db, get_founder_user))
 app.include_router(meta_oauth_module.build_router(db, get_current_user_full))
 app.include_router(ai_studio_module.build_router(db, get_current_user_full))
 

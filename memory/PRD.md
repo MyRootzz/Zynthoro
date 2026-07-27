@@ -1080,3 +1080,51 @@ The Meta OAuth code path already implemented the full live flow (code → short 
 - `/app/frontend/src/App.js` — new route
 - `/app/frontend/src/pages/dashboard/MetaCallback.jsx` — created
 - `/app/frontend/src/pages/dashboard/AIStudio.jsx` — reauth banner + compact reconnect variant
+
+### 2026-07-27 — Homepage slim-down + dedicated public pages
+**Problem**: Homepage was ~15 stacked sections (Hero → SocialProof → KickstartPricing → WhyZynthoro → Domains → ProductionSection → Assistants → VoiceAI → Pricing → PricingComparisonTables → EnterpriseSection → Assist → Comparison → AnyDevice → LatestArticles). A visitor couldn't understand what Zynthoro is in 10 seconds — too much text per screen, no clear signposting.
+
+**Restructure** (approved by user 2026-07-27):
+
+Homepage `/` now contains **only**:
+1. `Hero` — tagline + CTA
+2. `SocialProof` — short strip
+3. `HomeIntro` (new) — one-line explainer: *"One AI-native platform that replaces the 8–15 disconnected tools your business runs on — with four AI specialists that already know your company."*
+4. `HomeAssistantsBrief` (new) — 4-card grid (Zyntha · Thoro · Zyona · Zynthoro Assist) with "Explore the assistants →" CTA to `/assistants`
+5. `HomePricingBrief` (new) — 3-card teaser (Kickstart from €79 / Subscriptions from €24.99/mo / Enterprise custom) with "See full pricing & compare tiers →" CTA to `/pricing`
+6. `LatestArticles`
+
+Three new public pages:
+- **`/modules`** — Domains (12 modules) + ProductionSection + WhyZynthoro + AnyDeviceSection
+- **`/assistants`** — Assistants (Zyntha/Thoro/Zyona detail) + Assist (Zynthoro Assist) + VoiceAISection
+- **`/pricing`** — KickstartPricing + Pricing (full tiers) + PricingComparisonTables + EnterpriseSection + Comparison (vs SAP/HubSpot)
+
+Each new page has its own SEO title + meta description + wraps in `PresaleDialogProvider` + Navbar + Footer.
+
+**Navbar** rebuilt to link-based (was anchor-based): `Modules` · `Assistants` · `Pricing` · `Blog` (+ Book a call · Log in · Get started). Active state highlights the current route. Logo now goes to `/`. Testids: `nav-platform` (Modules), `nav-assistants` (new), `nav-pricing` (Pricing), `nav-blog` (new).
+
+**Sitemap** updated — `/modules`, `/assistants`, `/pricing` added to `/api/sitemap.xml` at priority 0.9.
+
+**Founder-only blog delete** — new `DELETE /api/blog/posts/{slug}` guarded by `get_founder_user`. Returns 403 for non-founder, 404 for missing slug, 200 `{ok:true, slug, deleted:1}` on success. Bundled into this deploy so we can purge the leftover Outrank test post `sample-article-title-for-testing` from prod after redeploy.
+
+**Files created**
+- `/app/frontend/src/pages/Modules.jsx`
+- `/app/frontend/src/pages/AssistantsPage.jsx`
+- `/app/frontend/src/pages/PricingPage.jsx`
+- `/app/frontend/src/components/sections/HomeIntro.jsx`
+- `/app/frontend/src/components/sections/HomeAssistantsBrief.jsx`
+- `/app/frontend/src/components/sections/HomePricingBrief.jsx`
+
+**Files rewritten / updated**
+- `/app/frontend/src/pages/Home.jsx` — reduced from 15 sections to 6
+- `/app/frontend/src/components/layout/Navbar.jsx` — anchor-based → route-based, active-link styling
+- `/app/frontend/src/App.js` — 3 new routes registered before `/dashboard/*`
+- `/app/backend/blog_module.py` — DELETE endpoint + sitemap additions
+- `/app/backend/server.py` — pass `get_founder_user` to `blog_module.build_router`
+
+**Verified**
+- Homepage renders slim (screenshot confirmed): only the 6 intended sections present; old dense sections absent.
+- `/modules`, `/assistants`, `/pricing` all render with correct titles + wrapped in shared Navbar+Footer.
+- `DELETE /api/blog/posts/{slug}` with founder JWT → 200 delete; jury JWT → 403; nonexistent slug → 404. Full curl round-trip: create test post via Outrank webhook → delete → verify 404.
+- Nav "Modules" link correctly highlights on `/modules`.
+

@@ -1,20 +1,21 @@
+/**
+ * Slim homepage (restructured 2026-07-26).
+ *
+ * Landing visitors should understand what Zynthoro is in 10 seconds and
+ * know exactly where to click for depth. Long-form sections live at:
+ *   /modules     — the 12 ERP modules
+ *   /assistants  — the four AI specialists in detail
+ *   /pricing     — full tier comparison, Enterprise, competitor comparison
+ *   /blog        — Latest Articles
+ */
 import { useEffect } from "react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import Hero from "@/components/sections/Hero";
 import SocialProof from "@/components/sections/SocialProof";
-import WhyZynthoro from "@/components/sections/WhyZynthoro";
-import Domains from "@/components/sections/Domains";
-import Pricing from "@/components/sections/Pricing";
-import PricingComparisonTables from "@/components/sections/PricingComparisonTables";
-import EnterpriseSection from "@/components/sections/EnterpriseSection";
-import Assist from "@/components/sections/Assist";
-import Assistants from "@/components/sections/Assistants";
-import Comparison from "@/components/sections/Comparison";
-import AnyDeviceSection from "@/components/sections/AnyDeviceSection";
-import ProductionSection from "@/components/sections/ProductionSection";
-import VoiceAISection from "@/components/sections/VoiceAISection";
-import KickstartPricing from "@/components/sections/KickstartPricing";
+import HomeIntro from "@/components/sections/HomeIntro";
+import HomeAssistantsBrief from "@/components/sections/HomeAssistantsBrief";
+import HomePricingBrief from "@/components/sections/HomePricingBrief";
 import LatestArticles from "@/components/sections/LatestArticles";
 import { PresaleDialogProvider } from "@/components/sections/PresaleDialog";
 
@@ -34,7 +35,7 @@ export default function Home() {
     };
     setMeta(
       "description",
-      "AI-native ERP for European SMEs · Kickstart lifetime deals from €79 · Starting at €79 lifetime."
+      "AI-native ERP for European SMEs · Kickstart lifetime deals from €79 · Starting at €24.99/mo."
     );
 
     // Reveal on scroll
@@ -57,21 +58,12 @@ export default function Home() {
   return (
     <PresaleDialogProvider>
       <Navbar />
-      <main>
+      <main data-testid="page-home">
         <Hero />
         <SocialProof />
-        <KickstartPricing />
-        <WhyZynthoro />
-        <Domains />
-        <ProductionSection />
-        <Assistants />
-        <VoiceAISection />
-        <Pricing />
-        <PricingComparisonTables />
-        <EnterpriseSection />
-        <Assist />
-        <Comparison />
-        <AnyDeviceSection />
+        <HomeIntro />
+        <HomeAssistantsBrief />
+        <HomePricingBrief />
         <LatestArticles />
       </main>
       <Footer />

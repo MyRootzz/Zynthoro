@@ -5,6 +5,9 @@ import { CookieSettingsProvider } from "@/components/CookieSettings";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 import Home from "@/pages/Home";
+import Modules from "@/pages/Modules";
+import AssistantsPage from "@/pages/AssistantsPage";
+import PricingPage from "@/pages/PricingPage";
 import Signup from "@/pages/Signup";
 import Login from "@/pages/Login";
 import VerifyEmail from "@/pages/VerifyEmail";
@@ -50,6 +53,9 @@ function App() {
           <BrowserRouter>
           <Routes>
             <Route path="/" element={<Home />} />
+            <Route path="/modules" element={<Modules />} />
+            <Route path="/assistants" element={<AssistantsPage />} />
+            <Route path="/pricing" element={<PricingPage />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/login" element={<Login />} />
             <Route path="/verify-email" element={<VerifyEmail />} />

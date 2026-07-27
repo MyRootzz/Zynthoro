@@ -1,18 +1,19 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { HOME } from "@/constants/testIds";
 
 const links = [
-  { id: HOME.navPlatform, label: "Platform", href: "#domains" },
-  { id: HOME.navPricing, label: "Pricing", href: "#pricing" },
-  { id: HOME.navEnterprise, label: "Enterprise", href: "#pricing" },
-  { id: HOME.navAbout, label: "About", href: "#why" },
+  { id: HOME.navPlatform, label: "Modules",    to: "/modules"    },
+  { id: "nav-assistants", label: "Assistants", to: "/assistants" },
+  { id: HOME.navPricing,  label: "Pricing",    to: "/pricing"    },
+  { id: "nav-blog",       label: "Blog",       to: "/blog"       },
 ];
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const { pathname } = useLocation();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -30,8 +31,8 @@ export default function Navbar() {
       style={{ background: "var(--zy-blue)", height: 80 }}
     >
       <div className="zy-container h-full flex items-center justify-between">
-        <a
-          href="#top"
+        <Link
+          to="/"
           data-testid={HOME.navLogo}
           className="flex items-center gap-1 select-none"
           aria-label="Zynthoro home"
@@ -42,19 +43,24 @@ export default function Navbar() {
           >
             ZYNTHORO
           </span>
-        </a>
+        </Link>
 
         <nav className="hidden md:flex items-center gap-9">
-          {links.map((l) => (
-            <a
-              key={l.id}
-              data-testid={l.id}
-              href={l.href}
-              className="text-white/90 hover:text-white text-[15px] font-medium transition-colors"
-            >
-              {l.label}
-            </a>
-          ))}
+          {links.map((l) => {
+            const active = pathname === l.to || (l.to !== "/" && pathname.startsWith(l.to));
+            return (
+              <Link
+                key={l.id}
+                data-testid={l.id}
+                to={l.to}
+                className={`text-[15px] font-medium transition-colors ${
+                  active ? "text-white" : "text-white/85 hover:text-white"
+                }`}
+              >
+                {l.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
@@ -97,14 +103,14 @@ export default function Navbar() {
         <div className="md:hidden absolute top-20 left-0 right-0 bg-[#1A4FFF] border-t border-white/10">
           <div className="zy-container py-5 flex flex-col gap-4">
             {links.map((l) => (
-              <a
+              <Link
                 key={`m-${l.id}`}
-                href={l.href}
+                to={l.to}
                 onClick={() => setOpen(false)}
                 className="text-white/90 hover:text-white text-base font-medium"
               >
                 {l.label}
-              </a>
+              </Link>
             ))}
             <Link
               to="/signup"

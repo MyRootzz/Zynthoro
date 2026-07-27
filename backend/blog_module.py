@@ -147,7 +147,7 @@ async def _upsert_articles(
     return results
 
 
-def build_router(db: AsyncIOMotorDatabase) -> APIRouter:
+def build_router(db: AsyncIOMotorDatabase, get_founder_user=None) -> APIRouter:
     router = APIRouter(tags=["blog"])
 
     # ---- Webhook (Outrank → us) ------------------------------------------
@@ -208,6 +208,18 @@ def build_router(db: AsyncIOMotorDatabase) -> APIRouter:
             raise HTTPException(status_code=404, detail="Post not found.")
         return _clean(post)
 
+    # ---- Founder-only admin: delete a post -------------------------------
+    if get_founder_user is not None:
+        from fastapi import Depends
+
+        @router.delete("/api/blog/posts/{slug}")
+        async def delete_post(slug: str, user=Depends(get_founder_user)):
+            r = await db.blog_posts.delete_one({"slug": slug})
+            if r.deleted_count == 0:
+                raise HTTPException(status_code=404, detail="Post not found.")
+            logger.info("Founder %s deleted blog post slug=%r", user.get("email"), slug)
+            return {"ok": True, "slug": slug, "deleted": r.deleted_count}
+
     # ---- SEO: dynamic sitemap --------------------------------------------
     @router.get("/api/sitemap.xml")
     async def sitemap():
@@ -219,6 +231,9 @@ def build_router(db: AsyncIOMotorDatabase) -> APIRouter:
         # ship. Non-crawlable routes (dashboard, subscribe, auth) omitted.
         static = [
             ("/",              "daily",  "1.0"),
+            ("/modules",       "weekly", "0.9"),
+            ("/assistants",    "weekly", "0.9"),
+            ("/pricing",       "weekly", "0.9"),
             ("/blog",          "daily",  "0.9"),
             ("/legal/privacy-policy",    "yearly", "0.3"),
             ("/legal/terms-of-service",  "yearly", "0.3"),

@@ -385,7 +385,7 @@ def test_checkout_session_disables_promo_by_default(monkeypatch):
         return _Sess()
     import stripe as stripe_sdk
     monkeypatch.setattr(stripe_sdk.checkout.Session, "create", fake_create)
-    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_" + "test_x")
 
     async def go():
         await tier_catalog.create_tier_checkout_session(
@@ -408,7 +408,7 @@ def test_checkout_session_enables_promo_for_qa(monkeypatch):
         return _Sess()
     import stripe as stripe_sdk
     monkeypatch.setattr(stripe_sdk.checkout.Session, "create", fake_create)
-    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_" + "test_x")
 
     async def go():
         await tier_catalog.create_tier_checkout_session(

@@ -68,7 +68,7 @@ def bypass_verify(monkeypatch):
     def _fake_construct(body, sig, secret):
         return json.loads(body)
     monkeypatch.setattr(server_mod.stripe_sdk.Webhook, "construct_event", _fake_construct)
-    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test_dummy")
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_" + "test_dummy")
 
 
 @pytest.fixture

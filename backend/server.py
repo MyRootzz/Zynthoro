@@ -538,14 +538,20 @@ async def auth_login(payload: LoginIn, request: Request, response: Response):
             "available_methods": ["totp", "email"],
         }
 
-    # Demo accounts (XPRIZE jury), the founder owner account, and QA test
-    # accounts bypass the 2FA setup gate — they land in the dashboard with
-    # a single click.
-    # `is_demo`, `is_founder`, and `is_qa_test` are only set by seed
-    # functions or direct MongoDB writes and can never be granted via the
-    # API. `is_qa_test` accounts still count AI credits and can still be
-    # charged — the flag ONLY relaxes the 2FA setup gate.
-    if user.get("is_demo") or user.get("is_founder") or user.get("is_qa_test"):
+    # Demo accounts (XPRIZE jury), the founder owner account, QA test
+    # accounts, and provisioned Enterprise-Unlimited accounts bypass the
+    # 2FA setup gate — they land in the dashboard with a single click.
+    # `is_demo`, `is_founder`, `is_qa_test`, and `is_unlimited` are only
+    # set by seed functions or by the founder-only /founder/users/provision
+    # endpoint and can never be granted via the public API. `is_qa_test`
+    # accounts still count AI credits and can still be charged — the flag
+    # ONLY relaxes the 2FA setup gate.
+    if (
+        user.get("is_demo")
+        or user.get("is_founder")
+        or user.get("is_qa_test")
+        or user.get("is_unlimited")
+    ):
         access = create_access_token(user["id"], user["email"], twofa_passed=True)
         _set_auth_cookies(response, access)
         return {
@@ -898,12 +904,35 @@ async def dashboard_summary(user=Depends(get_current_user_full)):
     activity.sort(key=_ts, reverse=True)
     activity = activity[:8]
 
+    # -- Real KPIs for the current workspace (was hardcoded 0s until 2026-07-27) --
+    wo = user["id"]
+
+    # Monthly revenue = sum of `total` on invoices marked "paid" whose
+    # updated_at (proxy for paid_at) falls in the current calendar month.
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    paid_this_month = await db.finance_invoices.find(
+        {"workspace_owner": wo, "status": "paid", "updated_at": {"$gte": month_start}},
+        {"_id": 0, "total": 1},
+    ).to_list(1000)
+    monthly_revenue = round(sum(float(r.get("total") or 0) for r in paid_this_month), 2)
+
+    # Open invoices = anything not yet paid (draft / sent / overdue).
+    open_invoices = await db.finance_invoices.count_documents(
+        {"workspace_owner": wo, "status": {"$in": ["draft", "sent", "overdue"]}}
+    )
+
+    # Active projects = anything not in the `completed` state.
+    active_projects = await db.projects.count_documents(
+        {"workspace_owner": wo, "status": {"$ne": "completed"}}
+    )
+
     return {
         "user": user,
         "kpis": {
-            "monthly_revenue": 0,
-            "open_invoices": 0,
-            "active_projects": 0,
+            "monthly_revenue": monthly_revenue,
+            "open_invoices": open_invoices,
+            "active_projects": active_projects,
             "team_members": team_count,
         },
         "ai_suggestions": [
@@ -1555,6 +1584,88 @@ async def ai_wipe_memory(assistant: str, user=Depends(get_founder_user)):
         "messages_deleted": msg_result.deleted_count,
         "uploads_deleted": up_result.deleted_count,
     }
+
+
+# ========================================================================
+#  Founder-only: provision an unlimited-access user (bypasses signup flow)
+# ========================================================================
+class FounderProvisionUserPayload(BaseModel):
+    email: str
+    first_name: str
+    last_name: str
+    password: str
+    subscription_plan: str = "Enterprise Unlimited"
+    is_unlimited: bool = True
+    billing_exempt: bool = True
+    email_verified: bool = True
+    twofa_enabled: bool = False
+    is_founder: bool = False
+
+
+@api_router.post("/founder/users/provision")
+async def founder_provision_user(
+    payload: FounderProvisionUserPayload,
+    user=Depends(get_founder_user),
+):
+    """Founder-only: create (or upgrade) a user with unlimited platform
+    access — no verification email, no 24h trial gate, no 2FA setup gate.
+
+    Idempotent: if the email already exists, the flags + password are
+    updated in place (rest of the user document is preserved). If not,
+    a fresh user document is created with all standard fields populated.
+    """
+    email = payload.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email required.")
+
+    now_utc = datetime.now(timezone.utc)
+    existing = await db.users.find_one({"email": email})
+
+    common_updates = {
+        "first_name": payload.first_name.strip(),
+        "last_name": payload.last_name.strip(),
+        "password_hash": hash_password(payload.password),
+        "subscription_plan": payload.subscription_plan,
+        "is_unlimited": bool(payload.is_unlimited),
+        "billing_exempt": bool(payload.billing_exempt),
+        "email_verified": bool(payload.email_verified),
+        "twofa_enabled": bool(payload.twofa_enabled),
+        "is_founder": bool(payload.is_founder),
+        "onboarding_completed": True,
+        # Trial gate off — this is a full-access account.
+        "is_trial": False,
+        "trial_expires_at": None,
+        "updated_at": now_utc.isoformat(),
+    }
+
+    if existing:
+        await db.users.update_one({"email": email}, {"$set": common_updates})
+        logger.info(
+            "Founder %s upgraded existing user %s to %s (unlimited=%s)",
+            user.get("email"), email, payload.subscription_plan, payload.is_unlimited,
+        )
+        return {"ok": True, "action": "upgraded", "user_id": existing["id"], "email": email}
+
+    doc = {
+        "id": uuid.uuid4().hex,
+        "email": email,
+        "company": "",
+        "role": "Owner",
+        "twofa_method": None,
+        "totp_secret": None,
+        "verification_token": None,
+        "trial_started_at": None,
+        "trial_ai_daily": {},
+        "created_at": now_utc.isoformat(),
+        **common_updates,
+    }
+    await db.users.insert_one(doc)
+    logger.info(
+        "Founder %s provisioned new user %s (%s, unlimited=%s)",
+        user.get("email"), email, payload.subscription_plan, payload.is_unlimited,
+    )
+    return {"ok": True, "action": "created", "user_id": doc["id"], "email": email}
+
 
 
 # ========================================================================

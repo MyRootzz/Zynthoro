@@ -71,7 +71,11 @@ export default function Dashboard() {
               <span className="text-[11px] uppercase tracking-wider text-[#999] font-semibold">{k.label}</span>
             </div>
             <p className="mt-4 text-[26px] font-bold tracking-tight text-black">
-              {k.prefix || ""}{(data?.kpis?.[k.key] ?? 0).toLocaleString("en-US")}
+              {k.prefix || ""}{
+                k.key === "monthly_revenue"
+                  ? Number(data?.kpis?.monthly_revenue ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                  : (data?.kpis?.[k.key] ?? 0).toLocaleString("en-US")
+              }
             </p>
           </div>
         ))}

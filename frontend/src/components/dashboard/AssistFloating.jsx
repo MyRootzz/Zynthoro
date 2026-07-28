@@ -8,6 +8,7 @@ import AssistantActions from "@/components/dashboard/AssistantActions";
 import VoiceButton from "@/components/dashboard/VoiceButton";
 import AISeesIndicator from "@/components/dashboard/AISeesIndicator";
 import AttachmentChip from "@/components/dashboard/AttachmentChip";
+import MarkdownMessage from "@/components/dashboard/MarkdownMessage";
 import { streamAssistantChat } from "@/lib/aiStream";
 import {
   uploadAiFile,
@@ -325,8 +326,8 @@ export default function AssistFloating() {
                   Z
                 </span>
                 <div className="flex flex-col min-w-0">
-                  <div className="text-[13.5px] leading-relaxed px-3.5 py-2.5 rounded-lg rounded-tl-sm bg-[#F4F6FB] whitespace-pre-wrap">
-                    {m.content}
+                  <div className="text-[13.5px] leading-relaxed px-3.5 py-2.5 rounded-lg rounded-tl-sm bg-[#F4F6FB]">
+                    <MarkdownMessage>{m.content}</MarkdownMessage>
                     {m.streaming && (
                       <span
                         className="inline-block w-[6px] h-[12px] ml-0.5 align-middle animate-pulse"

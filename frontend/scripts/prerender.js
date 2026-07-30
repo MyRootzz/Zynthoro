@@ -105,12 +105,41 @@ function applyMeta(template, { title, description, url, image, type }) {
   return html;
 }
 
-/** Inject the crawler-visible content inside the empty `<div id="root">`. */
+/**
+ * Inject crawler-visible content inside the empty `<div id="root">`.
+ *
+ * We also install a `<style>` block in `<head>` that hides the prerender
+ * DOM visually when JavaScript is enabled — the SPA replaces #root's
+ * children the moment React mounts, but on slower devices there is a
+ * ~5–8s window where the raw HTML is otherwise visible. A `<noscript>`
+ * counter-block re-shows the content for the ~0.1% of visitors who
+ * browse with JS disabled. Crawlers (Google, Bing, LinkedIn, Twitter/X)
+ * parse the DOM before applying CSS/JS visibility rules, so the content
+ * is still indexed. Result: no flash of raw prerender for real users.
+ */
+const PRERENDER_HIDE_CSS = `
+        <style id="prerender-hide">
+            /* Hide the prerender fallback visually — JS-capable browsers
+               will paint the SPA over #root within a beat. Non-JS
+               browsers get the content back via the <noscript> block. */
+            #prerender-content { display: none !important; }
+        </style>
+        <noscript>
+            <style>#prerender-content { display: block !important; }</style>
+        </noscript>`;
+
 function injectRootContent(template, contentHtml) {
-  return template.replace(
+  let html = template;
+  // Only inject the hide-CSS once per file (idempotent — even if this
+  // function is somehow chained, we don't want duplicate <style> tags).
+  if (!html.includes('id="prerender-hide"')) {
+    html = html.replace(/<\/head>/, `${PRERENDER_HIDE_CSS}\n    </head>`);
+  }
+  html = html.replace(
     /<div id="root"><\/div>/,
     `<div id="root"><div id="prerender-content">${contentHtml}</div></div>`
   );
+  return html;
 }
 
 function writePage(routePath, html) {

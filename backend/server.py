@@ -103,9 +103,13 @@ class SignupIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     company: str = Field(min_length=1, max_length=200)
-    # 24-hour free trial flag — set only when the landing-page CTA
-    # deep-links to /signup?trial=1. Regular signups get is_trial=false.
-    is_trial: bool = False
+    # NOTE: `is_trial` is no longer client-controlled (as of 2026-07-28).
+    # All new signups start on the 24-hour trial. Real tier access is
+    # only granted via a paid Stripe transaction (see /webhook/stripe
+    # provisioning path) or via the founder-only /founder/users/provision
+    # endpoint. This closes the leak where the pre-2026-07-28 signup
+    # flow was creating users with subscription_plan="Presale" AND
+    # is_trial=False, which bypassed the trial gate in DashboardLayout.
 
 
 class LoginIn(BaseModel):
@@ -442,9 +446,10 @@ async def auth_signup(payload: SignupIn, response: Response):
     verification_token = gen_token_url_safe(24)
     user_id = str(uuid.uuid4())
     now_utc = datetime.now(timezone.utc)
-    trial_expires_at = None
-    if payload.is_trial:
-        trial_expires_at = (now_utc + timedelta(hours=24)).isoformat()
+    # Every new signup starts on the 24-hour trial. See SignupIn note
+    # above: real tier access is only ever granted post-payment or by
+    # explicit founder admin action.
+    trial_expires_at = (now_utc + timedelta(hours=24)).isoformat()
     doc = {
         "id": user_id,
         "email": email,
@@ -464,9 +469,10 @@ async def auth_signup(payload: SignupIn, response: Response):
         "totp_secret": None,
         "onboarding_completed": False,
         "created_at": now_utc.isoformat(),
-        # Trial mode fields — only populated on `?trial=1` signups.
-        "is_trial": bool(payload.is_trial),
-        "trial_started_at": now_utc.isoformat() if payload.is_trial else None,
+        # Trial mode — always active on new signups. Escalates to a real
+        # plan when a paid Stripe transaction completes.
+        "is_trial": True,
+        "trial_started_at": now_utc.isoformat(),
         "trial_expires_at": trial_expires_at,
         "trial_ai_daily": {},  # {"YYYY-MM-DD": {"zyntha": N, ...}}
     }
@@ -1667,6 +1673,81 @@ async def founder_provision_user(
     return {"ok": True, "action": "created", "user_id": doc["id"], "email": email}
 
 
+class FounderConvertToTrialPayload(BaseModel):
+    email: str
+
+
+@api_router.post("/founder/users/convert-to-trial")
+async def founder_convert_to_trial(
+    payload: FounderConvertToTrialPayload,
+    user=Depends(get_founder_user),
+):
+    """Founder-only: put an existing user on the standard 24-hour trial.
+
+    Used to migrate legacy accounts that were mis-provisioned (e.g. the
+    2026-07 signup leak that created users with subscription_plan="Presale"
+    AND is_trial=False, which unintentionally bypassed the trial gate in
+    DashboardLayout).
+
+    Sets is_trial=True, trial_started_at=now, trial_expires_at=now+24h.
+    Leaves subscription_plan alone — a paid Stripe transaction is still
+    the only path to a real tier. Clears any Stripe subscription linkage
+    so an in-flight session can't accidentally re-provision.
+
+    Non-destructive: preserves email, name, company, workspace data,
+    invoices, projects, and all other user-owned records.
+    """
+    email = payload.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Valid email required.")
+
+    target = await db.users.find_one({"email": email})
+    if not target:
+        raise HTTPException(status_code=404, detail=f"No user found with email {email}.")
+
+    # Refuse to convert accounts that shouldn't be touched by this path.
+    for guard in ("is_founder", "is_demo", "is_qa_test", "is_unlimited"):
+        if target.get(guard):
+            raise HTTPException(
+                status_code=400,
+                detail=f"User {email} has {guard}=True — refuse to convert to trial.",
+            )
+
+    now_utc = datetime.now(timezone.utc)
+    trial_expires_at = (now_utc + timedelta(hours=24)).isoformat()
+
+    await db.users.update_one(
+        {"email": email},
+        {"$set": {
+            "is_trial": True,
+            "trial_started_at": now_utc.isoformat(),
+            "trial_expires_at": trial_expires_at,
+            "trial_ai_daily": {},
+            "updated_at": now_utc.isoformat(),
+        }},
+    )
+    logger.info(
+        "Founder %s converted %s to standard 24h trial (was is_trial=%s, plan=%s)",
+        user.get("email"), email,
+        target.get("is_trial"), target.get("subscription_plan"),
+    )
+    return {
+        "ok": True,
+        "email": email,
+        "previous_state": {
+            "is_trial": bool(target.get("is_trial")),
+            "subscription_plan": target.get("subscription_plan"),
+        },
+        "new_state": {
+            "is_trial": True,
+            "trial_started_at": now_utc.isoformat(),
+            "trial_expires_at": trial_expires_at,
+            "subscription_plan": target.get("subscription_plan"),
+        },
+    }
+
+
+
 
 # ========================================================================
 #  Founder / Builder Mode (founder only)
@@ -1975,6 +2056,7 @@ async def validate_tier_promo(
         "original_total_eur": preview["original_total_eur"],
         "discounted_total_eur": preview["discounted_total_eur"],
         "currency": preview["currency"],
+        "first_time_only": preview.get("first_time_only", False),
     }
 
 

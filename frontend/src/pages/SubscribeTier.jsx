@@ -145,6 +145,7 @@ export default function SubscribeTier() {
         amount_off_eur: data.amount_off_eur,
         discount_eur: data.discount_eur,
         discounted_total_eur: data.discounted_total_eur,
+        first_time_only: data.first_time_only,
       });
     } catch (e) {
       setPromo(null);
@@ -277,6 +278,14 @@ export default function SubscribeTier() {
                         {" "}
                         <span className="text-[#888] line-through">€{tier.amount_eur}</span>
                       </div>
+                      {promo.first_time_only && (
+                        <div
+                          className="mt-1 text-[12px] text-[#B45309]"
+                          data-testid="promo-first-time-only-warning"
+                        >
+                          First-time customers only — Stripe rejects this code if you already have a prior purchase on this account.
+                        </div>
+                      )}
                     </div>
                   </div>
                   <button onClick={removePromo} className="text-[#888] hover:text-[#c00]" data-testid="promo-code-remove-btn" aria-label="Remove promo code">

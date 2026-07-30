@@ -325,6 +325,18 @@ async def resolve_promotion_code(
 
     discounted_cents = max(0, base_cents - discount_cents)
 
+    # Surface Stripe restrictions to the client so the UI can display an
+    # honest warning BEFORE the customer tries to check out. Currently
+    # the only restriction Stripe imposes on our public promos is
+    # `first_time_transaction: true` (e.g. TAAFT10) — Stripe rejects
+    # the redemption at checkout finalization if the customer has any
+    # prior successful transaction, and until now we surfaced that as
+    # a generic "promocode kon niet toegepast worden" error.
+    restrictions = getattr(promo, "restrictions", None) or {}
+    if hasattr(restrictions, "to_dict"):
+        restrictions = restrictions.to_dict()
+    first_time_only = bool(restrictions.get("first_time_transaction")) if isinstance(restrictions, dict) else False
+
     return {
         "promotion_code_id": promo.id,
         "code": promo.code,
@@ -335,6 +347,7 @@ async def resolve_promotion_code(
         "original_total_eur": base_cents / 100.0,
         "discounted_total_eur": discounted_cents / 100.0,
         "currency": tier["currency"],
+        "first_time_only": first_time_only,
     }
 
 

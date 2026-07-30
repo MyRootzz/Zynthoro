@@ -1128,3 +1128,36 @@ Each new page has its own SEO title + meta description + wraps in `PresaleDialog
 - `DELETE /api/blog/posts/{slug}` with founder JWT → 200 delete; jury JWT → 403; nonexistent slug → 404. Full curl round-trip: create test post via Outrank webhook → delete → verify 404.
 - Nav "Modules" link correctly highlights on `/modules`.
 
+
+### 2026-07-30 — Trial-leak fix + prerender flash fix + TAAFT10 UX warning
+**Bug**: `/auth/signup` was creating users with `subscription_plan="Presale"` AND `is_trial=False`, which unintentionally bypassed the trial gate in `DashboardLayout.jsx` (line 43: `if (!user?.is_trial) return "not_trial"`) — the "not_trial" branch treats a user as fully paying, so new external signups were getting unpaid full access to all 12 modules. Four external accounts hit this state between 20–29 July.
+
+**Fixes shipped**
+1. **`SignupIn` model** — removed the client-controlled `is_trial` field entirely. All new signups now unconditionally get `is_trial=True`, `trial_started_at=now`, `trial_expires_at=now+24h`. Real tier access is only granted post-payment (via Stripe webhook) or by explicit founder action.
+2. **New founder endpoint** `POST /api/founder/users/convert-to-trial` — takes `{email}`, sets `is_trial=True` + fresh 24h expiry, refuses to touch `is_founder/is_demo/is_qa_test/is_unlimited` accounts. Non-destructive (leaves `subscription_plan`, invoices, projects intact).
+3. **Prerender flash fix** — `<div id="prerender-content">` now hidden by CSS (`display:none`) with a `<noscript>` counter-block that reveals it for JS-off users. Eliminates the ~6-second flash of raw prerender HTML on every route (including SPA fallback pages `/login`, `/signup`, `/dashboard/*` which use `build/index.html`).
+4. **TAAFT10 promo UX** — `validate-promo` now returns `first_time_only` flag; SubscribeTier UI shows a "first-time customers only" warning before checkout.
+
+**Entitlement audit (invariant proven)**
+Every write to `subscription_plan` outside of `/auth/signup="Presale"` is gated by either:
+- Paid Stripe transaction (`payment_transactions.paid == True`), or
+- Founder-only admin call (`Depends(get_founder_user)`), or
+- Seed function (founder self-owner, jury demo)
+
+No public endpoint exists that lets a user self-escalate. Verified end-to-end on production by testing_agent (iteration_34.json): PATCH/PUT on `/api/auth/me` and `/api/users/me` with `subscription_plan` all return 405/404/422.
+
+**Migration executed on production 2026-07-30 13:57 UTC**
+- `weedoraugustinek89@gmail.com` — converted to trial (24h expiry)
+- `hesoka1674@gicont.com` — converted to trial (24h expiry)
+- `alin@theresanaiforthat.com` — **UNCHANGED** (TAAFT reviewer, keeps current access)
+- `stefan@theresanaiforthat.com` — **UNCHANGED** (TAAFT reviewer, keeps current access)
+
+**Known open issue (not shipped in this deploy)**
+TAAFT10 promo (`promo_1TweW85sy2phCvUrlsxtqpKy`) resolves on preview backend but fails on production with "Deze promocode bestaat niet of is verlopen". Same code path, same tier_catalog.py — root cause is likely a Stripe account mismatch between preview `STRIPE_SECRET_KEY` and production `STRIPE_SECRET_KEY` (or the promo is not `active=True` in the account prod is talking to). Separate follow-up.
+
+**Files touched**
+- `/app/backend/server.py` — SignupIn model + /auth/signup body + new /founder/users/convert-to-trial endpoint + first_time_only in validate-promo response
+- `/app/backend/tier_catalog.py` — resolve_promotion_code now returns first_time_only flag
+- `/app/frontend/scripts/prerender.js` — hide-CSS injection with <noscript> fallback
+- `/app/frontend/src/pages/SubscribeTier.jsx` — first-time-only warning UI
+

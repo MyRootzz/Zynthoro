@@ -28,7 +28,6 @@ next-env.d.ts
 # Production builds
 /build
 dist/
-dist
 
 # Environment files (comprehensive coverage)
 
@@ -78,37 +77,6 @@ agenthub/agents/youtube/db
 
 memory/test_credentials.md
 
-# Mobile development
-android-sdk/frontend/node_modules/.cache/default-development/7.pack
-frontend/node_modules/.cache/default-development/7.pack
-frontend/node_modules/.cache/default-development/10.pack
-frontend/node_modules/.cache/default-development/1.pack
-frontend/node_modules/.cache/default-development/2.pack
-frontend/node_modules/.cache/default-development/3.pack
-frontend/node_modules/.cache/default-development/4.pack
-frontend/node_modules/.cache/default-development/5.pack
-frontend/node_modules/.cache/default-development/6.pack
-frontend/node_modules/.cache/default-development/12.pack
-frontend/node_modules/.cache/default-development/13.pack
-frontend/node_modules/.cache/default-development/13.pack
-frontend/node_modules/.cache/default-development/8.pack
-frontend/node_modules/.cache/default-development/18.pack
-frontend/node_modules/.cache/default-development/20.pack
-frontend/node_modules/.cache/default-development/17.pack
-frontend/node_modules/.cache/default-development/21.pack
-frontend/node_modules/.cache/default-development/22.pack
-frontend/node_modules/.cache/default-development/23.pack
-frontend/node_modules/.cache/default-development/26.pack
-frontend/node_modules/.cache/default-development/29.pack
-frontend/node_modules/.cache/default-development/25.pack
-frontend/node_modules/.cache/default-development/35.pack
-frontend/node_modules/.cache/default-development/37.pack
-frontend/node_modules/.cache/default-development/39.pack
-frontend/node_modules/.cache/default-development/42.pack
-frontend/node_modules/.cache/default-development/36.pack
-frontend/node_modules/.cache/default-development/40.pack
-frontend/node_modules/.cache/default-development/43.pack
-frontend/node_modules/.cache/default-development/0.pack
 .env
 .env.*
 *.env
@@ -120,4 +88,27 @@ service-account*.json
 *secret*
 memory/
 test_reports/
-.emergent/automation_output/s
+.emergent/
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Certificates
+*.crt
+*.p12
+*.pfx
+
+# Generic logs
+*.log
+
+# Local uploads
+uploads/
+tmp/
+temp/
+
+# Windows
+Thumbs.db
+Desktop.inifrontend/node_modules/.cache/default-development/43.pack
+frontend/node_modules/.cache/default-development/3.pack

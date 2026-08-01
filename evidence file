@@ -1,81 +1,167 @@
-Zynthoro — Evidence of Product Running in Production
-Live Platform
-URL: https://zynthoro.ai
+# Zynthoro — Evidence of Product Running in Production
 
-Status: Fully operational as of June 30, 2026
+## Live Platform
 
-Company: Casa Haya International BV — KvK: 99196581 — Netherlands
+**URL:** https://zynthoro.ai
 
-Jury Demo Account
-Try the platform live:
-URL:      https://zynthoro.ai/login
-Email:    jury@zynthoro.ai
-Password: ZynthoroDemo2026!
-Plan:     Enterprise Advanced (full access to all 12 modules)
+**Status:** Fully operational since June 30, 2026
 
-AI Running in Production
-Multi-model routing live:
+**Company:** Casa Haya International BV  
+**KvK:** 99196581  
+**Country:** The Netherlands
 
-Zyntha → Google Gemini 2.5 Flash (all plans)
-Thoro → Gemini 2.5 Flash (Starter/Creator) / Claude Sonnet 4.6 (Business+)
-Zyona → Anthropic Claude Sonnet 4.6 (all plans)
-Zynthoro Assist → Anthropic Claude Sonnet 4.6 (all plans)
+---
 
-AI audit trail endpoint:
+# Jury Demo Account
+
+The platform can be tested using the following demonstration account.
+
+**Login:** https://zynthoro.ai/login
+
+Email:
+jury@zynthoro.ai
+
+Password:
+ZynthoroDemo2026!
+
+Plan:
+Enterprise Advanced (full access to all 12 business domains)
+
+---
+
+# AI Running in Production
+
+The platform routes requests between multiple production AI models.
+
+## Zyntha
+Google Gemini 2.5 Flash
+
+## Thoro
+Google Gemini 2.5 Flash (Starter & Creator)
+
+Anthropic Claude Sonnet 4.6 (Business and higher)
+
+## Zyona
+Anthropic Claude Sonnet 4.6
+
+## Zynthoro Assist
+Anthropic Claude Sonnet 4.6
+
+---
+
+# AI Execution Logging
+
+Internal production endpoint:
+
 GET /api/admin/ai-logs
-Returns every AI call with model name, tokens used, assistant type, user ID and timestamp.
-AI-verified onboarding:
+
+Each AI request stores:
+
+- timestamp
+- assistant
+- AI model
+- token usage
+- user ID
+
+---
+
+# AI Business Verification
+
+Endpoint:
+
 POST /api/verify-business-registration
-Claude reads uploaded PDF, extracts incorporation date, automatically applies €99/month (founder) or €499/month (standard pricing).
-Voice AI lead capture:
+
+The uploaded company registration document is processed by AI to:
+
+- verify business registration
+- extract incorporation date
+- determine founder eligibility
+- automatically apply Founder or Standard pricing
+
+---
+
+# Voice AI Lead Capture
+
+Endpoints:
+
 POST /api/voice-tryout
+
 GET /api/founder/voice-tryouts
-Daily digest:
+
+---
+
+# Daily Founder Digest
+
+Endpoints:
+
 POST /api/founder/digest/send?force=true
+
 GET /api/founder/digest/preview
-Automated email sent to info@zynthoro.ai every day at 07:00 UTC.
 
-Backend Test Results
-84/84 tests passing — production-ready platform.
-Test coverage includes:
+A daily operational summary is automatically generated and sent every day.
 
-Auth + JWT + 2FA
-Stripe webhooks + subscription lifecycle
-AI routing (Gemini + Claude)
-Business registration verification
-Voice tryout lead capture
-Daily digest send + dedupe
-CSV export
-Operations & Production module (17/17)
-Voice AI module (8/8)
+---
 
+# Stripe Live Integration
 
-Stripe Live Integration
+Production Stripe account connected.
 
-Live mode active
-8 subscription products wired
-Webhook: https://zynthoro.ai/api/webhook/stripe
-Extra seat add-ons live
-KvK-verified founder pricing automated
+Features active:
 
+- Live payments
+- Subscription management
+- 8 subscription plans
+- Extra seat add-ons
+- Founder pricing automation
+- Stripe webhooks
 
-Modules Live
+Webhook:
 
-Planning & Organisation
-Time Tracking
-Sales Administration
-Finance & Invoicing
-Accounting
-Project Management
-HR & Personnel
-Operations & Production (recipes, BOM, traceability, QC)
-Marketing & Content (Social Media Studio)
-Communication & Collaboration
-Compliance & Security
-AI Assistants (Zyntha, Thoro, Zyona, Zynthoro Assist)
+https://zynthoro.ai/api/webhook/stripe
 
+---
 
-Video Demo
+# Business Domains
+
+The production platform currently contains twelve integrated business domains.
+
+- Planning & Organisation
+- Time Tracking
+- Sales Administration
+- Finance & Invoicing
+- Accounting
+- Project Management
+- HR & Personnel
+- Operations & Production
+- Marketing & Content
+- Communication & Collaboration
+- Compliance & Security
+- AI Assistants
+
+---
+
+# Video Demonstration
+
 https://youtu.be/_5psEgtULpg
 
-Built with Google Gemini 2.5 Flash + Anthropic Claude Sonnet 4.6 | Launched June 30, 2026
+---
+
+# Product Evidence
+
+The Git repository contains a folder named:
+
+Product_Evidence
+
+This folder contains production evidence collected during the competition, including:
+
+- AI execution log screenshots
+- Production dashboard screenshots
+- API usage evidence
+- Additional production screenshots
+
+---
+
+Built with Google Gemini 2.5 Flash and Anthropic Claude Sonnet 4.6.
+
+Production launch:
+June 30, 2026.

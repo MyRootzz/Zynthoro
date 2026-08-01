@@ -1,11 +1,11 @@
 # Zynthoro
 
-> AI-native ERP platform for SMEs powered by Google Gemini and Anthropic Claude.
-
+AI-native ERP platform for SMEs powered by Google Gemini 2.5 Flash and Anthropic Claude Sonnet 4.6.
 ---
 
 # Overview
 
+This repository contains the production source code and supporting evidence submitted for the Build with Gemini XPRIZE competition.
 Zynthoro is an AI-native Enterprise Resource Planning (ERP) platform designed for small and medium-sized businesses.
 
 The platform combines business management, AI automation and operational workflows into a single integrated environment, helping businesses reduce administrative work and improve productivity.
@@ -130,8 +130,7 @@ Included:
 - profit evidence file
 - Product_Evidence/
 
-The Product_Evidence folder contains production screenshots, AI execution evidence, API usage records and supporting operational documentation.
-
+The Product_Evidence folder contains production screenshots, AI execution logs, API usage evidence, observability screenshots and supporting operational documentation used for the XPRIZE submission.
 ---
 
 # Founder
@@ -147,11 +146,9 @@ KvK: 99196581
 The Netherlands
 
 Platform:
-
 https://zynthoro.ai
 
 LinkedIn:
-
 https://linkedin.com/in/ramona-h-837083412
 
 ---

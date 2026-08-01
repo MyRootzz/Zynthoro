@@ -109,3 +109,15 @@ frontend/node_modules/.cache/default-development/36.pack
 frontend/node_modules/.cache/default-development/40.pack
 frontend/node_modules/.cache/default-development/43.pack
 frontend/node_modules/.cache/default-development/0.pack
+.env
+.env.*
+*.env
+backend/.env
+frontend/.env
+!.env.example
+*.key
+service-account*.json
+*secret*
+memory/
+test_reports/
+.emergent/automation_output/s

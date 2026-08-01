@@ -1,18 +1,75 @@
-Zynthoro — Profit Evidence File
-This file provides the required profit evidence for the Build With Gemini XPRIZE submission.
-Financial status (hackathon period: May – August 2026):
+# Zynthoro — Profit Evidence File
 
-Total Revenue: $0
-Total Expenses: ~$200 (AI API credits, platform hosting via Emergent)
-Net Profit: -$200
+This document provides the required profit evidence for the Build with Gemini XPRIZE submission.
 
-Zynthoro launched publicly on June 30, 2026 at zynthoro.ai, with live Stripe integration wired for revenue capture. 
-No paying customers were acquired during the hackathon period — the platform is fully operational and revenue-ready.
+---
 
-For full financial detail, see the P&L Statement uploaded with this submission: Zynthoro_XPRIZE_PL.pdf
-Live platform: https://zynthoro.ai
+## Financial Status
 
-Stripe: Live mode active — 8 subscription plans wired
-— Ramona Vijfvinkel, Founder & CEO
+Competition period:
+May 2026 – August 2026
 
-Casa Haya International BV — KvK: 99196581
+Total Revenue:
+$0
+
+Total Expenses:
+Approximately $1,250
+
+Primary expenses included:
+
+- AI infrastructure
+- Platform hosting
+- Domain registration
+- Development tools
+- Software subscriptions
+- Cloud services
+
+Net Result:
+Approximately -$1,250
+
+---
+
+## Commercial Status
+
+Zynthoro launched publicly on June 30, 2026.
+
+Platform:
+https://zynthoro.ai
+
+The platform is fully operational in production with live Stripe integration for subscription billing.
+
+During the competition period, no paying customers were acquired. The platform is commercially available and revenue-ready.
+
+---
+
+## Stripe Production
+
+Production Stripe account active.
+
+Current status:
+
+- Live payment processing enabled
+- 8 subscription plans configured
+- Subscription infrastructure operational
+
+---
+
+## Supporting Financial Documentation
+
+Complete financial information is included in:
+
+**Zynthoro_XPRIZE_PL.pdf**
+
+---
+
+Founder
+
+Ramona Vijfvinkel  
+Founder & CEO
+
+Casa Haya International BV  
+KvK: 99196581  
+The Netherlands
+
+Platform:
+https://zynthoro.ai

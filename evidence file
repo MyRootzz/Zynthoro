@@ -5,6 +5,7 @@
 **URL:** https://zynthoro.ai
 
 **Status:** Fully operational since June 30, 2026
+The platform is publicly accessible and accepts live user registrations and subscriptions.
 
 **Company:** Casa Haya International BV  
 **KvK:** 99196581  
@@ -14,6 +15,7 @@
 
 # Jury Demo Account
 
+This account is intended solely for Build with Gemini XPRIZE judging.
 The platform can be tested using the following demonstration account.
 
 **Login:** https://zynthoro.ai/login
@@ -152,7 +154,7 @@ The Git repository contains a folder named:
 
 Product_Evidence
 
-This folder contains production evidence collected during the competition, including:
+This folder contains supporting production evidence, including:
 
 - AI execution log screenshots
 - Production dashboard screenshots

@@ -1,28 +1,23 @@
 # Zynthoro
 
 AI-native ERP platform for SMEs powered by Google Gemini 2.5 Flash and Anthropic Claude Sonnet 4.6.
----
-
-# Overview
-
-This repository contains the production source code and supporting evidence submitted for the Build with Gemini XPRIZE competition.
-Zynthoro is an AI-native Enterprise Resource Planning (ERP) platform designed for small and medium-sized businesses.
-
-The platform combines business management, AI automation and operational workflows into a single integrated environment, helping businesses reduce administrative work and improve productivity.
-
-Public launch:
-
-**30 June 2026**
-
-Platform:
-
-https://zynthoro.ai
 
 ---
 
-# Core Business Domains
+## Overview
 
-Zynthoro currently includes twelve integrated business domains.
+This repository contains the production source code and supporting evidence for our Build with Gemini XPRIZE submission.
+
+Zynthoro is an AI-native Enterprise Resource Planning platform for small and medium-sized businesses. It combines business management, AI automation and operational workflows into a single integrated environment, replacing the eight to fifteen disconnected tools most SMEs run on.
+
+**Public launch:** 30 June 2026
+
+**Platform:** https://zynthoro.ai
+---
+
+## Core Business Domains
+
+Twelve integrated business domains:
 
 - Planning & Organisation
 - Time Tracking
@@ -31,128 +26,101 @@ Zynthoro currently includes twelve integrated business domains.
 - Accounting
 - Project Management
 - HR & Personnel
-- Operations & Production
+- Operations
 - Marketing & Content
 - Communication & Collaboration
 - Compliance & Security
-- AI Assistants
+- AI Studio
 
 ---
 
-# AI Assistants
+## AI Assistants
 
-Four specialised AI assistants operate throughout the platform.
+Four specialised assistants, each with a defined role and an enforced boundary.
 
-### Zyntha
+### Zyntha — Content & SEO
+Google Gemini 2.5 Flash (all plans)
 
-Google Gemini 2.5 Flash
+Blog posts, social copy, SEO strategy and campaigns, written from the company's own business context.
 
-Business guidance and workflow assistance.
+### Thoro — Process & Implementation
+Google Gemini 2.5 Flash (Starter & Creator)
+Anthropic Claude Sonnet 4.6 (Business and above)
 
-### Thoro
+Workflows, SOPs, automation logic and implementation architecture.
 
-Google Gemini 2.5 Flash
+### Zyona — Strategy & Growth
+Anthropic Claude Sonnet 4.6 (all plans)
 
-Starter & Creator plans
+Board-level strategy, growth planning and financial analysis. Challenges assumptions rather than confirming them.
 
-Anthropic Claude Sonnet 4.6
+### Zynthoro Assist — Platform Guide
+Anthropic Claude Sonnet 4.6 (all plans)
 
-Business plans and above
+Platform orientation and account guidance. No strategy, no marketing.
 
-Operations, finance and business analysis.
-
-### Zyona
-
-Anthropic Claude Sonnet 4.6
-
-Marketing and content creation.
-
-### Zynthoro Assist
-
-Anthropic Claude Sonnet 4.6
-
-Platform-wide intelligent assistant.
+All four work from the same shared business context rather than isolated prompts.
 
 ---
 
-# AI Features
+## AI Features
 
-Production AI functionality includes:
-
+- Multi-model routing per assistant and subscription plan
 - AI business registration verification
-- AI workflow execution
-- Voice AI lead capture
-- Daily founder digest
-- AI execution logging
-- Multi-model routing
-- Subscription automation
+- AI-assisted bank statement categorisation
+- Voice input via Web Speech API
+- Automated daily operational digest
+- Full AI execution logging
 
 ---
 
-# Stripe Integration
+## Stripe Integration
 
 Production Stripe environment.
 
-Current capabilities:
-
-- Live subscriptions
+- Live subscriptions across nine tiers
+- Three lifetime licence tiers
 - Subscription lifecycle management
-- Founder pricing automation
-- Extra seat add-ons
+- Seat add-ons
 - Stripe webhooks
 
 ---
 
-# Technology
+## Technology
 
-AI Models
-
+**AI models**
 - Google Gemini 2.5 Flash
 - Anthropic Claude Sonnet 4.6
 
-Platform
-
-- Live production deployment
-- JWT authentication
-- Two-factor authentication
-- Stripe Billing
-- REST API
+**Stack**
+- React and TypeScript (frontend)
+- FastAPI and Python (backend)
+- MongoDB (data layer)
+- Stripe (billing)
+- JWT authentication with two-factor support
+- EU-hosted, GDPR-ready
 
 ---
 
-# Evidence
+## Evidence
 
-This repository contains supporting documentation for the Build with Gemini XPRIZE submission.
+Supporting documentation for the XPRIZE submission:
 
-Included:
+- `EVIDENCE.md` — evidence of product running in production
+- `PROFIT_EVIDENCE.md` — financial evidence for the competition period
+- `Product_Evidence/` — production screenshots, AI execution logs demonstrating multi-model routing, API usage evidence and supporting operational documentation
 
-- evidence file
-- profit evidence file
-- Product_Evidence/
-
-The Product_Evidence folder contains production screenshots, AI execution logs, API usage evidence, observability screenshots and supporting operational documentation used for the XPRIZE submission.
 ---
 
-# Founder
+## Founder
 
-Ramona Vijfvinkel
-
+**Ramona Vijfvinkel**
 Founder & CEO
+Casa Haya International BV · KvK 99196581 · The Netherlands
 
-Casa Haya International BV
-
-KvK: 99196581
-
-The Netherlands
-
-Platform:
 https://zynthoro.ai
 
-LinkedIn:
-https://linkedin.com/in/ramona-h-837083412
-
 ---
 
-Built with Google Gemini 2.5 Flash and Anthropic Claude Sonnet 4.6.
-
-Production launch: June 30, 2026.
+*Built with Google Gemini 2.5 Flash and Anthropic Claude Sonnet 4.6*
+*Production launch: 30 June 2026*

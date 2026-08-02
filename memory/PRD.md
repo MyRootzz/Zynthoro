@@ -32,7 +32,7 @@ Build **Zynthoro Phase 1: Foundation & Homepage** — the marketing homepage for
 ## What's Implemented (Phase 2 — done 2026-06-18)
 - **Auth**: JWT (bcrypt), signup, email verification (idempotent, dev token returned + logged), login, brute-force lockout keyed by email, password reset (dev token), logout.
 - **2FA**: TOTP (pyotp + QR base64) primary, email-code fallback (dev_code returned + logged). SMS marked "Coming soon".
-- **Founder owner unlimited** auto-seeded on startup (regie@myrootzz.com / Zynthoro2026!), is_founder, is_unlimited, billing_exempt, Enterprise Unlimited plan, email_verified.
+- **Founder owner unlimited** auto-seeded on startup (regie@myrootzz.com xxxxxxxxx), is_founder, is_unlimited, billing_exempt, Enterprise Unlimited plan, email_verified.
 - **Onboarding**: 6-step wizard (welcome, company, first action, meet Assist, ready, redirect).
 - **Dashboard**: blue sidebar (12 modules + Team + Settings + 3 AI assistants), top bar with greeting & plan badge, 4 KPI cards, 4 quick actions, AI Suggestions, empty-state activity feed.
 - **Zynthoro Assist** floating bubble — always visible in /dashboard/*, Claude Sonnet 4.5 via Emergent universal key, history persisted in `ai_messages`.
